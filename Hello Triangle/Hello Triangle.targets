@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <ItemGroup>
+        <Shaders Include="$(ProjectDir)Shaders/*.spv" />
+        <Textures Include="$(ProjectDir)Content/Textures/*.*" />
+        <Models Include="$(ProjectDir)Content/Models/*.*" />
+    </ItemGroup>
+    <Target Name="ContentCopy" BeforeTargets="Build">
+        <Message Text="Copying content to output folder." />
+        <Copy 
+            SourceFiles="@(Shaders)" 
+            DestinationFolder="$(TargetDir)/Shaders" 
+        />
+        <Copy 
+            SourceFiles="@(Textures)" 
+            DestinationFolder="$(TargetDir)/Content/Textures" 
+        />
+        <Copy 
+            SourceFiles="@(Models)" 
+            DestinationFolder="$(TargetDir)/Content/Models" 
+        />
+    </Target>
+</Project>

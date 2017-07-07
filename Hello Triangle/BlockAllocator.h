@@ -10,7 +10,6 @@ namespace vke
 	class Block;
 	class Allocator;
 
-	// TODO: maybe distribute this as a shared_ptr
 	class Chunk
 	{
 		friend class Allocator;
@@ -19,11 +18,21 @@ namespace vke
 		Chunk() : isMapped(false), offset(0), size(0), mappedMemory(nullptr), m_memory(0), m_allocated(false)
 		{
 		}
+		
+		~Chunk()
+		{
+			deallocate();
+		}
 
 		bool isMapped;
 		VkDeviceSize offset;
 		VkDeviceSize size;
 		void* mappedMemory;
+
+		operator VkDeviceMemory()
+		{
+			return m_memory;
+		}
 
 		void map(VkDevice device)
 		{
@@ -44,18 +53,7 @@ namespace vke
 			}
 		}
 
-		void deallocate()
-		{
-			auto shared = m_block.lock();
-			if (m_allocated && shared)
-			{
-				shared->deallocateChunk(offset);
-			}
-			else
-			{
-				m_allocated = false;
-			}
-		}
+		void deallocate();
 
 	private:
 		std::weak_ptr<Block> m_block;
@@ -72,7 +70,7 @@ namespace vke
 			VkMemoryAllocateInfo info = {};
 			info.allocationSize = size;
 			info.memoryTypeIndex = memoryType;
-			auto block = std::make_unique<Block>();
+			//auto block = std::make_unique<Block>();
 			vkAllocateMemory(device, &info, nullptr, &m_memory);
 			m_size = size;
 			m_alignment = minimumAlignment;
@@ -155,12 +153,12 @@ namespace vke
 
 		void createChunk(VkDeviceSize offset, VkDeviceSize size)
 		{
-			m_chunkMap.emplace(std::make_pair(offset, std::make_shared<Chunk>()));
+			m_chunkMap.emplace(std::make_pair(offset, static_cast<std::weak_ptr<Chunk>>(std::make_shared<Chunk>())));
 			auto iter = m_chunkMap.find(offset);
 			m_chunkMap[offset]->size = size;
 			m_chunkMap[offset]->offset = offset;
 			m_chunkMap[offset]->m_memory = m_memory;
-			m_chunkMap[offset]->m_block = std::make_shared<Block>(this);
+			m_chunkMap[offset]->m_block = std::make_shared<Block>(*this);
 		}
 	};
 
@@ -190,7 +188,7 @@ namespace vke
 				while (blockRange.first != blockRange.second)
 				{
 					// attempt to allocate a chunk
-					chunk = blockRange.first->second.allocateChunk(size);
+					chunk = blockRange.first->second->allocateChunk(size);
 					if (chunk->size)
 					{
 						// return the chunk if it is successfully allocated
@@ -202,13 +200,13 @@ namespace vke
 			// if no blocks are found that fit the memory type and have sufficient space to allocate the chunk
 			// create a new block, then allocate from that
 			auto block = m_blocksByMemoryType.emplace(std::make_pair(memType, std::make_shared<Block>(m_device, BLOCK_SIZE, memType, alignment)));
-			chunk = block->second.allocateChunk(size);
+			chunk = block->second->allocateChunk(size);
 			return chunk;
 		}
 
 	private:
 		VkDevice m_device;
-		std::multimap<uint32_t, Block> m_blocksByMemoryType;
+		std::multimap<uint32_t, std::shared_ptr<Block>> m_blocksByMemoryType;
 
 		const uint32_t BLOCK_SIZE = 256000000U;
 	};

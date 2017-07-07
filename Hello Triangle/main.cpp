@@ -11,23 +11,18 @@ const bool enableValidationLayers = true;
 #endif
 
 #include <GLFW/glfw3.h>
-#include <iostream>
-#include <stdexcept>
-#include <functional>
-#include <memory>
-#include <algorithm>
-#include <vector>
-#include <set>
-#include <array>
-#include <map>
-#include <unordered_map>
 #include <glm/glm.hpp>
 #include <glm/gtx/hash.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <chrono>
 #include <stb-master/stb_image.h>
 #include <tinyobjloader-master/tiny_obj_loader.h>
+#include <memory>
+#include <iostream>
+#include <array>
+#include <vector>
+#include <set>
+#include <map>
+#include <unordered_map>
 #include "VulkanHelper.h"
 #include "fileIO.h"
 #include "math.h"
@@ -54,6 +49,7 @@ const std::vector<char*> deviceExtensions =
 
 struct Vertex 
 {
+	// get binding descriptions
 	static std::array<VkVertexInputBindingDescription, 2> getBindingDescription() 
 	{
 		std::array<VkVertexInputBindingDescription, 2> bindingDescriptions;
@@ -736,34 +732,6 @@ private:
 		}
 	}
 
-	void createDescriptorSetLayout()
-	{
-		VkDescriptorSetLayoutBinding uboLayoutBinding = {};
-		uboLayoutBinding.binding = 0;
-		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		uboLayoutBinding.descriptorCount = 1;
-		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		uboLayoutBinding.pImmutableSamplers = nullptr;
-
-		VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
-		samplerLayoutBinding.binding = 1;
-		samplerLayoutBinding.descriptorCount = static_cast<uint32_t>(textureSamplers.size());
-		samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		samplerLayoutBinding.pImmutableSamplers = textureSamplers.data();
-		samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-		std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
-		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-		layoutInfo.pBindings = bindings.data();
-
-		if (vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) 
-		{
-			throw std::runtime_error("failed to create descriptor set layout!");
-		}
-	}
-
 	void createGraphicsPipeline()
 	{
 		auto vertShaderCode = readFile("Shaders/vert.spv");
@@ -1033,7 +1001,7 @@ private:
 			createImage2D(texWidth, texHeight, imageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, textureImages.back());
 
 			// Create vertex data for this texture
-
+			// -----------------------------------
 			// Vertex positions
 			Quad quad
 			{
@@ -1538,6 +1506,36 @@ private:
 			vertexUniformBuffer,
 			vertexUniformMemory);
 
+	}
+
+	//layout
+
+	void createDescriptorSetLayout()
+	{
+		VkDescriptorSetLayoutBinding uboLayoutBinding = {};
+		uboLayoutBinding.binding = 0;
+		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		uboLayoutBinding.descriptorCount = 1;
+		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		uboLayoutBinding.pImmutableSamplers = nullptr;
+
+		VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
+		samplerLayoutBinding.binding = 1;
+		samplerLayoutBinding.descriptorCount = static_cast<uint32_t>(textureSamplers.size());
+		samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		samplerLayoutBinding.pImmutableSamplers = textureSamplers.data();
+		samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+		std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
+		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+		layoutInfo.pBindings = bindings.data();
+
+		if (vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) 
+		{
+			throw std::runtime_error("failed to create descriptor set layout!");
+		}
 	}
 
 	void createDescriptorPool()

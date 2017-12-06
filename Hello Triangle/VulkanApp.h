@@ -194,17 +194,18 @@ class VulkanApp
 {
 public:
 	struct AppInitData
-{
-	unsigned int width;
-	unsigned int height;
-	std::vector<StringPair> texturePaths;
-	std::string vertexShaderPath;
-	std::string fragmentShaderPath;
-};
+	{
+		unsigned int width;
+		unsigned int height;
+		std::vector<StringPair> texturePaths;
+		std::string vertexShaderPath;
+		std::string fragmentShaderPath;
+	};
+	
 	void run(AppInitData initData)
 	{
 		initGLFW();
-		m_Camera.setSize( {static_cast<float>(initData.width), static_cast<float>(initData.height) } );
+		m_Camera.setSize( { static_cast<float>(initData.width), static_cast<float>(initData.height) } );
 		m_Camera.setPosition( { 0.0f, 0.0f } );
 		initVulkan();
 		loadTextures(initData.texturePaths);
@@ -319,7 +320,7 @@ public:
 		}
 	}
 
-	
+
 
 private:
 	VulkanData::ModelIndexPushConstant modelIndexPushconstant = VulkanData::ModelIndexPushConstant();

@@ -2078,7 +2078,7 @@ private:
 	VkSemaphore renderFinishedSemaphore;
 };
 
-int main()
+int oldMain()
 {
 	HelloTriangleApplication app;
 

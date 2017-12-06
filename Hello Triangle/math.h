@@ -2,7 +2,7 @@
 
 namespace helper
 {
-	size_t roundUp(size_t numToRound, size_t multiple)
+	inline size_t roundUp(size_t numToRound, size_t multiple)
 	{
 		if (multiple == 0)
 			return numToRound;

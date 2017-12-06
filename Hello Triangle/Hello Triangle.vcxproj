@@ -19,18 +19,17 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="BlockAllocator.cpp" />
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="GameLevel.cpp" />
     <ClCompile Include="main2.cpp" />
-    <ClCompile Include="VulkanBase.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="BlockAllocator.h" />
     <ClInclude Include="fileIO.h" />
+    <ClInclude Include="Input.h" />
     <ClInclude Include="math.h" />
-    <ClInclude Include="PipelineLayout.h" />
+    <ClInclude Include="MemoryAllocator.h" />
+    <ClInclude Include="VulkanData.h" />
     <ClInclude Include="VulkanBase.h" />
-    <ClInclude Include="VulkanHelper.h" />
+    <ClInclude Include="alignedAlloc.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
@@ -108,7 +107,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>C:\Users\jeffw\Documents\Visual Studio 2017\Libraries\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.49.0\Lib32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Users\jeffw\Documents\Visual Studio 2017\Libraries\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>vulkan-1.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
     </Link>
@@ -129,7 +128,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>C:\Users\jeffw\Documents\Visual Studio 2017\Libraries\glfw-3.2.1.bin.WIN64\lib-vc2015;C:\VulkanSDK\1.0.49.0\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Users\jeffw\Documents\Visual Studio 2017\Libraries\glfw-3.2.1.bin.WIN64\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>vulkan-1.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
     </Link>
@@ -150,7 +149,7 @@
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>C:\Users\jeffw\Documents\Visual Studio 2017\Libraries\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.49.0\Lib32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Users\jeffw\Documents\Visual Studio 2017\Libraries\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>vulkan-1.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
@@ -174,7 +173,7 @@
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>C:\Users\jeffw\Documents\Visual Studio 2017\Libraries\glfw-3.2.1.bin.WIN64\lib-vc2015;C:\VulkanSDK\1.0.49.0\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Users\jeffw\Documents\Visual Studio 2017\Libraries\glfw-3.2.1.bin.WIN64\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>vulkan-1.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>

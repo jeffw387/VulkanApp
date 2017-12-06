@@ -1,7 +1,7 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(binding = 0) uniform VertexUniforms
+layout(set = 1, binding = 0) uniform VertexUniforms
 {
     mat4 transform;
 } uniforms;

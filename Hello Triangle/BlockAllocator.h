@@ -7,159 +7,80 @@
 
 namespace vke
 {
-	class Block;
-	class Allocator;
-
 	class Chunk
 	{
 		friend class Allocator;
 		friend class Block;
 	public:
-		Chunk() : isMapped(false), offset(0), size(0), mappedMemory(nullptr), m_memory(0), m_allocated(false)
+		Chunk() : m_Mapped(false), m_Offset(0), m_Size(0), m_MappedMemory(nullptr), m_Allocated(false)
 		{
+		}
+
+		Chunk(Chunk& chunkToCopy)
+		{
+			m_Mapped = chunkToCopy.m_Mapped;
+			m_Offset = chunkToCopy.m_Offset;
+			m_Size = chunkToCopy.m_Size;
+			m_MappedMemory = chunkToCopy.m_MappedMemory;
+			m_Allocated = chunkToCopy.m_Allocated;
 		}
 		
 		~Chunk()
 		{
-			deallocate();
 		}
 
-		bool isMapped;
-		VkDeviceSize offset;
-		VkDeviceSize size;
-		void* mappedMemory;
+		bool isMapped() { return m_Mapped; }
+		VkDeviceSize offset() { return m_Offset; }
+		VkDeviceSize size() { return m_Size; }
+		void* mappedMemory() { return m_MappedMemory; }
 
-		operator VkDeviceMemory()
-		{
-			return m_memory;
-		}
+		operator VkDeviceMemory();
 
-		void map(VkDevice device)
-		{
-			if (isMapped)
-			{
-				return;
-			}
-			vkMapMemory(device, m_memory, offset, size, 0, &mappedMemory);
-			isMapped = true;
-		}
+		void map(VkDevice device);
 
-		void unmap(VkDevice device)
-		{
-			if (isMapped)
-			{
-				vkUnmapMemory(device, m_memory);
-				isMapped = false;
-			}
-		}
+		void unmap(VkDevice device);
 
-		void deallocate();
+		bool isAllocated() { return m_Allocated; }
 
 	private:
-		std::weak_ptr<Block> m_block;
-		VkDeviceMemory m_memory;
-		bool m_allocated;
+		void* m_MappedMemory;
+		VkDeviceSize m_Size;
+		VkDeviceSize m_Offset;
+		bool m_Allocated;
+		bool m_Mapped;
 	};
 
 	class Block
 	{
 		friend class Allocator;
 	public:
-		Block(VkDevice device, VkDeviceSize size, uint32_t memoryType, VkDeviceSize minimumAlignment)
-		{
-			VkMemoryAllocateInfo info = {};
-			info.allocationSize = size;
-			info.memoryTypeIndex = memoryType;
-			//auto block = std::make_unique<Block>();
-			vkAllocateMemory(device, &info, nullptr, &m_memory);
-			m_size = size;
-			m_alignment = minimumAlignment;
-			auto initialOffset = 0U;
-			createChunk(initialOffset, size);
-		}
+		Block() : m_Device(VK_NULL_HANDLE), m_Memory(VK_NULL_HANDLE) {}
+
+		Block(VkDevice device, VkDeviceSize size, uint32_t memoryType, VkDeviceSize minimumAlignment);
 
 		~Block()
 		{
-			if (m_device && m_memory)
-				vkFreeMemory(m_device, m_memory, nullptr);
+			if (m_Device && m_Memory)
+				vkFreeMemory(m_Device, m_Memory, nullptr);
 		}
 
 		VkDeviceMemory getMemory()
 		{
-			return m_memory;
+			return m_Memory;
 		}
 
-		std::shared_ptr<Chunk> allocateChunk(VkDeviceSize size)
-		{
-			// round allocation size up to nearest multiple of minimum alignment
-			auto allocSize = helper::roundUp(size, m_alignment);
-			for (auto chunk : m_chunkMap)
-			{
-				if (chunk.second->size > allocSize)
-				{
-					// return entire chunk if the size matches exactly
-					if (chunk.second->size == allocSize)
-					{
-						chunk.second->m_allocated = true;
-						return chunk.second;
-					}
-					// otherwise subdivide the chunk before returning it
-					auto remainder = chunk.second->size - allocSize;
-					chunk.second->size = allocSize;
-					createChunk(chunk.first + allocSize, remainder);
-					return chunk.second;
-				}
-			}
-		}
+		auto allocateChunk(VkDeviceSize size);
 
-		void deallocateChunk(VkDeviceSize offset)
-		{
-			// check if chunk exists at the given offset
-			auto chunk = m_chunkMap.find(offset);
-			if (chunk != m_chunkMap.end())
-			{
-				// mark the chunk as not allocated
-				chunk->second->m_allocated = false;
-				if (chunk != m_chunkMap.begin())
-				{
-					auto prevChunk = chunk;
-					// If the previous chunk is not allocated, merge with it
-					if ((--prevChunk)->second->m_allocated == false)
-					{
-						auto newSize = prevChunk->second->size + chunk->second->size;
-						prevChunk->second->size = newSize;
-						auto next = m_chunkMap.erase(chunk);
-						if (next != m_chunkMap.end())
-						{
-							// if the following chunk is not allocated, merge with it
-							if (next->second->m_allocated == false)
-							{
-								newSize = prevChunk->second->size + next->second->size;
-								prevChunk->second->size = newSize;
-								m_chunkMap.erase(next);
-							}
-						}
-					}
-				}
-			}
-		}
+		void deallocateChunk(Chunk& chunk);
 
 	private:
-		VkDevice m_device;
-		VkDeviceMemory m_memory;
-		VkDeviceSize m_size;
-		VkDeviceSize m_alignment;
-		std::map<VkDeviceSize, std::shared_ptr<Chunk>> m_chunkMap;
+		VkDevice m_Device;
+		VkDeviceMemory m_Memory;
+		VkDeviceSize m_Size;
+		VkDeviceSize m_Alignment;
+		std::map<VkDeviceSize, Chunk> m_ChunkMap;
 
-		void createChunk(VkDeviceSize offset, VkDeviceSize size)
-		{
-			m_chunkMap.emplace(std::make_pair(offset, static_cast<std::weak_ptr<Chunk>>(std::make_shared<Chunk>())));
-			auto iter = m_chunkMap.find(offset);
-			m_chunkMap[offset]->size = size;
-			m_chunkMap[offset]->offset = offset;
-			m_chunkMap[offset]->m_memory = m_memory;
-			m_chunkMap[offset]->m_block = std::make_shared<Block>(*this);
-		}
+		void createChunk(VkDeviceSize offset, VkDeviceSize size);
 	};
 
 	class Allocator
@@ -170,43 +91,11 @@ namespace vke
 			m_device = device;
 		}
 
-		std::shared_ptr<Chunk> allocateMemory(uint32_t memType, VkDeviceSize size, VkDeviceSize alignment)
-		{
-			// create invalid chunk to return if none can be allocated
-			auto chunk = std::make_shared<Chunk>();
-
-			// if the requested allocation size is larger than the block allocation size, return invalid chunk
-			if (size > BLOCK_SIZE)
-				return chunk;
-
-			// find any blocks matching the requested memory type
-			auto blockRange = m_blocksByMemoryType.equal_range(memType);
-
-			// if any are found iterate through them
-			if (std::distance(blockRange.first, blockRange.second) > 0)
-			{
-				while (blockRange.first != blockRange.second)
-				{
-					// attempt to allocate a chunk
-					chunk = blockRange.first->second->allocateChunk(size);
-					if (chunk->size)
-					{
-						// return the chunk if it is successfully allocated
-						return chunk;
-					}
-					++blockRange.first;
-				}
-			}
-			// if no blocks are found that fit the memory type and have sufficient space to allocate the chunk
-			// create a new block, then allocate from that
-			auto block = m_blocksByMemoryType.emplace(std::make_pair(memType, std::make_shared<Block>(m_device, BLOCK_SIZE, memType, alignment)));
-			chunk = block->second->allocateChunk(size);
-			return chunk;
-		}
+		auto allocateMemory(uint32_t memType, VkDeviceSize size, VkDeviceSize alignment);
 
 	private:
 		VkDevice m_device;
-		std::multimap<uint32_t, std::shared_ptr<Block>> m_blocksByMemoryType;
+		std::multimap<uint32_t, std::unique_ptr<Block>> m_blocksByMemoryType;
 
 		const uint32_t BLOCK_SIZE = 256000000U;
 	};

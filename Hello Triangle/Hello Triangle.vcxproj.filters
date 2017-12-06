@@ -15,27 +15,15 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="main2.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="BlockAllocator.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VulkanBase.cpp">
+    <ClCompile Include="GameLevel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="VulkanHelper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="fileIO.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="BlockAllocator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="math.h">
@@ -44,7 +32,16 @@
     <ClInclude Include="VulkanBase.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="PipelineLayout.h">
+    <ClInclude Include="VulkanData.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MemoryAllocator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="alignedAlloc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Input.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -201,7 +201,7 @@ public:
 		std::string vertexShaderPath;
 		std::string fragmentShaderPath;
 	};
-	
+
 	void run(AppInitData initData)
 	{
 		initGLFW();
@@ -211,25 +211,30 @@ public:
 		loadTextures(initData.texturePaths);
 		
 		updateDescriptorSet0();
-		while(!glfwWindowShouldClose(m_Window))
-		{
-			glfwPollEvents();
-			ImageIndex nextImage;
-			auto success = acquireImage(nextImage);
-			if (success != true)
-			{
-				continue;
-			}
-			update(nextImage);
-			draw(nextImage);
-		}
-		vkDeviceWaitIdle(m_Device);
+	}
 
-		cleanup();
+	// returns false if window should close
+	bool render(std::vector<Sprite>* spriteVectorPtr)
+	{
+		glfwPollEvents();
+		if (glfwWindowShouldClose(m_Window))
+		{
+			return false;
+		}
+		ImageIndex nextImage;
+		auto success = acquireImage(nextImage);
+		if (success != true)
+		{
+			continue;
+		}
+		update(nextImage, spriteVectorPtr);
+		draw(nextImage);
+		return true;
 	}
 
 	void cleanup()
 	{
+		vkDeviceWaitIdle(m_Device);
 		m_ImageReadyForPresentation.cleanup();
 		m_ImageReadyForWriting.cleanup();
 		m_Sampler.cleanup();
@@ -260,7 +265,61 @@ public:
 		m_Device.cleanup();
 		m_Surface.cleanup();
 		m_Instance.cleanup();
+
+		glfwDestroyWindow(m_Window);
 	}
+
+private:
+	VulkanData::ModelIndexPushConstant modelIndexPushconstant = VulkanData::ModelIndexPushConstant();
+	VulkanData::SamplerAndImagesDescriptors set0_samplerAndImagesLayoutData = VulkanData::SamplerAndImagesDescriptors();
+	VulkanData::MVPMatricesDescriptors set1_matricesLayoutData = VulkanData::MVPMatricesDescriptors();
+
+	unsigned int m_Width;
+	unsigned int m_Height;
+	GLFWwindow* m_Window;
+	Camera2D m_Camera;
+	InputManager m_InputManager;
+	vke::Instance m_Instance;
+	vke::Surface m_Surface;
+	vke::PhysicalDevice m_PhysicalDevice;
+	vke::LogicalDevice m_Device;
+	vke::Queue m_GraphicsQueue;
+	vke::Queue m_PresentQueue;
+	vke::CommandPool m_GraphicsCommandPool;
+	std::vector<BufferStruct> m_PresentBuffers;
+	vke::DescriptorSetLayout m_Set0Layout;
+	vke::DescriptorSetLayout m_Set1Layout;
+	vke::ShaderModule m_VertexShader;
+	vke::ShaderModule m_FragmentShader;
+	vke::PipelineLayout m_PipelineLayout;
+	vke::Pipeline m_Pipeline;
+	VkFormat m_DepthFormat;
+	vke::Image2D m_DepthImage;
+	vke::RenderPass m_RenderPass;
+	vke::SwapchainSupportDetails m_SwapchainSupportDetails;
+	VkSurfaceFormatKHR m_SurfaceFormat;
+	VkPresentModeKHR m_PresentMode;
+	VkExtent2D m_SwapExtent;
+	uint32_t m_SwapImageCount;
+	vke::Swapchain m_Swapchain;
+	vke::DescriptorPool m_DescriptorPool;
+	vke::DescriptorSet m_DescriptorSet0;
+	vke::DescriptorSet m_DescriptorSet1;
+	vke::Allocator m_Allocator;
+	vke::Buffer m_VertexBuffer;
+	vke::Buffer m_IndexBuffer;
+	VkDeviceSize uniformBufferOffsetAlignment;
+	std::vector<vke::Image2D> m_Images;
+	vke::Sampler2D m_Sampler;
+	vke::Semaphore m_ImageReadyForWriting;
+	vke::Semaphore m_ImageReadyForPresentation;
+
+	// host-side data
+	std::vector<VulkanData::Vertex> m_VertexData;
+	std::vector<uint32_t> m_IndexData;
+	std::vector<Sprite> m_Sprites;
+	std::map<char*, Texture2D> m_TexturesByName;
+	std::vector<Texture2D> m_Textures;
 
 	bool acquireImage(ImageIndex& imageIndex)
 	{
@@ -319,60 +378,6 @@ public:
 			throw std::runtime_error("failed to present swap chain image!");
 		}
 	}
-
-
-
-private:
-	VulkanData::ModelIndexPushConstant modelIndexPushconstant = VulkanData::ModelIndexPushConstant();
-	VulkanData::SamplerAndImagesDescriptors set0_samplerAndImagesLayoutData = VulkanData::SamplerAndImagesDescriptors();
-	VulkanData::MVPMatricesDescriptors set1_matricesLayoutData = VulkanData::MVPMatricesDescriptors();
-
-	unsigned int m_Width;
-	unsigned int m_Height;
-	GLFWwindow* m_Window;
-	Camera2D m_Camera;
-	InputManager m_InputManager;
-	vke::Instance m_Instance;
-	vke::Surface m_Surface;
-	vke::PhysicalDevice m_PhysicalDevice;
-	vke::LogicalDevice m_Device;
-	vke::Queue m_GraphicsQueue;
-	vke::Queue m_PresentQueue;
-	vke::CommandPool m_GraphicsCommandPool;
-	std::vector<BufferStruct> m_PresentBuffers;
-	vke::DescriptorSetLayout m_Set0Layout;
-	vke::DescriptorSetLayout m_Set1Layout;
-	vke::ShaderModule m_VertexShader;
-	vke::ShaderModule m_FragmentShader;
-	vke::PipelineLayout m_PipelineLayout;
-	vke::Pipeline m_Pipeline;
-	VkFormat m_DepthFormat;
-	vke::Image2D m_DepthImage;
-	vke::RenderPass m_RenderPass;
-	vke::SwapchainSupportDetails m_SwapchainSupportDetails;
-	VkSurfaceFormatKHR m_SurfaceFormat;
-	VkPresentModeKHR m_PresentMode;
-	VkExtent2D m_SwapExtent;
-	uint32_t m_SwapImageCount;
-	vke::Swapchain m_Swapchain;
-	vke::DescriptorPool m_DescriptorPool;
-	vke::DescriptorSet m_DescriptorSet0;
-	vke::DescriptorSet m_DescriptorSet1;
-	vke::Allocator m_Allocator;
-	vke::Buffer m_VertexBuffer;
-	vke::Buffer m_IndexBuffer;
-	VkDeviceSize uniformBufferOffsetAlignment;
-	std::vector<vke::Image2D> m_Images;
-	vke::Sampler2D m_Sampler;
-	vke::Semaphore m_ImageReadyForWriting;
-	vke::Semaphore m_ImageReadyForPresentation;
-
-	// host-side data
-	std::vector<VulkanData::Vertex> m_VertexData;
-	std::vector<uint32_t> m_IndexData;
-	std::vector<Sprite> m_Sprites;
-	std::map<char*, Texture2D> m_TexturesByName;
-	std::vector<Texture2D> m_Textures;
 
 	static VkExtent2D getCurrentWindowExtent(GLFWwindow* window)
 	{

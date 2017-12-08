@@ -30,7 +30,9 @@ const auto IndicesPerQuad = 6U;
 
 std::vector<const char*> ValidationLayers = 
 {
+	#ifdef DEBUG
 	"VK_LAYER_LUNARG_standard_validation"
+	#endif
 };
 
 std::vector<const char*> RequiredExtensions = 
@@ -139,11 +141,11 @@ public:
 		float height;
 	};
 
-	struct Origin
-	{
-		float x;
-		float y;
-	};
+	// struct Origin
+	// {
+	// 	float x;
+	// 	float y;
+	// };
 
 	const Position& getPosition() { return m_Position; }
 	void setPosition(Position&& position)
@@ -204,17 +206,17 @@ public:
 
 	void run(AppInitData initData)
 	{
-		initGLFW();
+		initGLFW(static_cast<int>(initData.width), static_cast<int>(initData.height));
 		m_Camera.setSize( { static_cast<float>(initData.width), static_cast<float>(initData.height) } );
 		m_Camera.setPosition( { 0.0f, 0.0f } );
-		initVulkan();
+		initVulkan(initData.vertexShaderPath, initData.fragmentShaderPath);
 		loadTextures(initData.texturePaths);
 		
 		updateDescriptorSet0();
 	}
 
 	// returns false if window should close
-	bool render(std::vector<Sprite>* spriteVectorPtr)
+	bool render(std::vector<Sprite>& spriteVector)
 	{
 		glfwPollEvents();
 		if (glfwWindowShouldClose(m_Window))
@@ -225,9 +227,9 @@ public:
 		auto success = acquireImage(nextImage);
 		if (success != true)
 		{
-			continue;
+			return true;
 		}
-		update(nextImage, spriteVectorPtr);
+		update(nextImage, spriteVector);
 		draw(nextImage);
 		return true;
 	}
@@ -267,6 +269,11 @@ public:
 		m_Instance.cleanup();
 
 		glfwDestroyWindow(m_Window);
+	}
+
+	Texture2D getTextureByName(std::string textureName)
+	{
+		return m_TexturesByName[textureName];
 	}
 
 private:
@@ -317,8 +324,7 @@ private:
 	// host-side data
 	std::vector<VulkanData::Vertex> m_VertexData;
 	std::vector<uint32_t> m_IndexData;
-	std::vector<Sprite> m_Sprites;
-	std::map<char*, Texture2D> m_TexturesByName;
+	std::map<std::string, Texture2D> m_TexturesByName;
 	std::vector<Texture2D> m_Textures;
 
 	bool acquireImage(ImageIndex& imageIndex)
@@ -337,11 +343,11 @@ private:
 		return true;
 	}
 
-	void update(ImageIndex nextImage, std::vector<Sprite>* spriteVectorPtr)
+	void update(ImageIndex nextImage, std::vector<Sprite>& spriteVector)
 	{
-		updateUniformBuffers(nextImage, spriteVectorPtr);
+		updateUniformBuffers(nextImage, spriteVector);
 		updateDescriptorSet1(nextImage);
-		recordNextCommandBuffer(nextImage, spriteVectorPtr);
+		recordNextCommandBuffer(nextImage, spriteVector);
 	}
 
 	void draw(ImageIndex nextImage)
@@ -485,7 +491,7 @@ private:
 		app->m_InputManager.keyCallback(key, scancode, state, mods);
 	}
 
-	void initGLFW()
+	void initGLFW(int Width, int Height)
 	{
 		glfwInit();
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -498,7 +504,7 @@ private:
 		glfwSetKeyCallback(m_Window, VulkanApp::keyCallback);
 	}
 
-	void initVulkan()
+	void initVulkan(std::string vertexShaderPath, std::string fragmentShaderPath)
 	{
 		uint32_t glfwExtensionCount = 0;
 		auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -593,8 +599,8 @@ private:
 		}
 
 		// create shader modules
-		m_VertexShader.init(m_Device, fileIO::readFile(VulkanData::vertexShaderPath));
-		m_FragmentShader.init(m_Device, fileIO::readFile(VulkanData::fragmentShaderPath));
+		m_VertexShader.init(m_Device, fileIO::readFile(vertexShaderPath));
+		m_FragmentShader.init(m_Device, fileIO::readFile(fragmentShaderPath));
 
 		// create pipeline layout
 		m_PipelineLayout.init(m_Device, modelIndexPushconstant.ranges(), layouts);
@@ -703,7 +709,8 @@ private:
 
 			// add the texture to a vector and a map by name
 			m_Textures.push_back(texture);
-			m_TexturesByName[std::get<0>(pair)] = texture;
+			auto texName = std::get<0>(pair);
+			m_TexturesByName.emplace(std::make_pair(texName, m_Textures.back()));
 
 			vke::Buffer stagingBuffer;
 			stagingBuffer.init(
@@ -794,10 +801,10 @@ private:
 	}
 
 	// TODO: figure out if I need to triple buffer/ring buffer this buffer
-	void updateUniformBuffers(ImageIndex nextImage, std::vector<Sprite>* spriteVectorPtr)
+	void updateUniformBuffers(ImageIndex nextImage, std::vector<Sprite>& spriteVector)
 	{
 		uint64_t minimumCount = 1;
-		uint64_t instanceCount = std::max(minimumCount, m_Sprites.size());
+		uint64_t instanceCount = std::max(minimumCount, spriteVector.size());
 		auto bufferSize = instanceCount * uniformBufferOffsetAlignment;
 		static uint32_t runCount = 0;
 		runCount++;
@@ -827,7 +834,7 @@ private:
 		}
 		VkDeviceSize copyOffset = 0;
 		glm::mat4 vp = m_Camera.getMatrix();
-		for (auto& sprite : *spriteVectorPtr)
+		for (auto& sprite : spriteVector)
 		{
 			glm::mat4 mvp =  vp * sprite.getTransform();
 			memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
@@ -904,7 +911,7 @@ private:
 	// 	m_Sprites.back().setRotation(0.0f);
 	// }
 
-	void recordNextCommandBuffer(ImageIndex nextImage, std::vector<Sprite>* spriteVectorPtr)
+	void recordNextCommandBuffer(ImageIndex nextImage, std::vector<Sprite>& spriteVector)
 	{
 		auto& commandPool = m_PresentBuffers[nextImage].pool;
 		auto& commandBuffer = m_PresentBuffers[nextImage].commandBuffer;
@@ -981,7 +988,7 @@ private:
 
 		uint32_t spriteIndex = 0;
 		// iterate through each sprite
-		for (const auto& sprite : *spriteVectorPtr)
+		for (const auto& sprite : spriteVector)
 		{
 			vkCmdPushConstants(commandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.texture.index);
 			uint32_t dynamicOffset = spriteIndex * static_cast<uint32_t>(uniformBufferOffsetAlignment);

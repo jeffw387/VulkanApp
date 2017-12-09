@@ -34,9 +34,11 @@ int main()
 			spriteVector.back().setPosition({pos, pos});
 			spriteVector.back().setScale(1.f);
 		}
-		while (app.render(spriteVector))
+		bool running = true;
+		while (running)
 		{
 			//loop
+			running = app.render(spriteVector);
 		}
 	}
 	catch(const std::runtime_error &e)

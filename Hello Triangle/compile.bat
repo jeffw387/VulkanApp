@@ -1,6 +1,7 @@
 
 
 cl /EHsc /MT /O2 ^
+/std:c++17 ^
 /D RELEASE ^
 /I C:/VulkanSDK/1.0.54.0/Include ^
 /I C:/Libraries/Compiled/glfw-3.2.1.bin.WIN64/include ^

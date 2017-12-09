@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/Hello Triangle/main2.exe",
             "args": [],
-            "stopAtEntry": true,
+            "stopAtEntry": false,
             "cwd": "${workspaceFolder}/Hello Triangle/",
             "environment": [],
             "externalConsole": true

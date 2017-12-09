@@ -26,11 +26,12 @@ int main()
 	{
 		app.run(initData);
 
-		for (auto i = 0U; i < 10U; i++)
+		for (auto i = 0.f; i < 100.f; i++)
 		{
 			spriteVector.push_back(Sprite());
 			spriteVector.back().texture = app.getTextureByName("Star");
-			spriteVector.back().setPosition({static_cast<float>(10U * i), static_cast<float>(10U * i)});
+			auto pos = 10.f * i;
+			spriteVector.back().setPosition({pos, pos});
 			spriteVector.back().setScale(1.f);
 		}
 		while (app.render(spriteVector))

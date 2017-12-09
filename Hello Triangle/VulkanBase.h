@@ -352,8 +352,8 @@ namespace vke
 		}
 
 		void submit(VkQueue queue, 
+			std::vector<VkPipelineStageFlags> waitMask,
 			VkFence fence = VK_NULL_HANDLE,
-			VkPipelineStageFlags waitMask = 0,
 			std::vector<VkSemaphore>& waitSemaphores = std::vector<VkSemaphore>(),
 			std::vector<VkSemaphore>& signalSemaphores = std::vector<VkSemaphore>()
 		)
@@ -362,7 +362,7 @@ namespace vke
 			submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 			submitInfo.commandBufferCount = 1;
 			submitInfo.pCommandBuffers = &m_Buffer;
-			submitInfo.pWaitDstStageMask = &waitMask;
+			submitInfo.pWaitDstStageMask = waitMask.data();
 			submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
 			submitInfo.pWaitSemaphores = waitSemaphores.data();
 			submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
@@ -853,10 +853,10 @@ namespace vke
 			}
 		}
 
-		void copyFromBuffer(Buffer& source, VkCommandPool pool, VkQueue queue, VkDeviceSize srcBufferOffset = 0, VkDeviceSize dstBufferOffset = 0, VkDeviceSize size = 0)
+		void copyFromBuffer(Buffer& source, CommandBuffer& commandBuffer, 
+		VkQueue queue, VkFence fence, std::vector<VkSemaphore>& waitSemaphores, std::vector<VkSemaphore>& signalSemaphores, 
+		VkDeviceSize srcBufferOffset = 0, VkDeviceSize dstBufferOffset = 0, VkDeviceSize size = 0)
 		{
-			CommandBuffer commandBuffer;
-			commandBuffer.init(m_Device, pool);
 			commandBuffer.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
 			VkDeviceSize copySize;
@@ -876,9 +876,7 @@ namespace vke
 			vkCmdCopyBuffer(commandBuffer, source, m_Buffer, 1, &copyRegion);
 
 			commandBuffer.end();
-			commandBuffer.submit(queue);
-			vkQueueWaitIdle(queue);
-			commandBuffer.cleanup();
+			commandBuffer.submit(queue, std::vector<VkPipelineStageFlags>{0}, fence, waitSemaphores, signalSemaphores);
 		}
 
 		void cleanup()
@@ -1032,7 +1030,7 @@ namespace vke
 			);
 
 			commandBuffer.end();
-			commandBuffer.submit(queue);
+			commandBuffer.submit(queue, std::vector<VkPipelineStageFlags>{0});
 			vkQueueWaitIdle(queue);
 			m_CurrentLayout = newLayout;
 		}
@@ -1073,7 +1071,7 @@ namespace vke
 			);
 
 			commandBuffer.end();
-			commandBuffer.submit(queue);
+			commandBuffer.submit(queue, std::vector<VkPipelineStageFlags>());
 			vkQueueWaitIdle(queue);
 			transitionImageLayout(pool, queue, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}

@@ -57,10 +57,18 @@ enum class DrawLayers
 struct BufferStruct
 {
 	vke::CommandPool pool;
-	vke::Fence commandBufferExecuted;
-	vke::CommandBuffer commandBuffer;
+	vke::Fence drawCommandExecuted;
+	vke::CommandBuffer drawCommandBuffer;
+	vke::CommandBuffer stagingCommandBuffer;
 	vke::Buffer matrixBuffer;
+	vke::Buffer matrixStagingBuffer;
+	vke::Semaphore matrixBufferStaged;
+	vke::Fence stagingCommandExecuted;
+	size_t matrixBufferCapacity;
 	vke::Framebuffer framebuffer;
+	vke::DescriptorPool descriptorPool;
+	vke::DescriptorSet descriptorSet0;
+	vke::DescriptorSet descriptorSet1;
 };
 
 struct Texture2D
@@ -140,12 +148,6 @@ public:
 		float width;
 		float height;
 	};
-
-	// struct Origin
-	// {
-	// 	float x;
-	// 	float y;
-	// };
 
 	const Position& getPosition() { return m_Position; }
 	void setPosition(Position&& position)
@@ -241,15 +243,17 @@ public:
 		m_ImageReadyForWriting.cleanup();
 		m_Sampler.cleanup();
 		m_Pipeline.cleanup();
-		m_DescriptorPool.cleanup();
 		m_GraphicsCommandPool.cleanup();
 		for (auto& presentBuffer : m_PresentBuffers)
 		{
-			presentBuffer.matrixBuffer.cleanup();
-			presentBuffer.commandBufferExecuted.cleanup();
-			presentBuffer.commandBuffer.cleanup();
-			presentBuffer.framebuffer.cleanup();
 			presentBuffer.pool.cleanup();
+			presentBuffer.drawCommandExecuted.cleanup();
+			presentBuffer.matrixBuffer.cleanup();
+			presentBuffer.matrixStagingBuffer.cleanup();
+			presentBuffer.matrixBufferStaged.cleanup();
+			presentBuffer.framebuffer.cleanup();
+			presentBuffer.stagingCommandExecuted.cleanup();
+			presentBuffer.descriptorPool.cleanup();
 		}
 		m_Swapchain.cleanup();
 		m_RenderPass.cleanup();
@@ -309,9 +313,6 @@ private:
 	VkExtent2D m_SwapExtent;
 	uint32_t m_SwapImageCount;
 	vke::Swapchain m_Swapchain;
-	vke::DescriptorPool m_DescriptorPool;
-	vke::DescriptorSet m_DescriptorSet0;
-	vke::DescriptorSet m_DescriptorSet1;
 	vke::Allocator m_Allocator;
 	vke::Buffer m_VertexBuffer;
 	vke::Buffer m_IndexBuffer;
@@ -352,14 +353,15 @@ private:
 
 	void draw(ImageIndex nextImage)
 	{
-		auto& commandBuffer = m_PresentBuffers[nextImage].commandBuffer;
-		auto& bufferFence = m_PresentBuffers[nextImage].commandBufferExecuted;
-		std::vector<VkSemaphore> queueWaitSemaphores = { m_ImageReadyForWriting };
+		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
+		auto& drawCommandExecuted = m_PresentBuffers[nextImage].drawCommandExecuted;
+		auto& matrixBufferStaged = m_PresentBuffers[nextImage].matrixBufferStaged;
+		std::vector<VkSemaphore> queueWaitSemaphores = { m_ImageReadyForWriting, matrixBufferStaged };
 		std::vector<VkSemaphore> queueSignalSemaphores = { m_ImageReadyForPresentation };
-		commandBuffer.submit(
+		drawCommandBuffer.submit(
 			m_PresentQueue,
-			bufferFence,
-			{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT },
+			std::vector<VkPipelineStageFlags>{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT },
+			drawCommandExecuted,
 			queueWaitSemaphores,
 			queueSignalSemaphores
 		);
@@ -540,7 +542,7 @@ private:
 		m_Allocator.init(m_PhysicalDevice, m_Device);
 
 		// create command pools
-		m_GraphicsCommandPool.init(m_Device, m_PhysicalDevice.getGraphicsQueueIndex(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+		m_GraphicsCommandPool.init(m_Device, m_PhysicalDevice.getGraphicsQueueIndex(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
 		// create descriptor set layouts
 		m_Set0Layout.init(m_Device, set0_samplerAndImagesLayoutData.layoutBindings());
@@ -582,19 +584,40 @@ private:
 			VK_IMAGE_LAYOUT_UNDEFINED);
 		m_DepthImage.transitionImageLayout(m_GraphicsCommandPool, m_GraphicsQueue, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
+		// create descriptor pool sizes
+		std::vector<VkDescriptorPoolSize> poolSizes;
+		auto poolsizes0 = set0_samplerAndImagesLayoutData.poolSizes();
+		auto poolsizes1 = set1_matricesLayoutData.poolSizes();
+		poolSizes.insert(poolSizes.end(), poolsizes0.begin(), poolsizes0.end());
+		poolSizes.insert(poolSizes.end(), poolsizes1.begin(), poolsizes1.end());
+
 		// create present buffers
 		auto swapViews = m_Swapchain.getSwapChainViews();
 		auto presentBufferCount = swapViews.size();
 		m_PresentBuffers.resize(presentBufferCount);
-		uint32_t bufferIndex = 0;
 		// create present buffers
+		size_t bufferIndex = 0;
 		for (auto& presentBuffer : m_PresentBuffers)
 		{
 			presentBuffer.framebuffer.init(m_Device, m_RenderPass, swapViews[bufferIndex], m_DepthImage, m_SwapExtent);
-			presentBuffer.commandBufferExecuted.init(m_Device);
-			presentBuffer.pool.init(m_Device, m_PhysicalDevice.getPresentQueueIndex(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-			presentBuffer.commandBuffer.init(m_Device, presentBuffer.pool);
+			presentBuffer.drawCommandExecuted.init(m_Device);
+			presentBuffer.pool.init(m_Device, m_PhysicalDevice.getPresentQueueIndex(), 
+				VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+			presentBuffer.drawCommandBuffer.init(m_Device, presentBuffer.pool);
+			presentBuffer.matrixBufferCapacity = 0;
+			presentBuffer.matrixBufferStaged.init(m_Device);
+			presentBuffer.stagingCommandBuffer.init(m_Device, presentBuffer.pool);
+			presentBuffer.stagingCommandExecuted.init(m_Device);
+			
+			// initialize descriptor pool
+			presentBuffer.descriptorPool.init(m_Device, poolSizes, 2);
+			
+			// initialize descriptor sets
+			std::vector<VkDescriptorSetLayout> set0Layouts = { m_Set0Layout };
+			presentBuffer.descriptorSet0.init(m_Device, presentBuffer.descriptorPool, set0Layouts);
 
+			std::vector<VkDescriptorSetLayout> set1Layouts = { m_Set1Layout };
+			presentBuffer.descriptorSet1.init(m_Device, presentBuffer.descriptorPool, set1Layouts);
 			bufferIndex++;
 		}
 
@@ -616,20 +639,7 @@ private:
 			windowExtent,
 			m_PipelineLayout);
 
-		// create descriptor pool
-		std::vector<VkDescriptorPoolSize> poolSizes;
-		auto poolsizes0 = set0_samplerAndImagesLayoutData.poolSizes();
-		auto poolsizes1 = set1_matricesLayoutData.poolSizes();
-		poolSizes.insert(poolSizes.end(), poolsizes0.begin(), poolsizes0.end());
-		poolSizes.insert(poolSizes.end(), poolsizes1.begin(), poolsizes1.end());
-		m_DescriptorPool.init(m_Device, poolSizes, 2);
 
-		// initialize descriptor sets
-		std::vector<VkDescriptorSetLayout> set0Layouts = { m_Set0Layout };
-		m_DescriptorSet0.init(m_Device, m_DescriptorPool, set0Layouts);
-
-		std::vector<VkDescriptorSetLayout> set1Layouts = { m_Set1Layout };
-		m_DescriptorSet1.init(m_Device, m_DescriptorPool, set1Layouts);
 
 		// create sampler
 		m_Sampler.init(m_Device);
@@ -743,6 +753,10 @@ private:
 		//
 		vke::Buffer vertexStagingBuffer;
 		vke::Buffer indexStagingBuffer;
+		vke::CommandBuffer copyCmdBuffer;
+		vke::Fence copyCmdExecuted;
+		copyCmdBuffer.init(m_Device, m_GraphicsCommandPool);
+		copyCmdExecuted.init(m_Device, 0U);
 		auto vertexDataSize = m_VertexData.size() * sizeof(VulkanData::Vertex);
 		auto indexDataSize = m_IndexData.size() * sizeof(ImageIndex);
 
@@ -781,8 +795,10 @@ private:
 		memcpy(vertexStagingBuffer.mappedData, m_VertexData.data(), vertexDataSize);
 		// unmap vertex staging buffer
 		vertexStagingBuffer.unmap();
+		
 		// copy from vertex staging buffer to device memory
-		m_VertexBuffer.copyFromBuffer(vertexStagingBuffer, m_GraphicsCommandPool, m_GraphicsQueue);
+		m_VertexBuffer.copyFromBuffer(vertexStagingBuffer, copyCmdBuffer, m_GraphicsQueue, copyCmdExecuted,
+			std::vector<VkSemaphore>(), std::vector<VkSemaphore>());
 
 		// map index staging buffer
 		if (indexStagingBuffer.mapMemoryRange() != true)
@@ -794,38 +810,60 @@ private:
 		// unmap index staging buffer
 		indexStagingBuffer.unmap();
 		// copy from index staging buffer to device memory
-		m_IndexBuffer.copyFromBuffer(indexStagingBuffer, m_GraphicsCommandPool, m_GraphicsQueue);
+		vkWaitForFences(m_Device, 1, copyCmdExecuted, true, (uint64_t)std::numeric_limits<uint64_t>::max());
+		copyCmdBuffer.reset();
+		copyCmdExecuted.reset();
+		m_IndexBuffer.copyFromBuffer(indexStagingBuffer, copyCmdBuffer, m_GraphicsQueue, copyCmdExecuted,
+			std::vector<VkSemaphore>(), std::vector<VkSemaphore>());
+
+		vkWaitForFences(m_Device, 1, copyCmdExecuted, true, (uint64_t)std::numeric_limits<uint64_t>::max());
 
 		vertexStagingBuffer.cleanup();
 		indexStagingBuffer.cleanup();
+		copyCmdExecuted.cleanup();
+		copyCmdBuffer.cleanup();
 	}
 
 	// TODO: figure out if I need to triple buffer/ring buffer this buffer
 	void updateUniformBuffers(ImageIndex nextImage, std::vector<Sprite>& spriteVector)
 	{
-		uint64_t minimumCount = 1;
+		auto& matrixBufferCapacity = m_PresentBuffers[nextImage].matrixBufferCapacity;
+		auto& matrixBufferStaged = m_PresentBuffers[nextImage].matrixBufferStaged;
+		auto& stagingCommandBuffer = m_PresentBuffers[nextImage].stagingCommandBuffer;
+		auto& stagingCommandExecuted = m_PresentBuffers[nextImage].stagingCommandExecuted;
+		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
+		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
+
+		const uint64_t minimumCount = 1;
 		uint64_t instanceCount = std::max(minimumCount, spriteVector.size());
-		auto bufferSize = instanceCount * uniformBufferOffsetAlignment;
 		static uint32_t runCount = 0;
 		runCount++;
-		// (re)create uniform buffer
-		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
-		matrixBuffer.cleanup();
-		matrixBuffer.init(m_Device, 
-			&m_Allocator, 
-			bufferSize, 
-			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-		);
-		matrixBuffer.DebugName = "Matrix Buffer";
+		// (re)create matrix buffer if it is smaller than required
+		if (instanceCount > matrixBufferCapacity)
+		{
+			matrixBufferCapacity = instanceCount * 2;
 
-		vke::Buffer matrixStagingBuffer;
-		matrixStagingBuffer.init(m_Device, 
-			&m_Allocator, 
-			bufferSize, 
-			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-		);
+			auto newBufferSize = matrixBufferCapacity * uniformBufferOffsetAlignment;
+			matrixStagingBuffer.cleanup();
+			matrixBuffer.cleanup();
+
+			matrixBuffer.init(m_Device, 
+				&m_Allocator, 
+				newBufferSize, 
+				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+			);
+
+			matrixStagingBuffer.init(m_Device, 
+				&m_Allocator, 
+				newBufferSize, 
+				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+			);
+		}
+		
+		matrixBuffer.DebugName = "Matrix Buffer";
+		
 		matrixStagingBuffer.DebugName = "Matrix Staging Buffer";
 
 		if (matrixStagingBuffer.mapMemoryRange() != true)
@@ -836,13 +874,18 @@ private:
 		glm::mat4 vp = m_Camera.getMatrix();
 		for (auto& sprite : spriteVector)
 		{
-			glm::mat4 mvp =  vp * sprite.getTransform();
+			auto m = sprite.getTransform();
+			glm::mat4 mvp =  vp * m;
 			memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
 			copyOffset += uniformBufferOffsetAlignment;
 		}
 		matrixStagingBuffer.unmap();
-		matrixBuffer.copyFromBuffer(matrixStagingBuffer, m_GraphicsCommandPool, m_GraphicsQueue);
-		matrixStagingBuffer.cleanup();
+		vkWaitForFences(m_Device, 1, stagingCommandExecuted, true, std::numeric_limits<uint64_t>::max());
+		stagingCommandExecuted.reset();
+		matrixBuffer.copyFromBuffer(matrixStagingBuffer, stagingCommandBuffer, 
+			m_GraphicsQueue, stagingCommandExecuted, std::vector<VkSemaphore>(),
+			std::vector<VkSemaphore>({ matrixBufferStaged })
+		);
 	}
 
 	void updateDescriptorSet0()
@@ -850,9 +893,7 @@ private:
 		std::array<VkWriteDescriptorSet, 2> set0Writes = {};
 		VkDescriptorImageInfo  samplerInfo = {};
 		samplerInfo.sampler = m_Sampler;
-
 		set0Writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		set0Writes[0].dstSet = m_DescriptorSet0;
 		set0Writes[0].dstBinding = 0;
 		set0Writes[0].dstArrayElement = 0;
 		set0Writes[0].descriptorCount = 1;
@@ -870,19 +911,24 @@ private:
 		}
 
 		set0Writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		set0Writes[1].dstSet = m_DescriptorSet0;
 		set0Writes[1].dstBinding = 1;
 		set0Writes[1].dstArrayElement = 0;
 		set0Writes[1].descriptorCount = static_cast<uint32_t>(imageInfos.size());
 		set0Writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
 		set0Writes[1].pImageInfo = imageInfos.data();
 
-		vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(set0Writes.size()), set0Writes.data(), 0, nullptr);
+		for (auto& presentBuffer : m_PresentBuffers)
+		{
+			set0Writes[0].dstSet = presentBuffer.descriptorSet0;
+			set0Writes[1].dstSet = presentBuffer.descriptorSet0;
+			vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(set0Writes.size()), set0Writes.data(), 0, nullptr);
+		}
 	}
 
 	void updateDescriptorSet1(ImageIndex nextImage)
 	{
 		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
+		auto& commandBufferFence = m_PresentBuffers[nextImage].drawCommandExecuted;
 
 		std::array<VkWriteDescriptorSet, 1> set1Writes = {};
 		VkDescriptorBufferInfo matrixBufferInfo = {};
@@ -891,45 +937,33 @@ private:
 		matrixBufferInfo.range = uniformBufferOffsetAlignment;
 
 		set1Writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		set1Writes[0].dstSet = m_DescriptorSet1;
+		set1Writes[0].dstSet = m_PresentBuffers[nextImage].descriptorSet1;
 		set1Writes[0].dstBinding = 0;
 		set1Writes[0].dstArrayElement = 0;
 		set1Writes[0].descriptorCount = 1;
 		set1Writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 		set1Writes[0].pBufferInfo = &matrixBufferInfo;
 
+		// wait for this command pool's buffer(s) to finish execution, then reset the fence
+		vkWaitForFences(m_Device, 1, commandBufferFence, VK_TRUE, std::numeric_limits<uint64_t>::max());
+		commandBufferFence.reset();
 		vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(set1Writes.size()), set1Writes.data(), 0, nullptr);
 	}
-
-	// void addSprite(float x, float y, float scale, char* spriteTextureName, DrawLayers drawLayer)
-	// {
-	// 	auto texture = m_TexturesByName[spriteTextureName];
-	// 	m_Sprites.emplace_back();
-	// 	m_Sprites.back().texture = texture;
-	// 	m_Sprites.back().setPosition( { x, y } );
-	// 	m_Sprites.back().setScale(std::move(scale));
-	// 	m_Sprites.back().setRotation(0.0f);
-	// }
 
 	void recordNextCommandBuffer(ImageIndex nextImage, std::vector<Sprite>& spriteVector)
 	{
 		auto& commandPool = m_PresentBuffers[nextImage].pool;
-		auto& commandBuffer = m_PresentBuffers[nextImage].commandBuffer;
-		auto& commandBufferFence = m_PresentBuffers[nextImage].commandBufferExecuted;
+		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
 		auto& framebuffer = m_PresentBuffers[nextImage].framebuffer;
-
-		// wait for this command pool's buffer(s) to finish execution, then reset the fence
-		vkWaitForFences(m_Device, 1, commandBufferFence, VK_TRUE, std::numeric_limits<uint64_t>::max());
-		commandBufferFence.reset();
-
-		// reset the pool
-		commandPool.reset();
-
+		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
+		auto& descriptorSet0 = m_PresentBuffers[nextImage].descriptorSet0;
+		auto& descriptorSet1 = m_PresentBuffers[nextImage].descriptorSet1;
+		
 		// allocate the command buffer from the pool
-		commandBuffer.cleanup();
-		commandBuffer.init(m_Device, commandPool);
+		drawCommandBuffer.reset();
+		drawCommandBuffer.init(m_Device, commandPool);
 
-		//
+		/////////////////////////////////////////////////////////////
 		// set up data that is constant between all command buffers
 		//
 
@@ -966,22 +1000,22 @@ private:
 		VkDeviceSize offsets{m_VertexBuffer.getUsableOffset()};
 
 		// record the command buffer
-		commandBuffer.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+		drawCommandBuffer.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-		vkCmdSetScissor(commandBuffer, 0, 1, &scissorRect);
-		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline);
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &buffers, &offsets);
-		vkCmdBindIndexBuffer(commandBuffer, m_IndexBuffer, m_IndexBuffer.getUsableOffset(), VK_INDEX_TYPE_UINT32);
+		vkCmdSetViewport(drawCommandBuffer, 0, 1, &viewport);
+		vkCmdSetScissor(drawCommandBuffer, 0, 1, &scissorRect);
+		vkCmdBeginRenderPass(drawCommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBindPipeline(drawCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline);
+		vkCmdBindVertexBuffers(drawCommandBuffer, 0, 1, &buffers, &offsets);
+		vkCmdBindIndexBuffer(drawCommandBuffer, m_IndexBuffer, m_IndexBuffer.getUsableOffset(), VK_INDEX_TYPE_UINT32);
 
 		// bind sampler and images uniforms
-		vkCmdBindDescriptorSets(commandBuffer, 
+		vkCmdBindDescriptorSets(drawCommandBuffer, 
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
 			m_PipelineLayout,
 			0,
 			1,
-			m_DescriptorSet0,
+			descriptorSet0,
 			0,
 			nullptr
 		);
@@ -990,25 +1024,26 @@ private:
 		// iterate through each sprite
 		for (const auto& sprite : spriteVector)
 		{
-			vkCmdPushConstants(commandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.texture.index);
+			vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.texture.index);
 			uint32_t dynamicOffset = spriteIndex * static_cast<uint32_t>(uniformBufferOffsetAlignment);
+
 			// bind dynamic matrix uniform
-			vkCmdBindDescriptorSets(commandBuffer, 
+			vkCmdBindDescriptorSets(drawCommandBuffer, 
 				VK_PIPELINE_BIND_POINT_GRAPHICS,
 				m_PipelineLayout,
 				1,
 				1,
-				m_DescriptorSet1,
+				descriptorSet1,
 				1,
 				&dynamicOffset
 			);
 
 			// draw the sprite
-			vkCmdDrawIndexed(commandBuffer, IndicesPerQuad, 1, 0, 0, 0);
+			vkCmdDrawIndexed(drawCommandBuffer, IndicesPerQuad, 1, 0, 0, 0);
 			spriteIndex++;
 		}
-		vkCmdEndRenderPass(commandBuffer);
-		commandBuffer.end();
+		vkCmdEndRenderPass(drawCommandBuffer);
+		drawCommandBuffer.end();
 	}
 
 	VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) 

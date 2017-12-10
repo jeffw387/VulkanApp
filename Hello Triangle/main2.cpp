@@ -29,10 +29,11 @@ int main()
 		for (auto i = 0.f; i < 100.f; i++)
 		{
 			spriteVector.push_back(Sprite());
-			spriteVector.back().texture = app.getTextureByName("Star");
+			spriteVector.back().textureIndex = app.getTextureByName("Star").index;
 			auto pos = 10.f * i;
-			spriteVector.back().setPosition({pos, pos});
-			spriteVector.back().setScale(1.f);
+			spriteVector.back().m_Position = {pos, pos};
+			spriteVector.back().m_Scale = 1.f;
+			spriteVector.back().m_Rotation = 0.f;
 		}
 		bool running = true;
 		while (running)

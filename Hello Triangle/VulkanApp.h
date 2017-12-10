@@ -86,69 +86,27 @@ struct MatrixValidator
 	bool Valid = false;
 };
 
+struct Position
+{
+	float x;
+	float y;
+};
+
+struct Size
+{
+	float width;
+	float height;
+};
+
 struct Sprite
 {
-	Texture2D texture;
-	struct Position
-	{
-		float x;
-		float y;
-	};
-
-	const Position& getPosition() { return m_Position; }
-	void setPosition(Position&& position)
-	{
-		m_Position = position;
-		m_Transform.Valid = false;
-	}
-
-	const float& getRotation() { return m_Rotation; }
-	void setRotation(float&& rotation)
-	{
-		m_Rotation = rotation;
-		m_Transform.Valid = false;
-	}
-
-	const float& getScale() { return m_Scale; }
-	void setScale(float&& scale)
-	{
-		m_Scale = scale;
-		m_Transform.Valid = false;
-	}
-
-	const glm::mat4& getTransform()
-	{
-		if (m_Transform.Valid != true)
-		{
-			auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(m_Scale, m_Scale, m_Scale));
-			auto rotation = glm::rotate(scale, m_Rotation, glm::vec3(0.0f, 0.0f, 1.0f));
-			m_Transform.Matrix = glm::translate(scale, glm::vec3(m_Position.x, m_Position.y, 0.0f));
-			m_Transform.Valid = true;
-		}
-		return m_Transform.Matrix;
-	}
-private:
-	Position m_Position;
-	float m_Rotation;
-	float m_Scale;
-	MatrixValidator m_Transform;
+	uint32_t textureIndex;
+	glm::mat4 transform;
 };
 
 class Camera2D
 {
 public:
-	struct Position
-	{
-		float x;
-		float y;
-	};
-
-	struct Size
-	{
-		float width;
-		float height;
-	};
-
 	const Position& getPosition() { return m_Position; }
 	void setPosition(Position&& position)
 	{
@@ -874,7 +832,7 @@ private:
 		glm::mat4 vp = m_Camera.getMatrix();
 		for (auto& sprite : spriteVector)
 		{
-			auto m = sprite.getTransform();
+			auto& m = sprite.transform;
 			glm::mat4 mvp =  vp * m;
 			memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
 			copyOffset += uniformBufferOffsetAlignment;
@@ -1024,7 +982,7 @@ private:
 		// iterate through each sprite
 		for (const auto& sprite : spriteVector)
 		{
-			vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.texture.index);
+			vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.textureIndex);
 			uint32_t dynamicOffset = spriteIndex * static_cast<uint32_t>(uniformBufferOffsetAlignment);
 
 			// bind dynamic matrix uniform

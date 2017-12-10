@@ -56,6 +56,7 @@
                 "C:/Libraries/Source/fmt-master",
                 "C:/Libraries/Source/stb-master",
                 "C:/Libraries/Source/glm",
+                "C:/Libraries/Source/stx-tree-0.9/include",
                 "${workspaceRoot}"
             ],
             "defines": [
@@ -76,6 +77,7 @@
                     "C:/Libraries/Source/fmt-master",
                     "C:/Libraries/Source/stb-master",
                     "C:/Libraries/Source/glm",
+                    "C:/Libraries/Source/stx-tree-0.9/include",
                     "${workspaceRoot}"
                 ],
                 "limitSymbolsToIncludedHeaders": true,

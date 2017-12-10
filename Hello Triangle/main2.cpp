@@ -32,7 +32,6 @@ int main()
 			spriteVector.back().textureIndex = app.getTextureByName("Star").index;
 			auto pos = 10.f * i;
 			spriteVector.back().m_Position = {pos, pos};
-			spriteVector.back().m_Scale = 1.f;
 			spriteVector.back().m_Rotation = 0.f;
 		}
 		bool running = true;

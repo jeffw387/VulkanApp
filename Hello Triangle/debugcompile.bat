@@ -7,6 +7,7 @@ cl /EHsc /Zi /MTd /Od ^
 /I C:/Libraries/Compiled/glfw-3.2.1.bin.WIN64/include ^
 /I C:/Libraries/Source/fmt-master /I C:/Libraries/Source/stb-master ^
 /I C:/Libraries/Source/glm ^
+/I C:/Libraries/Source/stx-tree-0.9/include ^
 main2.cpp ^
 glfw3dll.lib ^
 vulkan-1.lib ^

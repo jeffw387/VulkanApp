@@ -173,23 +173,14 @@ public:
 		initVulkan(initData.vertexShaderPath, initData.fragmentShaderPath);
 		loadTextures(initData.texturePaths);
 		
-		updateDescriptorSet0();
+		initDescriptorSet0();
 	}
 
 	// returns false if window should close
 	bool render(SpriteTree& spriteTree)
 	{
-		glfwPollEvents();
-		if (glfwWindowShouldClose(m_Window))
-		{
-			return false;
-		}
-		ImageIndex nextImage;
-		auto success = acquireImage(nextImage);
-		if (success != true)
-		{
-			return true;
-		}
+		
+		
 		update(nextImage, spriteTree);
 		draw(nextImage);
 		return true;
@@ -275,7 +266,7 @@ private:
 	vke::Allocator m_Allocator;
 	vke::Buffer m_VertexBuffer;
 	vke::Buffer m_IndexBuffer;
-	VkDeviceSize uniformBufferOffsetAlignment;
+	VkDeviceSize m_UniformBufferOffsetAlignment;
 	std::vector<vke::Image2D> m_Images;
 	vke::Sampler2D m_Sampler;
 	vke::Semaphore m_ImageReadyForWriting;
@@ -487,7 +478,7 @@ private:
 		m_PhysicalDevice.init(m_Instance, m_Surface);
 
 		// store the minimum uniform buffer offset alignment
-		uniformBufferOffsetAlignment = m_PhysicalDevice.getPhysicalProperties().limits.minUniformBufferOffsetAlignment;
+		m_UniformBufferOffsetAlignment = m_PhysicalDevice.getPhysicalProperties().limits.minUniformBufferOffsetAlignment;
 
 		// create logical device
 		std::set<int> uniqueQueueFamilies = { m_PhysicalDevice.getGraphicsQueueIndex(), m_PhysicalDevice.getPresentQueueIndex() };
@@ -783,14 +774,33 @@ private:
 		copyCmdBuffer.cleanup();
 	}
 
-	void updateUniformBuffers(ImageIndex nextImage, SpriteTree& spriteTree)
+	struct UpdateData
 	{
+		glm::mat4 vp;
+		VkDeviceSize copyOffset;
+		ImageIndex nextImage;
+		uint32_t spriteIndex;
+	} m_UpdateData;
+
+	bool prepareUpdate(ImageIndex nextImage)
+	{
+		glfwPollEvents();
+		if (glfwWindowShouldClose(m_Window))
+		{
+			return false;
+		}
+
+		auto success = acquireImage(m_UpdateData.nextImage);
+		if (success != true)
+		{
+			return success;
+		}
+
+		auto& nextImage = m_UpdateData.nextImage;
 		auto& matrixBufferCapacity = m_PresentBuffers[nextImage].matrixBufferCapacity;
-		auto& matrixBufferStaged = m_PresentBuffers[nextImage].matrixBufferStaged;
-		auto& stagingCommandBuffer = m_PresentBuffers[nextImage].stagingCommandBuffer;
-		auto& stagingCommandExecuted = m_PresentBuffers[nextImage].stagingCommandExecuted;
 		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
 		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
+		auto& drawCommandExecuted = m_PresentBuffers[nextImage].drawCommandExecuted;
 
 		const uint64_t minimumCount = 1;
 		uint64_t instanceCount = std::max(minimumCount, spriteTree.size());
@@ -801,7 +811,7 @@ private:
 		{
 			matrixBufferCapacity = instanceCount * 2;
 
-			auto newBufferSize = matrixBufferCapacity * uniformBufferOffsetAlignment;
+			auto newBufferSize = matrixBufferCapacity * m_UniformBufferOffsetAlignment;
 			matrixStagingBuffer.cleanup();
 			matrixBuffer.cleanup();
 
@@ -828,71 +838,14 @@ private:
 		{
 			std::runtime_error("Unable to map matrix staging buffer!");
 		}
-		VkDeviceSize copyOffset = 0;
-		glm::mat4 vp = m_Camera.getMatrix();
-		for (auto& spritePair : spriteTree)
-		{
-			auto& m = spritePair.second.transform;
-			glm::mat4 mvp =  vp * m;
-			memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
-			copyOffset += uniformBufferOffsetAlignment;
-		}
-		matrixStagingBuffer.unmap();
-		vkWaitForFences(m_Device, 1, stagingCommandExecuted, true, std::numeric_limits<uint64_t>::max());
-		stagingCommandExecuted.reset();
-		matrixBuffer.copyFromBuffer(matrixStagingBuffer, stagingCommandBuffer, 
-			m_GraphicsQueue, stagingCommandExecuted, std::vector<VkSemaphore>(),
-			std::vector<VkSemaphore>({ matrixBufferStaged })
-		);
-	}
-
-	void updateDescriptorSet0()
-	{
-		std::array<VkWriteDescriptorSet, 2> set0Writes = {};
-		VkDescriptorImageInfo  samplerInfo = {};
-		samplerInfo.sampler = m_Sampler;
-		set0Writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		set0Writes[0].dstBinding = 0;
-		set0Writes[0].dstArrayElement = 0;
-		set0Writes[0].descriptorCount = 1;
-		set0Writes[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-		set0Writes[0].pImageInfo = &samplerInfo;
-
-		std::vector<VkDescriptorImageInfo> imageInfos;
-		for (const VkImageView& view : m_Images)
-		{
-			VkDescriptorImageInfo imageInfo = {};
-			imageInfo.imageView = view;
-			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-			imageInfos.push_back(imageInfo);
-		}
-
-		set0Writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		set0Writes[1].dstBinding = 1;
-		set0Writes[1].dstArrayElement = 0;
-		set0Writes[1].descriptorCount = static_cast<uint32_t>(imageInfos.size());
-		set0Writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-		set0Writes[1].pImageInfo = imageInfos.data();
-
-		for (auto& presentBuffer : m_PresentBuffers)
-		{
-			set0Writes[0].dstSet = presentBuffer.descriptorSet0;
-			set0Writes[1].dstSet = presentBuffer.descriptorSet0;
-			vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(set0Writes.size()), set0Writes.data(), 0, nullptr);
-		}
-	}
-
-	void updateDescriptorSet1(ImageIndex nextImage)
-	{
-		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
-		auto& commandBufferFence = m_PresentBuffers[nextImage].drawCommandExecuted;
+		m_UpdateData.copyOffset = 0;
+		m_UpdateData.vp = m_Camera.getMatrix();
 
 		std::array<VkWriteDescriptorSet, 1> set1Writes = {};
 		VkDescriptorBufferInfo matrixBufferInfo = {};
 		matrixBufferInfo.buffer = matrixBuffer;
 		matrixBufferInfo.offset = 0;
-		matrixBufferInfo.range = uniformBufferOffsetAlignment;
+		matrixBufferInfo.range = m_UniformBufferOffsetAlignment;
 
 		set1Writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		set1Writes[0].dstSet = m_PresentBuffers[nextImage].descriptorSet1;
@@ -903,13 +856,10 @@ private:
 		set1Writes[0].pBufferInfo = &matrixBufferInfo;
 
 		// wait for this command pool's buffer(s) to finish execution, then reset the fence
-		vkWaitForFences(m_Device, 1, commandBufferFence, VK_TRUE, std::numeric_limits<uint64_t>::max());
-		commandBufferFence.reset();
+		vkWaitForFences(m_Device, 1, drawCommandExecuted, VK_TRUE, std::numeric_limits<uint64_t>::max());
+		drawCommandExecuted.reset();
 		vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(set1Writes.size()), set1Writes.data(), 0, nullptr);
-	}
 
-	void recordNextCommandBuffer(ImageIndex nextImage, SpriteTree& spriteTree)
-	{
 		auto& commandPool = m_PresentBuffers[nextImage].pool;
 		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
 		auto& framebuffer = m_PresentBuffers[nextImage].framebuffer;
@@ -978,30 +928,100 @@ private:
 			nullptr
 		);
 
-		uint32_t spriteIndex = 0;
-		// iterate through each sprite
-		for (const auto& spritePair : spriteTree)
-		{
-			vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &spritePair.second.textureIndex);
-			uint32_t dynamicOffset = spriteIndex * static_cast<uint32_t>(uniformBufferOffsetAlignment);
+		m_UpdateData.spriteIndex = 0;
 
-			// bind dynamic matrix uniform
-			vkCmdBindDescriptorSets(drawCommandBuffer, 
-				VK_PIPELINE_BIND_POINT_GRAPHICS,
-				m_PipelineLayout,
-				1,
-				1,
-				descriptorSet1,
-				1,
-				&dynamicOffset
-			);
+		return true;
+	}
 
-			// draw the sprite
-			vkCmdDrawIndexed(drawCommandBuffer, IndicesPerQuad, 1, 0, 0, 0);
-			spriteIndex++;
-		}
+	void processSprite(const Sprite& sprite)
+	{
+		auto& m = sprite.transform;
+		auto& descriptorSet1 = m_PresentBuffers[nextImage].descriptorSet1;
+		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
+
+		glm::mat4 mvp =  m_UpdateData.vp * m;
+		memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
+		copyOffset += m_UniformBufferOffsetAlignment;
+
+		vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.textureIndex);
+		uint32_t dynamicOffset = m_UpdateData.spriteIndex * static_cast<uint32_t>(m_UniformBufferOffsetAlignment);
+
+		// bind dynamic matrix uniform
+		vkCmdBindDescriptorSets(drawCommandBuffer, 
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			m_PipelineLayout,
+			1,
+			1,
+			descriptorSet1,
+			1,
+			&dynamicOffset
+		);
+
+		// draw the sprite
+		vkCmdDrawIndexed(drawCommandBuffer, IndicesPerQuad, 1, 0, 0, 0);
+		m_UpdateData.spriteIndex++;
+	}
+
+	void finishUpdate()
+	{
+		auto nextImage = m_UpdateData.nextImage;
+		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
+		auto& stagingCommandExecuted = m_PresentBuffers[nextImage].stagingCommandExecuted;
+		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
+		auto& matrixBufferStaged = m_PresentBuffers[nextImage].matrixBufferStaged;
+		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
+		auto& stagingCommandBuffer = m_PresentBuffers[nextImage].stagingCommandBuffer;
+
+		matrixStagingBuffer.unmap();
+		vkWaitForFences(m_Device, 1, stagingCommandExecuted, true, std::numeric_limits<uint64_t>::max());
+		stagingCommandExecuted.reset();
+		matrixBuffer.copyFromBuffer(matrixStagingBuffer, 
+			stagingCommandBuffer, 
+			m_GraphicsQueue, 
+			stagingCommandExecuted, 
+			std::vector<VkSemaphore>(),
+			std::vector<VkSemaphore>({ matrixBufferStaged })
+		);
+
 		vkCmdEndRenderPass(drawCommandBuffer);
 		drawCommandBuffer.end();
+	}
+
+	void initDescriptorSet0()
+	{
+		std::array<VkWriteDescriptorSet, 2> set0Writes = {};
+		VkDescriptorImageInfo  samplerInfo = {};
+		samplerInfo.sampler = m_Sampler;
+		set0Writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		set0Writes[0].dstBinding = 0;
+		set0Writes[0].dstArrayElement = 0;
+		set0Writes[0].descriptorCount = 1;
+		set0Writes[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+		set0Writes[0].pImageInfo = &samplerInfo;
+
+		std::vector<VkDescriptorImageInfo> imageInfos;
+		for (const VkImageView& view : m_Images)
+		{
+			VkDescriptorImageInfo imageInfo = {};
+			imageInfo.imageView = view;
+			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			imageInfos.push_back(imageInfo);
+		}
+
+		set0Writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		set0Writes[1].dstBinding = 1;
+		set0Writes[1].dstArrayElement = 0;
+		set0Writes[1].descriptorCount = static_cast<uint32_t>(imageInfos.size());
+		set0Writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		set0Writes[1].pImageInfo = imageInfos.data();
+
+		for (auto& presentBuffer : m_PresentBuffers)
+		{
+			set0Writes[0].dstSet = presentBuffer.descriptorSet0;
+			set0Writes[1].dstSet = presentBuffer.descriptorSet0;
+			vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(set0Writes.size()), set0Writes.data(), 0, nullptr);
+		}
 	}
 
 	VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) 

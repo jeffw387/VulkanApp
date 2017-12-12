@@ -2,6 +2,8 @@
 #include "stx/btree_map.h"
 #include <algorithm>
 
+using SpriteTree = stx::btree_map<Entity, Sprite>;
+
 VulkanApp app;
 
 using Entity = size_t;

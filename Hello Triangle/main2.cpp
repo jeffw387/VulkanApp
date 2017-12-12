@@ -1,7 +1,10 @@
 #include "VulkanApp.h"
 #include "stx/btree_map.h"
+#include <algorithm>
 
 VulkanApp app;
+
+using Entity = size_t;
 
 // Name, Path
 std::vector<StringPair> texturePaths =
@@ -13,7 +16,28 @@ std::vector<StringPair> texturePaths =
 std::string vertexShaderPath = "Shaders/vert.spv";
 std::string fragmentShaderPath = "Shaders/frag.spv";
 
-std::vector<Sprite> spriteVector;
+std::vector<Entity> entities;
+std::vector<int> isActive;
+std::vector<Entity> inactiveEntities;
+stx::btree_map<Entity, Sprite> spriteTree;
+
+Entity CreateEntity()
+{
+	Entity newEntity;
+	if (inactiveEntities.size() > 0)
+	{
+		newEntity = inactiveEntities.back();
+		inactiveEntities.pop_back();
+		isActive[newEntity] = true;
+	}
+	else
+	{
+		newEntity = entities.size();
+		entities.push_back(newEntity);
+		isActive.push_back(1);
+	}
+	return newEntity;
+}
 
 int main()
 {

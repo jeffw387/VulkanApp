@@ -23,6 +23,7 @@
 #include <string>
 #include "fileIO.h"
 #include "Input.h"
+#include "ECS.hpp"
 
 using StringPair = std::tuple<std::string, std::string>;
 
@@ -176,7 +177,7 @@ public:
 	}
 
 	// returns false if window should close
-	bool render(std::vector<Sprite>& spriteVector)
+	bool render(SpriteTree& spriteTree)
 	{
 		glfwPollEvents();
 		if (glfwWindowShouldClose(m_Window))
@@ -189,7 +190,7 @@ public:
 		{
 			return true;
 		}
-		update(nextImage, spriteVector);
+		update(nextImage, spriteTree);
 		draw(nextImage);
 		return true;
 	}
@@ -302,11 +303,11 @@ private:
 		return true;
 	}
 
-	void update(ImageIndex nextImage, std::vector<Sprite>& spriteVector)
+	void update(ImageIndex nextImage, SpriteTree& spriteTree)
 	{
-		updateUniformBuffers(nextImage, spriteVector);
+		updateUniformBuffers(nextImage, spriteTree);
 		updateDescriptorSet1(nextImage);
-		recordNextCommandBuffer(nextImage, spriteVector);
+		recordNextCommandBuffer(nextImage, spriteTree);
 	}
 
 	void draw(ImageIndex nextImage)
@@ -782,8 +783,7 @@ private:
 		copyCmdBuffer.cleanup();
 	}
 
-	// TODO: figure out if I need to triple buffer/ring buffer this buffer
-	void updateUniformBuffers(ImageIndex nextImage, std::vector<Sprite>& spriteVector)
+	void updateUniformBuffers(ImageIndex nextImage, SpriteTree& spriteTree)
 	{
 		auto& matrixBufferCapacity = m_PresentBuffers[nextImage].matrixBufferCapacity;
 		auto& matrixBufferStaged = m_PresentBuffers[nextImage].matrixBufferStaged;
@@ -793,7 +793,7 @@ private:
 		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
 
 		const uint64_t minimumCount = 1;
-		uint64_t instanceCount = std::max(minimumCount, spriteVector.size());
+		uint64_t instanceCount = std::max(minimumCount, spriteTree.size());
 		static uint32_t runCount = 0;
 		runCount++;
 		// (re)create matrix buffer if it is smaller than required
@@ -830,9 +830,9 @@ private:
 		}
 		VkDeviceSize copyOffset = 0;
 		glm::mat4 vp = m_Camera.getMatrix();
-		for (auto& sprite : spriteVector)
+		for (auto& spritePair : spriteTree)
 		{
-			auto& m = sprite.transform;
+			auto& m = spritePair.second.transform;
 			glm::mat4 mvp =  vp * m;
 			memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
 			copyOffset += uniformBufferOffsetAlignment;
@@ -908,7 +908,7 @@ private:
 		vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(set1Writes.size()), set1Writes.data(), 0, nullptr);
 	}
 
-	void recordNextCommandBuffer(ImageIndex nextImage, std::vector<Sprite>& spriteVector)
+	void recordNextCommandBuffer(ImageIndex nextImage, SpriteTree& spriteTree)
 	{
 		auto& commandPool = m_PresentBuffers[nextImage].pool;
 		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
@@ -980,9 +980,9 @@ private:
 
 		uint32_t spriteIndex = 0;
 		// iterate through each sprite
-		for (const auto& sprite : spriteVector)
+		for (const auto& spritePair : spriteTree)
 		{
-			vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.textureIndex);
+			vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &spritePair.second.textureIndex);
 			uint32_t dynamicOffset = spriteIndex * static_cast<uint32_t>(uniformBufferOffsetAlignment);
 
 			// bind dynamic matrix uniform

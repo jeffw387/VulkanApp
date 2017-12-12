@@ -176,14 +176,244 @@ public:
 		initDescriptorSet0();
 	}
 
-	// returns false if window should close
-	bool render(SpriteTree& spriteTree)
+	bool prepareUpdate()
 	{
+		glfwPollEvents();
+		if (glfwWindowShouldClose(m_Window))
+		{
+			return false;
+		}
+
+		auto success = acquireImage(m_UpdateData.nextImage);
+		if (success != true)
+		{
+			return success;
+		}
+
+		auto& nextImage = m_UpdateData.nextImage;
+		auto& matrixBufferCapacity = m_PresentBuffers[nextImage].matrixBufferCapacity;
+		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
+		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
+		auto& drawCommandExecuted = m_PresentBuffers[nextImage].drawCommandExecuted;
+
+		const uint64_t minimumCount = 1;
+		uint64_t instanceCount = std::max(minimumCount, spriteTree.size());
+		static uint32_t runCount = 0;
+		runCount++;
+		// (re)create matrix buffer if it is smaller than required
+		if (instanceCount > matrixBufferCapacity)
+		{
+			matrixBufferCapacity = instanceCount * 2;
+
+			auto newBufferSize = matrixBufferCapacity * m_UniformBufferOffsetAlignment;
+			matrixStagingBuffer.cleanup();
+			matrixBuffer.cleanup();
+
+			matrixBuffer.init(m_Device, 
+				&m_Allocator, 
+				newBufferSize, 
+				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+			);
+
+			matrixStagingBuffer.init(m_Device, 
+				&m_Allocator, 
+				newBufferSize, 
+				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+			);
+		}
 		
+		matrixBuffer.DebugName = "Matrix Buffer";
 		
-		update(nextImage, spriteTree);
-		draw(nextImage);
+		matrixStagingBuffer.DebugName = "Matrix Staging Buffer";
+
+		if (matrixStagingBuffer.mapMemoryRange() != true)
+		{
+			std::runtime_error("Unable to map matrix staging buffer!");
+		}
+		m_UpdateData.copyOffset = 0;
+		m_UpdateData.vp = m_Camera.getMatrix();
+
+		std::array<VkWriteDescriptorSet, 1> set1Writes = {};
+		VkDescriptorBufferInfo matrixBufferInfo = {};
+		matrixBufferInfo.buffer = matrixBuffer;
+		matrixBufferInfo.offset = 0;
+		matrixBufferInfo.range = m_UniformBufferOffsetAlignment;
+
+		set1Writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		set1Writes[0].dstSet = m_PresentBuffers[nextImage].descriptorSet1;
+		set1Writes[0].dstBinding = 0;
+		set1Writes[0].dstArrayElement = 0;
+		set1Writes[0].descriptorCount = 1;
+		set1Writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		set1Writes[0].pBufferInfo = &matrixBufferInfo;
+
+		// wait for this command pool's buffer(s) to finish execution, then reset the fence
+		vkWaitForFences(m_Device, 1, drawCommandExecuted, VK_TRUE, std::numeric_limits<uint64_t>::max());
+		drawCommandExecuted.reset();
+		vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(set1Writes.size()), set1Writes.data(), 0, nullptr);
+
+		auto& commandPool = m_PresentBuffers[nextImage].pool;
+		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
+		auto& framebuffer = m_PresentBuffers[nextImage].framebuffer;
+		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
+		auto& descriptorSet0 = m_PresentBuffers[nextImage].descriptorSet0;
+		auto& descriptorSet1 = m_PresentBuffers[nextImage].descriptorSet1;
+		
+		// allocate the command buffer from the pool
+		drawCommandBuffer.reset();
+		drawCommandBuffer.init(m_Device, commandPool);
+
+		/////////////////////////////////////////////////////////////
+		// set up data that is constant between all command buffers
+		//
+
+		// Dynamic viewport info
+		VkViewport viewport = {};
+		viewport.x = 0;
+		viewport.y = 0;
+		viewport.width = static_cast<float>(m_SwapExtent.width);
+		viewport.height = static_cast<float>(m_SwapExtent.height);
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+
+		// Dynamic scissor info
+		VkRect2D scissorRect = {};
+		scissorRect.extent = m_SwapExtent;
+		scissorRect.offset = { 0, 0 };
+
+		// clear values for the color and depth attachments
+		std::array<VkClearValue, 2> clearValues = {};
+		clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+		clearValues[1].depthStencil = { 1.0f, 0 };
+
+		// Render pass info
+		VkRenderPassBeginInfo renderPassInfo = {};
+		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		renderPassInfo.renderPass = m_RenderPass;
+		renderPassInfo.renderArea.offset = { 0, 0 };
+		renderPassInfo.renderArea.extent = m_SwapExtent;
+		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+		renderPassInfo.pClearValues = clearValues.data();
+		renderPassInfo.framebuffer = framebuffer;
+
+		VkBuffer buffers{m_VertexBuffer};
+		VkDeviceSize offsets{m_VertexBuffer.getUsableOffset()};
+
+		// record the command buffer
+		drawCommandBuffer.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+		vkCmdSetViewport(drawCommandBuffer, 0, 1, &viewport);
+		vkCmdSetScissor(drawCommandBuffer, 0, 1, &scissorRect);
+		vkCmdBeginRenderPass(drawCommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBindPipeline(drawCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline);
+		vkCmdBindVertexBuffers(drawCommandBuffer, 0, 1, &buffers, &offsets);
+		vkCmdBindIndexBuffer(drawCommandBuffer, m_IndexBuffer, m_IndexBuffer.getUsableOffset(), VK_INDEX_TYPE_UINT32);
+
+		// bind sampler and images uniforms
+		vkCmdBindDescriptorSets(drawCommandBuffer, 
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			m_PipelineLayout,
+			0,
+			1,
+			descriptorSet0,
+			0,
+			nullptr
+		);
+
+		m_UpdateData.spriteIndex = 0;
+
 		return true;
+	}
+
+	void processSprite(const Sprite& sprite)
+	{
+		auto& m = sprite.transform;
+		auto& descriptorSet1 = m_PresentBuffers[nextImage].descriptorSet1;
+		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
+
+		glm::mat4 mvp =  m_UpdateData.vp * m;
+		memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
+		copyOffset += m_UniformBufferOffsetAlignment;
+
+		vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.textureIndex);
+		uint32_t dynamicOffset = m_UpdateData.spriteIndex * static_cast<uint32_t>(m_UniformBufferOffsetAlignment);
+
+		// bind dynamic matrix uniform
+		vkCmdBindDescriptorSets(drawCommandBuffer, 
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			m_PipelineLayout,
+			1,
+			1,
+			descriptorSet1,
+			1,
+			&dynamicOffset
+		);
+
+		// draw the sprite
+		vkCmdDrawIndexed(drawCommandBuffer, IndicesPerQuad, 1, 0, 0, 0);
+		m_UpdateData.spriteIndex++;
+	}
+
+	void finishUpdate()
+	{
+		auto nextImage = m_UpdateData.nextImage;
+		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
+		auto& stagingCommandExecuted = m_PresentBuffers[nextImage].stagingCommandExecuted;
+		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
+		auto& matrixBufferStaged = m_PresentBuffers[nextImage].matrixBufferStaged;
+		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
+		auto& stagingCommandBuffer = m_PresentBuffers[nextImage].stagingCommandBuffer;
+		auto& drawCommandExecuted = m_PresentBuffers[nextImage].drawCommandExecuted;
+
+		// copy matrices from staging buffer to gpu buffer
+		matrixStagingBuffer.unmap();
+		vkWaitForFences(m_Device, 1, stagingCommandExecuted, true, std::numeric_limits<uint64_t>::max());
+		stagingCommandExecuted.reset();
+		matrixBuffer.copyFromBuffer(matrixStagingBuffer, 
+			stagingCommandBuffer, 
+			m_GraphicsQueue, 
+			stagingCommandExecuted, 
+			std::vector<VkSemaphore>(),
+			std::vector<VkSemaphore>({ matrixBufferStaged })
+		);
+
+		// Finish recording draw command buffer
+		vkCmdEndRenderPass(drawCommandBuffer);
+		drawCommandBuffer.end();
+
+		// Submit draw command buffer
+		std::vector<VkSemaphore> queueWaitSemaphores = { m_ImageReadyForWriting, matrixBufferStaged };
+		std::vector<VkSemaphore> queueSignalSemaphores = { m_ImageReadyForPresentation };
+		drawCommandBuffer.submit(
+			m_PresentQueue,
+			std::vector<VkPipelineStageFlags>{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT },
+			drawCommandExecuted,
+			queueWaitSemaphores,
+			queueSignalSemaphores
+		);
+
+		// Present image
+		VkSwapchainKHR swapChains[] = { m_Swapchain };
+		VkPresentInfoKHR presentInfo = {};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.waitSemaphoreCount = static_cast<uint32_t>(queueSignalSemaphores.size());
+		presentInfo.pWaitSemaphores = queueSignalSemaphores.data();
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = swapChains;
+		presentInfo.pImageIndices = &nextImage;
+
+		auto result = vkQueuePresentKHR(m_PresentQueue, &presentInfo);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) 
+		{
+			recreateSwapChain(getCurrentWindowExtent(m_Window));
+		}
+		else if (result != VK_SUCCESS) 
+		{
+			throw std::runtime_error("failed to present swap chain image!");
+		}
 	}
 
 	void cleanup()
@@ -292,49 +522,6 @@ private:
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
 		return true;
-	}
-
-	void update(ImageIndex nextImage, SpriteTree& spriteTree)
-	{
-		updateUniformBuffers(nextImage, spriteTree);
-		updateDescriptorSet1(nextImage);
-		recordNextCommandBuffer(nextImage, spriteTree);
-	}
-
-	void draw(ImageIndex nextImage)
-	{
-		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
-		auto& drawCommandExecuted = m_PresentBuffers[nextImage].drawCommandExecuted;
-		auto& matrixBufferStaged = m_PresentBuffers[nextImage].matrixBufferStaged;
-		std::vector<VkSemaphore> queueWaitSemaphores = { m_ImageReadyForWriting, matrixBufferStaged };
-		std::vector<VkSemaphore> queueSignalSemaphores = { m_ImageReadyForPresentation };
-		drawCommandBuffer.submit(
-			m_PresentQueue,
-			std::vector<VkPipelineStageFlags>{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT },
-			drawCommandExecuted,
-			queueWaitSemaphores,
-			queueSignalSemaphores
-		);
-
-		VkSwapchainKHR swapChains[] = { m_Swapchain };
-		VkPresentInfoKHR presentInfo = {};
-		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-		presentInfo.waitSemaphoreCount = static_cast<uint32_t>(queueSignalSemaphores.size());
-		presentInfo.pWaitSemaphores = queueSignalSemaphores.data();
-		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = swapChains;
-		presentInfo.pImageIndices = &nextImage;
-
-		auto result = vkQueuePresentKHR(m_PresentQueue, &presentInfo);
-
-		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) 
-		{
-			recreateSwapChain(getCurrentWindowExtent(m_Window));
-		}
-		else if (result != VK_SUCCESS) 
-		{
-			throw std::runtime_error("failed to present swap chain image!");
-		}
 	}
 
 	static VkExtent2D getCurrentWindowExtent(GLFWwindow* window)
@@ -782,210 +969,7 @@ private:
 		uint32_t spriteIndex;
 	} m_UpdateData;
 
-	bool prepareUpdate(ImageIndex nextImage)
-	{
-		glfwPollEvents();
-		if (glfwWindowShouldClose(m_Window))
-		{
-			return false;
-		}
 
-		auto success = acquireImage(m_UpdateData.nextImage);
-		if (success != true)
-		{
-			return success;
-		}
-
-		auto& nextImage = m_UpdateData.nextImage;
-		auto& matrixBufferCapacity = m_PresentBuffers[nextImage].matrixBufferCapacity;
-		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
-		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
-		auto& drawCommandExecuted = m_PresentBuffers[nextImage].drawCommandExecuted;
-
-		const uint64_t minimumCount = 1;
-		uint64_t instanceCount = std::max(minimumCount, spriteTree.size());
-		static uint32_t runCount = 0;
-		runCount++;
-		// (re)create matrix buffer if it is smaller than required
-		if (instanceCount > matrixBufferCapacity)
-		{
-			matrixBufferCapacity = instanceCount * 2;
-
-			auto newBufferSize = matrixBufferCapacity * m_UniformBufferOffsetAlignment;
-			matrixStagingBuffer.cleanup();
-			matrixBuffer.cleanup();
-
-			matrixBuffer.init(m_Device, 
-				&m_Allocator, 
-				newBufferSize, 
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-			);
-
-			matrixStagingBuffer.init(m_Device, 
-				&m_Allocator, 
-				newBufferSize, 
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-			);
-		}
-		
-		matrixBuffer.DebugName = "Matrix Buffer";
-		
-		matrixStagingBuffer.DebugName = "Matrix Staging Buffer";
-
-		if (matrixStagingBuffer.mapMemoryRange() != true)
-		{
-			std::runtime_error("Unable to map matrix staging buffer!");
-		}
-		m_UpdateData.copyOffset = 0;
-		m_UpdateData.vp = m_Camera.getMatrix();
-
-		std::array<VkWriteDescriptorSet, 1> set1Writes = {};
-		VkDescriptorBufferInfo matrixBufferInfo = {};
-		matrixBufferInfo.buffer = matrixBuffer;
-		matrixBufferInfo.offset = 0;
-		matrixBufferInfo.range = m_UniformBufferOffsetAlignment;
-
-		set1Writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		set1Writes[0].dstSet = m_PresentBuffers[nextImage].descriptorSet1;
-		set1Writes[0].dstBinding = 0;
-		set1Writes[0].dstArrayElement = 0;
-		set1Writes[0].descriptorCount = 1;
-		set1Writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		set1Writes[0].pBufferInfo = &matrixBufferInfo;
-
-		// wait for this command pool's buffer(s) to finish execution, then reset the fence
-		vkWaitForFences(m_Device, 1, drawCommandExecuted, VK_TRUE, std::numeric_limits<uint64_t>::max());
-		drawCommandExecuted.reset();
-		vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(set1Writes.size()), set1Writes.data(), 0, nullptr);
-
-		auto& commandPool = m_PresentBuffers[nextImage].pool;
-		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
-		auto& framebuffer = m_PresentBuffers[nextImage].framebuffer;
-		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
-		auto& descriptorSet0 = m_PresentBuffers[nextImage].descriptorSet0;
-		auto& descriptorSet1 = m_PresentBuffers[nextImage].descriptorSet1;
-		
-		// allocate the command buffer from the pool
-		drawCommandBuffer.reset();
-		drawCommandBuffer.init(m_Device, commandPool);
-
-		/////////////////////////////////////////////////////////////
-		// set up data that is constant between all command buffers
-		//
-
-		// Dynamic viewport info
-		VkViewport viewport = {};
-		viewport.x = 0;
-		viewport.y = 0;
-		viewport.width = static_cast<float>(m_SwapExtent.width);
-		viewport.height = static_cast<float>(m_SwapExtent.height);
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-
-		// Dynamic scissor info
-		VkRect2D scissorRect = {};
-		scissorRect.extent = m_SwapExtent;
-		scissorRect.offset = { 0, 0 };
-
-		// clear values for the color and depth attachments
-		std::array<VkClearValue, 2> clearValues = {};
-		clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
-		clearValues[1].depthStencil = { 1.0f, 0 };
-
-		// Render pass info
-		VkRenderPassBeginInfo renderPassInfo = {};
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassInfo.renderPass = m_RenderPass;
-		renderPassInfo.renderArea.offset = { 0, 0 };
-		renderPassInfo.renderArea.extent = m_SwapExtent;
-		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-		renderPassInfo.pClearValues = clearValues.data();
-		renderPassInfo.framebuffer = framebuffer;
-
-		VkBuffer buffers{m_VertexBuffer};
-		VkDeviceSize offsets{m_VertexBuffer.getUsableOffset()};
-
-		// record the command buffer
-		drawCommandBuffer.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
-		vkCmdSetViewport(drawCommandBuffer, 0, 1, &viewport);
-		vkCmdSetScissor(drawCommandBuffer, 0, 1, &scissorRect);
-		vkCmdBeginRenderPass(drawCommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-		vkCmdBindPipeline(drawCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline);
-		vkCmdBindVertexBuffers(drawCommandBuffer, 0, 1, &buffers, &offsets);
-		vkCmdBindIndexBuffer(drawCommandBuffer, m_IndexBuffer, m_IndexBuffer.getUsableOffset(), VK_INDEX_TYPE_UINT32);
-
-		// bind sampler and images uniforms
-		vkCmdBindDescriptorSets(drawCommandBuffer, 
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			m_PipelineLayout,
-			0,
-			1,
-			descriptorSet0,
-			0,
-			nullptr
-		);
-
-		m_UpdateData.spriteIndex = 0;
-
-		return true;
-	}
-
-	void processSprite(const Sprite& sprite)
-	{
-		auto& m = sprite.transform;
-		auto& descriptorSet1 = m_PresentBuffers[nextImage].descriptorSet1;
-		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
-
-		glm::mat4 mvp =  m_UpdateData.vp * m;
-		memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
-		copyOffset += m_UniformBufferOffsetAlignment;
-
-		vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.textureIndex);
-		uint32_t dynamicOffset = m_UpdateData.spriteIndex * static_cast<uint32_t>(m_UniformBufferOffsetAlignment);
-
-		// bind dynamic matrix uniform
-		vkCmdBindDescriptorSets(drawCommandBuffer, 
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			m_PipelineLayout,
-			1,
-			1,
-			descriptorSet1,
-			1,
-			&dynamicOffset
-		);
-
-		// draw the sprite
-		vkCmdDrawIndexed(drawCommandBuffer, IndicesPerQuad, 1, 0, 0, 0);
-		m_UpdateData.spriteIndex++;
-	}
-
-	void finishUpdate()
-	{
-		auto nextImage = m_UpdateData.nextImage;
-		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
-		auto& stagingCommandExecuted = m_PresentBuffers[nextImage].stagingCommandExecuted;
-		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
-		auto& matrixBufferStaged = m_PresentBuffers[nextImage].matrixBufferStaged;
-		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
-		auto& stagingCommandBuffer = m_PresentBuffers[nextImage].stagingCommandBuffer;
-
-		matrixStagingBuffer.unmap();
-		vkWaitForFences(m_Device, 1, stagingCommandExecuted, true, std::numeric_limits<uint64_t>::max());
-		stagingCommandExecuted.reset();
-		matrixBuffer.copyFromBuffer(matrixStagingBuffer, 
-			stagingCommandBuffer, 
-			m_GraphicsQueue, 
-			stagingCommandExecuted, 
-			std::vector<VkSemaphore>(),
-			std::vector<VkSemaphore>({ matrixBufferStaged })
-		);
-
-		vkCmdEndRenderPass(drawCommandBuffer);
-		drawCommandBuffer.end();
-	}
 
 	void initDescriptorSet0()
 	{

@@ -65,7 +65,12 @@ int main()
 		while (running)
 		{
 			//loop
-			running = app.render(spriteVector);
+			app.prepareUpdate();
+			for (auto& spritePair : spriteTree)
+			{
+				app.processSprite(spritePair.second);
+			}
+			app.finishUpdate();
 		}
 	}
 	catch(const std::runtime_error &e)

@@ -176,7 +176,7 @@ public:
 		initDescriptorSet0();
 	}
 
-	bool prepareUpdate()
+	bool beginRender()
 	{
 		glfwPollEvents();
 		if (glfwWindowShouldClose(m_Window))
@@ -327,7 +327,7 @@ public:
 		return true;
 	}
 
-	void processSprite(const Sprite& sprite)
+	void renderSprite(const Sprite& sprite)
 	{
 		auto& m = sprite.transform;
 		auto& descriptorSet1 = m_PresentBuffers[nextImage].descriptorSet1;
@@ -356,7 +356,7 @@ public:
 		m_UpdateData.spriteIndex++;
 	}
 
-	void finishUpdate()
+	void endRender()
 	{
 		auto nextImage = m_UpdateData.nextImage;
 		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;

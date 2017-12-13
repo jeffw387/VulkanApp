@@ -47,4 +47,33 @@ namespace MPL
 
     template <typename List, typename NewElement>
     using PushFront_t = typename PushFront<List, NewElement>::Type;
+
+        // Nth Element
+    template <typename List, unsigned N>
+    class NthElement : public NthElement<PopFront_t<List>, N-1>
+    {};
+
+    template <typename List>
+    class NthElement<List, 0> : public Front<List>
+    {};
+
+    template <typename List, unsigned N>
+    using NthElement_t = typename NthElement<List, N>::Type;
+
+        // Is Empty
+    template <typename List>
+    class IsEmpty
+    {
+    public:
+        static constexpr bool value = false;
+    };
+
+    template <>
+    class IsEmpty<TypeList<>>
+    {
+    public:
+        static constexpr bool value = true;
+    };
+
+    
 }

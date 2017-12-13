@@ -55,17 +55,20 @@ int main()
 
 		for (auto i = 0.f; i < 100.f; i++)
 		{
-			spriteVector.push_back(Sprite());
-			spriteVector.back().textureIndex = app.getTextureByName("Star").index;
-			auto pos = 10.f * i;
-			spriteVector.back().m_Position = {pos, pos};
-			spriteVector.back().m_Rotation = 0.f;
+			auto entity = CreateEntity();
+			auto& sprite = spriteTree[entity];
+			sprite.textureIndex = app.getTextureByName("Star").index;
+			sprite.transform = glm::translate(glm::mat4(1.f), glm::vec3(i, i, 0.f));
 		}
 		bool running = true;
 		while (running)
 		{
 			//loop
-			app.beginRender();
+			if (app.beginRender(spriteTree.size()) == false)
+			{
+				running = false;
+				continue;
+			}
 			for (auto& spritePair : spriteTree)
 			{
 				app.renderSprite(spritePair.second);

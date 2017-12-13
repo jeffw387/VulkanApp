@@ -176,7 +176,7 @@ public:
 		initDescriptorSet0();
 	}
 
-	bool beginRender()
+	bool beginRender(size_t SpriteCount)
 	{
 		glfwPollEvents();
 		if (glfwWindowShouldClose(m_Window))
@@ -197,7 +197,7 @@ public:
 		auto& drawCommandExecuted = m_PresentBuffers[nextImage].drawCommandExecuted;
 
 		const uint64_t minimumCount = 1;
-		uint64_t instanceCount = std::max(minimumCount, spriteTree.size());
+		uint64_t instanceCount = std::max(minimumCount, SpriteCount);
 		static uint32_t runCount = 0;
 		runCount++;
 		// (re)create matrix buffer if it is smaller than required
@@ -257,7 +257,6 @@ public:
 		auto& commandPool = m_PresentBuffers[nextImage].pool;
 		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
 		auto& framebuffer = m_PresentBuffers[nextImage].framebuffer;
-		auto& matrixBuffer = m_PresentBuffers[nextImage].matrixBuffer;
 		auto& descriptorSet0 = m_PresentBuffers[nextImage].descriptorSet0;
 		auto& descriptorSet1 = m_PresentBuffers[nextImage].descriptorSet1;
 		
@@ -329,16 +328,21 @@ public:
 
 	void renderSprite(const Sprite& sprite)
 	{
+		auto nextImage = m_UpdateData.nextImage;
 		auto& m = sprite.transform;
+		auto& vp = m_UpdateData.vp;
 		auto& descriptorSet1 = m_PresentBuffers[nextImage].descriptorSet1;
 		auto& drawCommandBuffer = m_PresentBuffers[nextImage].drawCommandBuffer;
+		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
+		auto& copyOffset = m_UpdateData.copyOffset;
+		auto& spriteIndex = m_UpdateData.spriteIndex;
 
-		glm::mat4 mvp =  m_UpdateData.vp * m;
+		glm::mat4 mvp =  vp * m;
 		memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
 		copyOffset += m_UniformBufferOffsetAlignment;
 
 		vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ImageIndex), &sprite.textureIndex);
-		uint32_t dynamicOffset = m_UpdateData.spriteIndex * static_cast<uint32_t>(m_UniformBufferOffsetAlignment);
+		uint32_t dynamicOffset = spriteIndex * static_cast<uint32_t>(m_UniformBufferOffsetAlignment);
 
 		// bind dynamic matrix uniform
 		vkCmdBindDescriptorSets(drawCommandBuffer, 
@@ -353,7 +357,7 @@ public:
 
 		// draw the sprite
 		vkCmdDrawIndexed(drawCommandBuffer, IndicesPerQuad, 1, 0, 0, 0);
-		m_UpdateData.spriteIndex++;
+		spriteIndex++;
 	}
 
 	void endRender()

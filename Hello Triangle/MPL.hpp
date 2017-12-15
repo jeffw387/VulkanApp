@@ -1,4 +1,4 @@
-
+#pragma once
 namespace MPL
 {
         // TypeList
@@ -39,7 +39,7 @@ namespace MPL
     class PushFront;
 
     template <typename... Elements, typename NewElement>
-    class PushFront<<TypeList<Elements...>, NewElement>
+    class PushFront<TypeList<Elements...>, NewElement>
     {
     public:
         using Type = TypeList<NewElement, Elements...>;
@@ -75,5 +75,17 @@ namespace MPL
         static constexpr bool value = true;
     };
 
-    
+        // Push Back
+    template <typename List, typename NewElement>
+    class PushBack;
+
+    template <typename... Elements, typename NewElement>
+    class PushBack<TypeList<Elements...>, NewElement>
+    {
+    public:
+        using Type = TypeList<Elements..., NewElement>;
+    };
+
+    template <typename List, typename NewElement>
+    using PushBack_t = typename PushBack<List, NewElement>::Type;
 }

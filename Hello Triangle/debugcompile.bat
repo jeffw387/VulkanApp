@@ -9,6 +9,7 @@ cl /EHsc /Zi /MTd /Od ^
 /I C:/Libraries/Source/fmt-master /I C:/Libraries/Source/stb-master ^
 /I C:/Libraries/Source/glm ^
 /I C:/Libraries/Source/stx-btree-0.9/include ^
+/I C:/Libraries/Source/freetype-2.8.1/include ^
 main2.cpp ^
 glfw3dll.lib ^
 vulkan-1.lib ^

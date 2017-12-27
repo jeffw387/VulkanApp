@@ -57,8 +57,8 @@ int main()
 			}
 			app.endRender();
 			profiler::endTimer<0>();
-			// auto avg5 = profiler::toMicroseconds(profiler::getRollingAverage<0>(5)).count();
-			// std::cout << avg5 << " microseconds per update for the last 5 frames.\r\n";
+			auto avg5 = profiler::toMicroseconds(profiler::getRollingAverage<0>(5)).count();
+			std::cout << avg5 << " microseconds per update for the last 5 frames.\r\n";
 		}
 		auto avg = profiler::getAverageTime<0>();
 		std::cout << profiler::toMicroseconds(avg).count() << " microseconds per update.\r\n";

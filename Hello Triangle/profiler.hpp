@@ -18,6 +18,7 @@ namespace profiler
     {
         HiResTimePoint start, end;
         HiResDuration duration;
+        bool valid = false;
         bool durationCalculated = false;
     };
 
@@ -25,10 +26,15 @@ namespace profiler
     std::map<CodeID, std::string> profileDescriptions;
     auto nextSampleID = 0U;
 
+    void calcDuration(TimePointPair& pair)
+    {
+        pair.duration = pair.end - pair.start;
+    }
+
     template <CodeID id>
     void startTimer()
     {
-        TimePointPair pair;
+        TimePointPair pair = {};
         pair.start = profileClock::now();
         profilingMap[id][nextSampleID] = pair;
     }
@@ -36,8 +42,11 @@ namespace profiler
     template <CodeID id>
     void endTimer()
     {
-        profilingMap[id][nextSampleID].end = profileClock::now();
-        nextSampleID = (++nextSampleID) % maximumSamples;
+        auto& pair = profilingMap[id][nextSampleID];
+        pair.end = profileClock::now();
+        pair.valid = true;
+        calcDuration(pair);
+        nextSampleID++;
     }
 
     template <CodeID id>
@@ -50,38 +59,43 @@ namespace profiler
         }
     };
 
-    auto getDuration(TimePointPair& pair)
-    {
-        if (pair.durationCalculated)
-        {
-            return pair.duration;
-        }
-        pair.duration = pair.end - pair.start;
-        pair.durationCalculated = true;
-        return pair.duration;
-    }
-
     template <CodeID id>
     auto getAverageTime()
     {
         HiResDuration total = {};
+        size_t validSamples = 0;
         for (auto& pair : profilingMap[id])
         {
-            total += getDuration(pair);
+            if (pair.valid)
+            {
+                validSamples++;
+                if (!pair.durationCalculated)
+                {
+                    calcDuration(pair);
+                }
+                total += pair.duration;
+            }
         }
-        return total / profilingMap[id].size();
+        return total / validSamples;
     }
 
     template <CodeID id>
     auto getRollingAverage(size_t sampleCount)
     {
         auto max = nextSampleID;
-        auto min = std::clamp(max - sampleCount, (size_t)0, max);
+        auto min = max - sampleCount;
         HiResDuration total = {};
         
         for (auto i = min; i < max; i++)
         {
-            total += getDuration(profilingMap[id][i]);
+            auto& pair = profilingMap[id][i];
+            if (pair.valid)
+            {
+                if (!pair.durationCalculated)
+                {
+                    total += pair.duration;
+                }
+            }
         }
         return total / sampleCount;
     }

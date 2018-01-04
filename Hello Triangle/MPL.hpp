@@ -90,15 +90,15 @@ namespace MPL
     using PushBack_t = typename PushBack<List, NewElement>::Type;
 
         // Index Of
-    template <typename List...>
+    template <typename... List>
     class IndexOf;
 
     template <typename SearchElement, typename... Elements>
     class IndexOf<SearchElement, SearchElement, Elements...> :
-        std::integral_constant<size_t, 0>
+		public std::integral_constant<size_t, 0>
         {};
 
     template <typename SearchElement, typename NotAMatch, typename... Elements>
     class IndexOf<SearchElement, NotAMatch, Elements...> :
-        std::integral_constant<size_t, 1 + IndexOf<SearchElement, Elements...>::value> {};
+        public std::integral_constant<size_t, 1 + IndexOf<SearchElement, Elements...>::value> {};
 }

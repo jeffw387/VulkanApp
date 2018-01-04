@@ -2,7 +2,7 @@
 #include <vulkan/vulkan.h>
 #include <array>
 #include <vector>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 
 using ImageIndex = uint32_t;
 
@@ -10,7 +10,6 @@ namespace VulkanData
 {
 	const auto TextureCount = 2U;
 
-	// TODO: measure whether it's faster to multiply M with VP on CPU or GPU
 	struct MVPMatricesDescriptors
 	{
 		std::vector<VkDescriptorSetLayoutBinding> layoutBindings() 
@@ -57,7 +56,7 @@ namespace VulkanData
 
 		std::vector<VkDescriptorPoolSize> poolSizes() 
 		{ 
-			return std::vector<VkDescriptorPoolSize> { poolSize0, poolSize1 }; 
+			return std::vector<VkDescriptorPoolSize> { poolSize0, poolSize1, poolSize2 }; 
 		}
 
 	private:
@@ -96,23 +95,50 @@ namespace VulkanData
 			VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,						// descriptor type
 			TextureCount											// descriptor count
 		};
-	};
 
+		// Binding 2: uniform vec3 textColor
+		VkDescriptorSetLayoutBinding binding2_textColor()
+		{
+			VkDescriptorSetLayoutBinding binding = {
+				2,
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				1,
+				VK_SHADER_STAGE_FRAGMENT_BIT,
+				nullptr
+			};
+			return binding;
+		}
+		VkDescriptorPoolSize poolSize2 =
+		{
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			1
+		};
+	};
+	struct pushConstantRange1
+	{
+		glm::uint index;
+		glm::float32 r, g, b;
+	};
 	struct ModelIndexPushConstant
 	{
-		std::vector<VkPushConstantRange> ranges()
+		std::vector<VkPushConstantRange> ranges(VkPhysicalDeviceLimits limits)
 		{
-			return std::vector<VkPushConstantRange>{ range1() };
+			return std::vector<VkPushConstantRange>{ range1(limits) };
 		}
 
 	private:
-		VkPushConstantRange range1()
+		VkPushConstantRange range1(VkPhysicalDeviceLimits limits)
 		{
-			return VkPushConstantRange{
-			VK_SHADER_STAGE_FRAGMENT_BIT,
-			0,
-			sizeof(ImageIndex),
-			};
+			// both size and offset must be a multiple of 4
+			static_assert(sizeof(pushConstantRange1) % 4 == 0);
+			if (sizeof(pushConstantRange1) > limits.maxPushConstantsSize)
+				std::runtime_error("Size of push constants exceeds maximum size allowed by device");
+			VkPushConstantRange range = {};
+			range.offset = 0;
+			range.size = sizeof(pushConstantRange1);
+			range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+			return range;
+
 		}
 	};
 

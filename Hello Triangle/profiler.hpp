@@ -86,7 +86,7 @@ namespace profiler
         auto min = max - sampleCount;
         HiResDuration total = {};
         
-        for (auto i = min; i < max; i++)
+        for (auto i = static_cast<int>(min); i < static_cast<int>(max); i++)
         {
             auto& pair = profilingMap[id][i];
             if (pair.valid)

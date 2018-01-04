@@ -1,5 +1,4 @@
 #pragma once
-
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <iostream>
@@ -10,9 +9,11 @@
 #include "MemoryAllocator.h"
 #include "fileIO.h"
 #ifdef NDEBUG
-const bool enableValidationLayers = false;
+constexpr bool DebugMode = false;
+constexpr bool enableValidationLayers = false;
 #else
-const bool enableValidationLayers = true;
+constexpr bool DebugMode = true;
+constexpr bool enableValidationLayers = true;
 #endif
 
 namespace vke
@@ -353,9 +354,9 @@ namespace vke
 
 		void submit(VkQueue queue, 
 			std::vector<VkPipelineStageFlags> waitMask,
-			VkFence fence = VK_NULL_HANDLE,
-			std::vector<VkSemaphore>& waitSemaphores = std::vector<VkSemaphore>(),
-			std::vector<VkSemaphore>& signalSemaphores = std::vector<VkSemaphore>()
+			VkFence fence,
+			std::vector<VkSemaphore>& waitSemaphores,
+			std::vector<VkSemaphore>& signalSemaphores
 		)
 		{
 			VkSubmitInfo submitInfo = {};
@@ -796,7 +797,7 @@ namespace vke
 			VkDeviceSize alignment;
 		};
 
-		void init(LogicalDevice& device, Allocator* allocator, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, vke::AllocationStyle allocationStyle = vke::AllocationStyle::NoPreference)
+		void init(VkDevice device, Allocator* allocator, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, vke::AllocationStyle allocationStyle = vke::AllocationStyle::NoPreference)
 		{
 			m_Device = device;
 			m_Allocator = allocator;
@@ -897,7 +898,7 @@ namespace vke
 		VkDeviceSize getUsableSize() { return m_MemoryRange.usableSize; }
 
 		void* mappedData = nullptr;
-		char* DebugName = "No Name";
+		std::string DebugName = "No Name";
 
 	private:
 		VkDevice m_Device = VK_NULL_HANDLE;
@@ -912,13 +913,13 @@ namespace vke
 	class Image2D
 	{
 	public:
-		void init(VkDevice device, Allocator* allocator, uint32_t width, uint32_t height, /*CommandPool& pool, */
-			VkFormat format = VK_FORMAT_R8G8B8A8_UNORM,
-			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL, 
+		void init(VkDevice device, Allocator* allocator, uint32_t width, uint32_t height, 
+			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB,
+			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
 			VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 			VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT,
 			VkSharingMode shareMode = VK_SHARING_MODE_EXCLUSIVE,
-			VkImageLayout imageLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
+			VkImageLayout imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 			vke::AllocationStyle allocationStyle = vke::AllocationStyle::NoPreference)
 		{
 			m_Device = device;
@@ -1000,29 +1001,40 @@ namespace vke
 			barrier.subresourceRange.baseArrayLayer = 0;
 			barrier.subresourceRange.layerCount = 1;
 
-			if (m_CurrentLayout == VK_IMAGE_LAYOUT_PREINITIALIZED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
-				barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-				barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			}
-			else if (m_CurrentLayout == VK_IMAGE_LAYOUT_PREINITIALIZED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-				barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+			VkPipelineStageFlags sourceStageFlags;
+			VkPipelineStageFlags destStageFlags;
+
+			if (m_CurrentLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+				barrier.srcAccessMask = 0;
 				barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+				sourceStageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+				destStageFlags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 			}
-			else if (m_CurrentLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+			else if (m_CurrentLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) 
+			{
 				barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 				barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+				sourceStageFlags = VK_PIPELINE_STAGE_TRANSFER_BIT;
+				destStageFlags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			}
-			else if (m_CurrentLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+			else if (m_CurrentLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) 
+			{
 				barrier.srcAccessMask = 0;
 				barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+				sourceStageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+				destStageFlags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
 			}
-			else {
+			else 
+			{
 				throw std::invalid_argument("unsupported layout transition!");
 			}
 
 			vkCmdPipelineBarrier(
 				commandBuffer,
-				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				sourceStageFlags, destStageFlags,
 				0,
 				0, nullptr,
 				0, nullptr,
@@ -1030,7 +1042,8 @@ namespace vke
 			);
 
 			commandBuffer.end();
-			commandBuffer.submit(queue, std::vector<VkPipelineStageFlags>{0});
+			std::vector<VkSemaphore> semaphores;
+			commandBuffer.submit(queue, std::vector<VkPipelineStageFlags>{0}, VK_NULL_HANDLE, semaphores, semaphores);
 			vkQueueWaitIdle(queue);
 			m_CurrentLayout = newLayout;
 		}
@@ -1071,7 +1084,8 @@ namespace vke
 			);
 
 			commandBuffer.end();
-			commandBuffer.submit(queue, std::vector<VkPipelineStageFlags>());
+			std::vector<VkSemaphore> semaphores;
+			commandBuffer.submit(queue, std::vector<VkPipelineStageFlags>(), VK_NULL_HANDLE, semaphores, semaphores);
 			vkQueueWaitIdle(queue);
 			transitionImageLayout(pool, queue, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
@@ -1531,18 +1545,6 @@ namespace vke
 			inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 			inputAssembly.primitiveRestartEnable = VK_FALSE;
 
-			/*VkViewport viewport = {};
-			viewport.x = 0.0f;
-			viewport.y = 0.0f;
-			viewport.width = (float)swapChainExtent.width;
-			viewport.height = (float)swapChainExtent.height;
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;*/
-
-			/*VkRect2D scissor = {};
-			scissor.offset = { 0, 0 };
-			scissor.extent = windowExtent;*/
-
 			VkPipelineViewportStateCreateInfo viewportState = {};
 			viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 			viewportState.viewportCount = 1;
@@ -1575,12 +1577,12 @@ namespace vke
 			VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
 			colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 			colorBlendAttachment.blendEnable = VK_TRUE;
-			colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA; // Optional
-			colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; // Optional
-			colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD; // Optional
-			colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
-			colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
-			colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
+			colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+			colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+			colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+			colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+			colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+			colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
 
 			VkPipelineColorBlendStateCreateInfo colorBlending = {};
 			colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;

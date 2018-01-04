@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
 
-auto modulo(int dividend, int divisor)
+auto modulo(int dividend, unsigned int divisor)
 {
     if (dividend < 0)
     {
@@ -19,7 +19,7 @@ class CircularBuffer
     std::array<T, N> storage;
 
 public:
-    T& operator[] (int64_t index)
+    T& operator[] (int index)
     {
         return storage[modulo(index, N)];
     }

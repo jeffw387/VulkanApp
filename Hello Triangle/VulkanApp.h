@@ -5,14 +5,14 @@
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include <glm.hpp>
+#include <gtc/matrix_transform.hpp>
 
 #include "VulkanData.h"
 #include "VulkanBase.h"
 
-#define FMT_HEADER_ONLY
-#include <fmt-master/fmt/printf.h>
+//#define FMT_HEADER_ONLY
+//#include <fmt-master/fmt/printf.h>
 
 #include <vector>
 #include <tuple>
@@ -22,12 +22,15 @@
 #include "Input.h"
 #include "Texture2D.hpp"
 #include "Bitmap.hpp"
+#include "vulkanTestAlloc.hpp"
 
 constexpr auto IndicesPerQuad = 6U;
 
 std::vector<const char*> ValidationLayers = 
 {
-//	"VK_LAYER_LUNARG_standard_validation"
+	//"VK_LAYER_LUNARG_vktrace",
+	//"VK_LAYER_LUNARG_standard_validation",
+	"VK_LAYER_LUNARG_monitor"
 };
 
 std::vector<const char*> RequiredExtensions = 
@@ -74,7 +77,7 @@ Bitmap loadImage(std::string path)
 	uint32_t width, height;
 	width = static_cast<uint32_t>(width_i);
 	height = static_cast<uint32_t>(height_i);
-	Bitmap image = Bitmap(pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height), width * height * 4U);
+	Bitmap image = Bitmap(pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height), 0U, 0U, width * height * 4U);
 
 	return image;
 }
@@ -184,10 +187,8 @@ public:
 		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
 		auto& drawCommandExecuted = m_PresentBuffers[nextImage].drawCommandExecuted;
 
-		const uint64_t minimumCount = 1;
-		uint64_t instanceCount = std::max(minimumCount, SpriteCount);
-		static uint32_t runCount = 0;
-		runCount++;
+		const size_t minimumCount = 1;
+		size_t instanceCount = std::max(minimumCount, SpriteCount);
 		// (re)create matrix buffer if it is smaller than required
 		if (instanceCount > matrixBufferCapacity)
 		{
@@ -212,10 +213,6 @@ public:
 			);
 		}
 		
-		matrixBuffer.DebugName = "Matrix Buffer";
-		
-		matrixStagingBuffer.DebugName = "Matrix Staging Buffer";
-
 		if (matrixStagingBuffer.mapMemoryRange() != true)
 		{
 			std::runtime_error("Unable to map matrix staging buffer!");
@@ -250,7 +247,7 @@ public:
 		
 		// allocate the command buffer from the pool
 		drawCommandBuffer.reset();
-		drawCommandBuffer.init(m_Device, commandPool);
+		//drawCommandBuffer.init(m_Device, commandPool);
 
 		/////////////////////////////////////////////////////////////
 		// set up data that is constant between all command buffers
@@ -538,7 +535,7 @@ private:
 		auto swapViews = m_Swapchain.getSwapChainViews();
 		for (uint32_t i = 0; i < m_SwapImageCount; i++)
 		{
-			m_PresentBuffers[i].framebuffer.init(m_Device, m_RenderPass, swapViews[i], m_DepthImage, swapExtent);
+			m_PresentBuffers[i].framebuffer.init(m_Device, m_RenderPass, swapViews[i], m_DepthImage.getView(), swapExtent);
 		}
 	}
 
@@ -648,7 +645,7 @@ private:
 		}
 
 		// create instance
-		m_Instance.init(ValidationLayers, RequiredExtensions, DeviceExtensions);
+		m_Instance.init(ValidationLayers, RequiredExtensions, DeviceExtensions, &g_allocators);
 
 		// create surface
 		VkSurfaceKHR surface;
@@ -730,14 +727,17 @@ private:
 		size_t bufferIndex = 0;
 		for (auto& presentBuffer : m_PresentBuffers)
 		{
-			presentBuffer.framebuffer.init(m_Device, m_RenderPass, swapViews[bufferIndex], m_DepthImage, m_SwapExtent);
+			presentBuffer.framebuffer.init(m_Device, m_RenderPass, swapViews[bufferIndex], m_DepthImage.getView(), m_SwapExtent);
 			presentBuffer.drawCommandExecuted.init(m_Device);
 			presentBuffer.pool.init(m_Device, m_PhysicalDevice.getPresentQueueIndex(), 
 				VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 			presentBuffer.drawCommandBuffer.init(m_Device, presentBuffer.pool);
 			presentBuffer.matrixBufferCapacity = 0;
+			presentBuffer.matrixBufferStaged.cleanup();
 			presentBuffer.matrixBufferStaged.init(m_Device);
+			presentBuffer.stagingCommandBuffer.cleanup();
 			presentBuffer.stagingCommandBuffer.init(m_Device, presentBuffer.pool);
+			presentBuffer.stagingCommandExecuted.cleanup();
 			presentBuffer.stagingCommandExecuted.init(m_Device);
 			
 			// initialize descriptor pool
@@ -778,9 +778,8 @@ private:
 		m_ImageReadyForPresentation.init(m_Device);
 	}
 
-
 public:
-	Texture2D createTexture(const Bitmap& image) 
+	Texture2D createTexture(const Bitmap& image)
 	{
 		uint32_t textureIndex = static_cast<uint32_t>(m_Textures.size());
 		// create vke::Image2D
@@ -788,14 +787,16 @@ public:
 
 		image2D.init(m_Device, &m_Allocator, image.m_Width, image.m_Height);
 
-		auto halfWidth = image.m_Width * 0.5f;
-		auto halfHeight = image.m_Height * 0.5f;
+		auto left = image.m_Origin_x - image.m_Width;
+		auto top = image.m_Origin_y - image.m_Height;
+		auto right = image.m_Width - image.m_Origin_x;
+		auto bottom = image.m_Height - image.m_Origin_y;
 
 		glm::vec3 LeftTopPos, LeftBottomPos, RightBottomPos, RightTopPos;
-		LeftTopPos = {-halfWidth, -halfHeight, 0.0f};
-		LeftBottomPos = {-halfWidth, halfHeight, 0.0f};
-		RightBottomPos = {halfWidth, halfHeight, 0.0f};
-		RightTopPos = {halfWidth, -halfHeight, 0.0f};
+		LeftTopPos = {left, top, 0.0f};
+		LeftBottomPos = {left, bottom, 0.0f};
+		RightBottomPos = {right, bottom, 0.0f};
+		RightTopPos = {right, top, 0.0f};
 
 		glm::vec2 LeftTopUV, LeftBottomUV, RightBottomUV, RightTopUV;
 		LeftTopUV = {0.0f, 0.0f};
@@ -832,7 +833,7 @@ public:
 		texture.width = image.m_Width;
 		texture.height = image.m_Height;
 		texture.size = m_Images.back().getMemoryRange().totalSize;
-		texture.imageHandle = m_Images.back();
+		texture.imageHandle = m_Images.back().getImage();
 
 		// add the texture to a vector and a map by name
 		m_Textures.push_back(texture);
@@ -845,7 +846,6 @@ public:
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
 		);
-		stagingBuffer.DebugName = "Image Staging Buffer";
 
 		if (stagingBuffer.mapMemoryRange() != true)
 		{
@@ -880,12 +880,10 @@ public:
 		vertexStagingBuffer.init(m_Device, &m_Allocator, vertexDataSize, 
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-		vertexStagingBuffer.DebugName = "Vertex Staging Buffer";
 
 		indexStagingBuffer.init(m_Device, &m_Allocator, indexDataSize, 
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-		indexStagingBuffer.DebugName = "Index Staging Buffer";
 
 		// initialize device buffers
 		m_VertexBuffer.init(m_Device, &m_Allocator, vertexDataSize,
@@ -893,14 +891,12 @@ public:
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			vke::AllocationStyle::NewAllocation
 		);
-		m_VertexBuffer.DebugName = "Vertex Buffer";
 
 		m_IndexBuffer.init(m_Device, &m_Allocator, indexDataSize,
 			VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			vke::AllocationStyle::NewAllocation
 		);
-		m_IndexBuffer.DebugName = "Index Buffer";
 
 		// map vertex staging buffer
 		if (vertexStagingBuffer.mapMemoryRange() != true)
@@ -965,8 +961,9 @@ private:
 		set0Writes[0].pImageInfo = &samplerInfo;
 
 		std::vector<VkDescriptorImageInfo> imageInfos;
-		for (const VkImageView& view : m_Images)
+		for (auto& view_ : m_Images)
 		{
+			auto view = view_.getView();
 			VkDescriptorImageInfo imageInfo = {};
 			imageInfo.imageView = view;
 			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

@@ -8,6 +8,7 @@
 #include <memory>
 #include "MemoryAllocator.h"
 #include "fileIO.h"
+
 #ifdef NDEBUG
 constexpr bool DebugMode = false;
 constexpr bool enableValidationLayers = false;
@@ -35,11 +36,7 @@ namespace vke
 		friend class PhysicalDevice;
 		friend class LogicalDevice;
 	public:
-		Instance() : m_Instance(VK_NULL_HANDLE)
-		{
-		}
-
-		void init(const std::vector<const char*>& validationLayers, const std::vector<const char*>& requiredExtensions, const std::vector<const char*>& deviceExtensions)
+		void init(const std::vector<const char*>& validationLayers, const std::vector<const char*>& requiredExtensions, const std::vector<const char*>& deviceExtensions, VkAllocationCallbacks* allocators = nullptr)
 		{
 			m_ValidationLayers = validationLayers;
 			m_VulkanExtensions = requiredExtensions;
@@ -80,7 +77,7 @@ namespace vke
 				createInfo.enabledLayerCount = 0;
 			}
 
-			if (vkCreateInstance(&createInfo, nullptr, &m_Instance) != VK_SUCCESS)
+			if (vkCreateInstance(&createInfo, allocators, &m_Instance) != VK_SUCCESS)
 			{
 				throw std::exception("failed to create vulkan instance!");
 			}
@@ -104,7 +101,7 @@ namespace vke
 		operator VkInstance*() { return &m_Instance; }
 
 	private:
-		VkInstance m_Instance;
+		VkInstance m_Instance = VK_NULL_HANDLE;
 		std::vector<const char*> m_VulkanExtensions;
 		std::vector<const char*> m_DeviceExtensions;
 		std::vector<const char*> m_ValidationLayers;
@@ -283,8 +280,6 @@ namespace vke
 	class CommandPool
 	{
 	public:
-		CommandPool() : m_Device(VK_NULL_HANDLE), m_Pool(VK_NULL_HANDLE) {}
-
 		void init(VkDevice device, uint32_t queueFamily, VkCommandPoolCreateFlags flags)
 		{
 			m_Device = device;
@@ -314,16 +309,14 @@ namespace vke
 		operator VkCommandPool() { return m_Pool; }
 
 	private:
-		VkDevice m_Device;
-		VkCommandPool m_Pool;
-		uint32_t m_QueueFamily;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkCommandPool m_Pool = VK_NULL_HANDLE;
+		uint32_t m_QueueFamily = 0;
 	};
 
 	class CommandBuffer
 	{
 	public:
-		CommandBuffer() : m_Device(VK_NULL_HANDLE), m_Pool(VK_NULL_HANDLE), m_Buffer(VK_NULL_HANDLE) {}
-
 		void init(VkDevice device, VkCommandPool pool)
 		{
 			m_Device = device;
@@ -389,9 +382,9 @@ namespace vke
 		operator VkCommandBuffer() { return m_Buffer; }
 
 	private:
-		VkDevice m_Device;
-		VkCommandPool m_Pool;
-		VkCommandBuffer m_Buffer;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkCommandPool m_Pool = VK_NULL_HANDLE;
+		VkCommandBuffer m_Buffer = VK_NULL_HANDLE;
 	};
 
 	class PhysicalDevice
@@ -399,8 +392,6 @@ namespace vke
 		friend class Image2D;
 		friend class Buffer;
 	public:
-		PhysicalDevice() : m_PhysicalDevice(VK_NULL_HANDLE) {}
-
 		void init(Instance& instance, VkSurfaceKHR surface)
 		{
 			pickPhysicalDevice(instance, surface);
@@ -419,10 +410,10 @@ namespace vke
 		auto getPresentQueueIndex() { return m_PresentQueueIndex; }
 
 	private:
-		VkPhysicalDevice m_PhysicalDevice;
-		VkPhysicalDeviceProperties m_DeviceProperties;
-		int m_GraphicsQueueIndex;
-		int m_PresentQueueIndex;
+		VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
+		VkPhysicalDeviceProperties m_DeviceProperties = {};
+		int m_GraphicsQueueIndex = 0;
+		int m_PresentQueueIndex = 0;
 
 		uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
 		{
@@ -714,8 +705,8 @@ namespace vke
 		operator VkFence*() { return &m_Fence; }
 
 	private:
-		VkDevice m_Device;
-		VkFence m_Fence;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkFence m_Fence = VK_NULL_HANDLE;
 	};
 
 	class Semaphore
@@ -783,8 +774,8 @@ namespace vke
 		operator VkShaderModule() { return m_ShaderModule; }
 
 	private:
-		VkDevice m_Device;
-		VkShaderModule m_ShaderModule;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkShaderModule m_ShaderModule = VK_NULL_HANDLE;
 	};
 
 	class Buffer
@@ -898,13 +889,12 @@ namespace vke
 		VkDeviceSize getUsableSize() { return m_MemoryRange.usableSize; }
 
 		void* mappedData = nullptr;
-		std::string DebugName = "No Name";
 
 	private:
 		VkDevice m_Device = VK_NULL_HANDLE;
 		VkBufferCreateInfo m_BufferInfo = {};
 		VkBuffer m_Buffer = VK_NULL_HANDLE;
-		Allocator* m_Allocator;
+		Allocator* m_Allocator = nullptr;
 		VkMemoryPropertyFlags m_MemoryProperties = {};
 		vke::MemoryRange m_MemoryRange = {};
 		bool m_Mapped = false;
@@ -1046,6 +1036,7 @@ namespace vke
 			commandBuffer.submit(queue, std::vector<VkPipelineStageFlags>{0}, VK_NULL_HANDLE, semaphores, semaphores);
 			vkQueueWaitIdle(queue);
 			m_CurrentLayout = newLayout;
+			commandBuffer.cleanup();
 		}
 
 		void copyFromBuffer(VkBuffer source, VkCommandPool pool, VkQueue queue, VkDeviceSize bufferOffset = 0)
@@ -1088,6 +1079,7 @@ namespace vke
 			commandBuffer.submit(queue, std::vector<VkPipelineStageFlags>(), VK_NULL_HANDLE, semaphores, semaphores);
 			vkQueueWaitIdle(queue);
 			transitionImageLayout(pool, queue, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			commandBuffer.cleanup();
 		}
 
 		void cleanup()
@@ -1105,27 +1097,25 @@ namespace vke
 
 		MemoryRange getMemoryRange() { return m_MemoryRange; }
 
-		operator VkImage() { return m_Image; }
+		VkImage getImage() { return m_Image; }
 		
-		operator VkImageView() { return m_View; }
+		VkImageView getView() { return m_View; }
 
 	private:
-		VkDevice m_Device;
-		VkImage m_Image;
-		VkImageView m_View;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkImage m_Image = VK_NULL_HANDLE;
+		VkImageView m_View = VK_NULL_HANDLE;
 		VkFormat m_Format;
 		VkImageLayout m_CurrentLayout;
 		VkExtent2D m_Size;
 		VkImageAspectFlags m_AspectFlags;
-		Allocator* m_Allocator;
+		Allocator* m_Allocator = nullptr;
 		MemoryRange m_MemoryRange;
 	};
 
 	class Sampler2D
 	{
 	public:
-		Sampler2D() : m_Device(VK_NULL_HANDLE), m_Sampler(VK_NULL_HANDLE) {}
-
 		void init(VkDevice device)
 		{
 			m_Device = device;
@@ -1165,15 +1155,13 @@ namespace vke
 		operator void*() { return (void*)&m_Sampler; }
 
 	private:
-		VkDevice m_Device;
-		VkSampler m_Sampler;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkSampler m_Sampler = VK_NULL_HANDLE;
 	};
 
 	class Swapchain
 	{
 	public:
-		Swapchain() {}
-
 		void init (PhysicalDevice& physicalDevice, 
 			VkDevice device, 
 			VkSurfaceKHR surface,
@@ -1350,8 +1338,8 @@ namespace vke
 		}
 
 	private:
-		VkDevice m_Device;
-		VkSwapchainKHR m_Swapchain;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkSwapchainKHR m_Swapchain = VK_NULL_HANDLE;
 		std::vector<VkImage> m_SwapchainImages;
 		std::vector<VkImageView> m_SwapchainViews;
 		VkSurfaceFormatKHR m_SurfaceFormat;
@@ -1383,8 +1371,6 @@ namespace vke
 	class RenderPass
 	{
 	public:
-		RenderPass() : m_Device(VK_NULL_HANDLE), m_RenderPass(VK_NULL_HANDLE) {}
-
 		void init(VkDevice device, VkFormat colorAttachmentFormat, VkFormat depthAttachmentFormat)
 		{
 			m_Device = device;
@@ -1459,15 +1445,13 @@ namespace vke
 		operator VkRenderPass() { return m_RenderPass; }
 
 	private:
-		VkDevice m_Device;
-		VkRenderPass m_RenderPass;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkRenderPass m_RenderPass = VK_NULL_HANDLE;
 	};
 
 	class PipelineLayout
 	{
 	public:
-		PipelineLayout() : m_Device(VK_NULL_HANDLE), m_PipelineLayout(VK_NULL_HANDLE) {}
-
 		void init(VkDevice device, std::vector<VkPushConstantRange> pushConstantRanges, std::vector<VkDescriptorSetLayout> descriptorSetLayouts) 
 		{
 			m_Device = device;
@@ -1497,15 +1481,13 @@ namespace vke
 		operator VkPipelineLayout() { return m_PipelineLayout; }
 
 	private:
-		VkDevice m_Device;
-		VkPipelineLayout m_PipelineLayout;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkPipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
 	};
 
 	class Pipeline
 	{
 	public:
-		Pipeline() : m_Device(VK_NULL_HANDLE), m_Pipeline(VK_NULL_HANDLE) {}
-
 		void init(
 			LogicalDevice& device,
 			VkRenderPass renderPass,
@@ -1653,15 +1635,13 @@ namespace vke
 		operator VkPipeline() { return m_Pipeline; }
 
 	private:
-		VkDevice m_Device;
-		VkPipeline m_Pipeline;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkPipeline m_Pipeline = VK_NULL_HANDLE;
 	};
 
 	class Framebuffer
 	{
 	public:
-		Framebuffer() : m_Device(VK_NULL_HANDLE), m_Framebuffer(VK_NULL_HANDLE) {}
-
 		void init(
 			LogicalDevice& device,
 			VkRenderPass renderPass,
@@ -1706,15 +1686,13 @@ namespace vke
 		operator VkFramebuffer() { return m_Framebuffer; }
 
 	private:
-		VkDevice m_Device;
-		VkFramebuffer m_Framebuffer;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkFramebuffer m_Framebuffer = VK_NULL_HANDLE;
 	};
 
 	class DescriptorSetLayout
 	{
 	public:
-		DescriptorSetLayout() : m_Device(VK_NULL_HANDLE), m_DSLayout(VK_NULL_HANDLE) {}
-
 		void init(LogicalDevice& device, std::vector<VkDescriptorSetLayoutBinding> bindings)
 		{
 			m_Device = device;
@@ -1742,15 +1720,13 @@ namespace vke
 		}
 
 	private:
-		VkDevice m_Device;
-		VkDescriptorSetLayout m_DSLayout;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkDescriptorSetLayout m_DSLayout = VK_NULL_HANDLE;
 	};
 
 	class DescriptorSet
 	{
 	public:
-		DescriptorSet() : m_Device(VK_NULL_HANDLE), m_DescriptorPool(VK_NULL_HANDLE), m_DescriptorSet(VK_NULL_HANDLE) {}
-		
 		void init(VkDevice device, VkDescriptorPool pool, std::vector<VkDescriptorSetLayout>& setLayouts)
 		{
 			m_Device = device;
@@ -1783,16 +1759,14 @@ namespace vke
 		operator VkDescriptorSet*() { return &m_DescriptorSet; }
 
 	private:
-		VkDevice m_Device;
-		VkDescriptorPool m_DescriptorPool;
-		VkDescriptorSet m_DescriptorSet;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkDescriptorPool m_DescriptorPool = VK_NULL_HANDLE;
+		VkDescriptorSet m_DescriptorSet = VK_NULL_HANDLE;
 	};
 
 	class DescriptorPool
 	{
 	public:
-		DescriptorPool() : m_Device(VK_NULL_HANDLE), m_Pool(VK_NULL_HANDLE) {}
-
 		void init(LogicalDevice& device, std::vector<VkDescriptorPoolSize> poolSizes, uint32_t maxSets)
 		{
 			m_Device = device;
@@ -1839,7 +1813,7 @@ namespace vke
 		operator VkDescriptorPool() { return m_Pool; }
 
 	private:
-		VkDevice m_Device;
-		VkDescriptorPool m_Pool;
+		VkDevice m_Device = VK_NULL_HANDLE;
+		VkDescriptorPool m_Pool = VK_NULL_HANDLE;
 	};
 }

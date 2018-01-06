@@ -1,22 +1,40 @@
 #pragma once
 #include "ft2build.h"
 #include FT_FREETYPE_H
+#include FT_GLYPH_H
 #include <iostream>
-#include "VulkanApp.h"
 #include "MPL.hpp"
 #include <utility>
+#include "Bitmap.hpp"
+#include <memory>
+#include <gsl/gsl>
 
+namespace Text
+{
 using FontID = size_t;
 using FontSize = size_t;
 using GlyphID = FT_UInt;
 using CharCode = FT_ULong;
 
-struct GlyphData
+struct GlyphDeleter
 {
-    FT_GlyphSlot glyph;
-};
+	GlyphDeleter() {}
+	GlyphDeleter(const GlyphDeleter&) {}
+	GlyphDeleter(GlyphDeleter&&) {}
 
-using GlyphMap = std::map<CharCode, GlyphData>;
+	GlyphDeleter& operator=(const GlyphDeleter& other)
+	{
+		return *this;
+	}
+
+	void operator()(FT_Glyph* glyph) const
+	{
+		FT_Done_Glyph(*glyph);
+	}
+};
+using GlyphPtr = std::unique_ptr<FT_Glyph, GlyphDeleter>;
+
+using GlyphMap = std::map<CharCode, GlyphPtr>;
 
 struct FontData
 {
@@ -38,7 +56,7 @@ class TextEngine
     }
 
 public:
-    void Init()
+    void init()
     {
         auto error = FT_Init_FreeType(&library);
         if (error != 0)
@@ -47,15 +65,20 @@ public:
         }
     }
 
+	void cleanup()
+	{
+		auto error = FT_Done_FreeType(library);
+	}
+
     template <typename FontType>
-    void LoadFont(std::string fontPath, FontSize fontSize, size_t hDPI, size_t vDPI, VkDevice device, vke::Allocator* allocator, VkCommandPool pool, VkQueue queue)
+    auto LoadFont(FontSize fontSize, size_t DPI, const char* fontPath = FontType::path)
     {
         auto fontID = getFontID<FontType>();
 
         auto& fontData = fontMaps[fontID];
         FT_Face& face = fontData.face;
-        auto newFaceError = FT_New_Face(library, fontPath.c_str(), 0, &face);
-        auto setSizeError = FT_Set_Char_Size(face, 0, fontSize * 64, hDPI, vDPI);
+        auto newFaceError = FT_New_Face(library, fontPath, 0, &face);
+        auto setSizeError = FT_Set_Char_Size(face, gsl::narrow_cast<FT_F26Dot6>(0), gsl::narrow_cast<FT_F26Dot6>(fontSize * 64), gsl::narrow<FT_UInt>(DPI), gsl::narrow<FT_UInt>(0U));
 
         auto& glyphMapForSize = fontData.glyphsBySize[fontSize];
 
@@ -68,71 +91,58 @@ public:
         {
             // load and render glyph
             auto loadError = FT_Load_Glyph(face, glyphID, FT_LOAD_RENDER);
+			FT_Glyph glyphRawPtr;
+			auto getError = FT_Get_Glyph(face->glyph, &glyphRawPtr);
+            GlyphPtr glyphPtr(&glyphRawPtr);
+			glyphMapForSize.insert(std::make_pair(charcode, std::move(glyphPtr)));
 
-			auto& glyph = face->glyph;
-            auto& bitmap = glyph->bitmap;
-
-            // create a VkImage and store it with the charcode
-            GlyphData glyphData = {};
-            glyphData.code = charcode;
-
-			// create a staging buffer for the bitmap data
-			vke::Buffer stagingBuffer;
-			VkDeviceSize bitmapSize = bitmap.width * bitmap.rows;
-			stagingBuffer.init(device, allocator, bitmapSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-			// map the staging buffer and copy the bitmap into it (tightly packed)
-			stagingBuffer.mapMemoryRange();
-			for (size_t sourceRow = 0; sourceRow < bitmap.rows; sourceRow++)
-			{
-				for (size_t sourceColumn = 0; sourceColumn < bitmap.width; sourceColumn++)
-				{
-					size_t sourcePosition = (sourceRow * bitmap.pitch) + sourceColumn;
-					size_t destPosition = (sourceRow * bitmap.width) + sourceColumn;
-
-					auto destination = static_cast<unsigned char*>(stagingBuffer.mappedData);
-					auto source = bitmap.buffer;
-
-					destination[destPosition] = source[sourcePosition];
-				}
-			}
-			stagingBuffer.unmap();
-
-			VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-            glyphData.image.init(device, allocator, 
-				bitmap.width, 
-				bitmap.rows, 
-				VK_FORMAT_R8_UINT,
-				VK_IMAGE_TILING_OPTIMAL, 
-				usageFlags,
-				VK_IMAGE_ASPECT_COLOR_BIT,
-				VK_SHARING_MODE_EXCLUSIVE,
-				VK_IMAGE_LAYOUT_PREINITIALIZED,
-				vke::AllocationStyle::NoPreference);
-
-			// copy from staging buffer to device buffer
-			glyphData.image.copyFromBuffer(static_cast<VkBuffer>(stagingBuffer), pool, queue);
-
-			FT_BBox cbox;
-			FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_PIXELS, &cbox);
-			auto xMin = static_cast<float>(cbox.xMin / 64);
-			auto yMin = static_cast<float>(cbox.yMin / 64);
-			auto xMax = static_cast<float>(cbox.xMax / 64);
-			auto yMax = static_cast<float>(cbox.yMax / 64);
-			glyphData.TopLeft = glm::vec3(xMin, yMax, 0.0f);
-			glyphData.BottomLeft = glm::vec3(xMin, yMin, 0.0f);
-			glyphData.BottomRight = glm::vec3(xMax, yMin, 0.0f);
-			glyphData.TopRight = glm::vec3(xMax, yMax, 0.0f);
-
-			glyphData.TopLeftUV = glm::vec2(0.0f, 0.0f);
-			glyphData.BottomLeftUV = glm::vec2(0.0f, 1.0f);
-			glyphData.BottomRightUV = glm::vec2(1.0f, 1.0f);
-			glyphData.TopRightUV = glm::vec2(1.0f, 0.0f);
-			
-            glyphMapForSize[glyphID] = glyphData;
-            glyphMapForSize.push_back(FT_Get_Next_Char(face, glyphMapForSize.back(), &glyphID));
+			charcode = FT_Get_Next_Char(face, charcode, &glyphID);
         }
-    }
-};
 
+		return std::make_tuple(glyphMapForSize.cbegin(), glyphMapForSize.cend());
+    }
+
+	Bitmap getFullBitmap(FT_Glyph glyph)
+	{
+		auto bitmapGlyph = reinterpret_cast<FT_BitmapGlyph>(glyph);
+		auto& sourceBitmap = bitmapGlyph->bitmap;
+
+		struct RGBA
+		{
+			uint8_t r,g,b,a;
+			RGBA()
+			{}
+
+			RGBA(uint8_t r, uint8_t g, uint8_t b, uint8_t a) :
+				r(r), g(g), b(b), a(a)
+			{}
+		};
+
+		std::vector<RGBA> pixels;
+		for (size_t sourceRow = 0; sourceRow < sourceBitmap.rows; sourceRow++)
+		{
+			for (size_t sourceColumn = 0; sourceColumn < sourceBitmap.width; sourceColumn++)
+			{
+				size_t sourcePosition = (sourceRow * sourceBitmap.pitch) + sourceColumn;
+
+				auto source = sourceBitmap.buffer;
+				pixels.emplace_back(255, 255, 255, source[sourcePosition]);
+			}
+		}
+		FT_BBox box;
+		FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_PIXELS, &box);
+
+		Bitmap resultBitmap = Bitmap(
+			reinterpret_cast<stbi_uc*>(pixels.data()), 
+			sourceBitmap.width, 
+			sourceBitmap.rows, 
+			std::abs(box.xMin),
+			box.yMax,
+			sourceBitmap.width * sourceBitmap.rows * sizeof(RGBA)
+		);
+		return resultBitmap;
+	}
+
+
+}; // class TextEngine
+} // namespace Text

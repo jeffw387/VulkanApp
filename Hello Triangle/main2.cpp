@@ -25,6 +25,34 @@ namespace Image
 	const char* Test1::path = "Content/Textures/texture.jpg";
 }
 
+namespace Font
+{
+	struct AeroviasBrasil
+	{
+		static std::map<Text::FontSize, std::map<Text::CharCode, Texture2D>> fontMap;
+		static const char* path;
+	};
+	const char* AeroviasBrasil::path = "Content/Fonts/AeroviasBrasilNF.ttf";
+
+	template <typename FontType, typename TextEngineType>
+	void Load(TextEngineType textEngine, VulkanApp app, Text::FontSize fontSize, uint32_t DPI)
+	{
+		textEngine.LoadFont<FontType>(fontSize, DPI);
+		//auto cbegin = glyphs.cbegin();
+		//auto cend = glyphs.cend();
+		//for (auto pair = cbegin; pair != cend; ++pair)
+		//{
+		//	const auto& charcode = pair->first;
+		//	const auto& glyphPtr = pair->second;
+		//	const auto glyph = *(glyphPtr.get());
+		//	auto fullBitmap = textEngine.getFullBitmap(glyph);
+		//	auto texture = app.createTexture(fullBitmap);
+		//	auto& glyphMap = FontType::fontMap[fontSize];
+		//	glyphMap[charcode] = texture;
+		//}
+	}
+}
+
 int main()
 {
 	using ImageMgr = ImageManager<Image::Star, Image::Test1>;
@@ -48,6 +76,9 @@ int main()
 	// Load Textures Here
 	images.initImage<Image::Star>(app);
 	images.initImage<Image::Test1>(app);
+
+	Text::TextEngine<Font::AeroviasBrasil> textEngine;
+	Font::Load<Font::AeroviasBrasil>(textEngine, app, 12U, 166U);
 
 	// After loading all textures, copy vertex data to device
 	app.CopyVertexDataToDevice();
@@ -75,5 +106,7 @@ int main()
 		}
 		app.endRender();
 	}
+	app.cleanup();
+	std::cout << "Remaining allocations: " << g_counter << ". \n";
 	return EXIT_SUCCESS;
 }

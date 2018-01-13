@@ -26,14 +26,16 @@
     <ClInclude Include="circularBuffer.hpp" />
     <ClInclude Include="ECS.hpp" />
     <ClInclude Include="fileIO.h" />
-    <ClInclude Include="ImageManager.hpp" />
     <ClInclude Include="Input.h" />
+    <ClInclude Include="MapHelper.hpp" />
     <ClInclude Include="math.h" />
     <ClInclude Include="MemoryAllocator.h" />
     <ClInclude Include="MPL.hpp" />
     <ClInclude Include="profiler.hpp" />
     <ClInclude Include="text.hpp" />
+    <ClInclude Include="Texture2D.hpp" />
     <ClInclude Include="VulkanApp.h" />
+    <ClInclude Include="VulkanApp2.hxx" />
     <ClInclude Include="VulkanData.h" />
     <ClInclude Include="VulkanBase.h" />
     <ClInclude Include="alignedAlloc.h" />
@@ -44,7 +46,7 @@
     <ProjectGuid>{3ae18573-b802-4d90-86be-575b8fd36990}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>Hello_Triangle</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.15063.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -121,13 +123,14 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Libraries\Compiled\glfw-3.2.1.bin.WIN64\include</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions);VK_USE_PLATFORM_WIN32_KHR</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\Libraries\Source\Vookoo\include;C:\Libraries\Source\hana\include;C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Libraries\Compiled\glfw-3.2.1.bin.WIN64\include;C:\Projects\WindowsPlatform</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <EnableModules>true</EnableModules>
       <EnablePREfast>true</EnablePREfast>
       <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
       <ConformanceMode>true</ConformanceMode>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -145,18 +148,18 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Libraries\Compiled\glfw-3.2.1.bin.WIN64\include</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions);VK_USE_PLATFORM_WIN32_KHR</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\Libraries\Source\Vookoo\include;C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Projects\WindowsPlatform;C:\Projects\WindowsPlatform</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <EnableModules>true</EnableModules>
-      <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <ConformanceMode>true</ConformanceMode>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>C:\Libraries\Compiled\glfw-3.2.1.bin.WIN64\lib-vc2015;C:\VulkanSDK\1.0.65.1\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;freetype281MTd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Libraries\Source\freetype\2.8.1\freetype-2.8.1\builds\windows\vc2010\Bin\x64\Debug Multithreaded;C:\VulkanSDK\1.0.65.1\Lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vulkan-1.lib;freetype281MTd.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
@@ -167,13 +170,14 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Libraries\Compiled\glfw-3.2.1.bin.WIN64\include</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions);VK_USE_PLATFORM_WIN32_KHR</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\Libraries\Source\Vookoo\include;C:\Libraries\Source\hana\include;C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Libraries\Compiled\glfw-3.2.1.bin.WIN64\include;C:\Projects\WindowsPlatform</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <EnableModules>true</EnableModules>
       <EnablePREfast>true</EnablePREfast>
       <AdditionalOptions>/D_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING %(AdditionalOptions)</AdditionalOptions>
       <ConformanceMode>true</ConformanceMode>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -181,6 +185,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>C:\Libraries\Compiled\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>vulkan-1.lib;glfw3.lib;freetype281MT.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <PostBuildEvent>
       <Command>
@@ -194,20 +199,21 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Libraries\Compiled\glfw-3.2.1.bin.WIN64\include</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);VK_USE_PLATFORM_WIN32_KHR</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\Libraries\Source\Vookoo\include;C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Projects\WindowsPlatform</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <EnableModules>true</EnableModules>
-      <AdditionalOptions>/D_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING %(AdditionalOptions)</AdditionalOptions>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <ConformanceMode>true</ConformanceMode>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>C:\Libraries\Compiled\glfw-3.2.1.bin.WIN64\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;freetype281MT.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Libraries\Source\freetype\2.8.1\freetype-2.8.1\builds\windows\vc2010\Bin\x64\Release Multithreaded;C:\VulkanSDK\1.0.65.1\Lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vulkan-1.lib;freetype281MT.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,6 +1,9 @@
 #pragma once
 namespace MPL
 {
+	template <std::size_t I>
+	using Size = std::integral_constant<std::size_t, I>;
+
         // TypeList
     template <typename... Types>
     class TypeList
@@ -90,15 +93,43 @@ namespace MPL
     using PushBack_t = typename PushBack<List, NewElement>::Type;
 
         // Index Of
-    template <typename... List>
-    class IndexOf;
+    template <typename...>
+    struct Types
+	{
+		using Type = Types;
+	};
 
-    template <typename SearchElement, typename... Elements>
-    class IndexOf<SearchElement, SearchElement, Elements...> :
-		public std::integral_constant<size_t, 0>
-        {};
+	template <typename SearchElement, typename Types>
+	struct IndexOf
+	{
+	};
 
-    template <typename SearchElement, typename NotAMatch, typename... Elements>
-    class IndexOf<SearchElement, NotAMatch, Elements...> :
-        public std::integral_constant<size_t, 1 + IndexOf<SearchElement, Elements...>::value> {};
+	template <typename SearchElement, typename... Elements>
+	struct IndexOf<SearchElement, Types<SearchElement, Elements...>> : Size<0>
+	{
+	};
+
+	template <typename SearchElement, typename Element0, typename... RemainingElements>
+	struct IndexOf<SearchElement, Types<Element0, RemainingElements...>> : Size<IndexOf<SearchElement, Types<RemainingElements...>>::value + 1>
+	{
+	};
+
+	//template <typename SearchElement>
+	//struct IndexOf<SearchElement>
+	//{
+	//	static_assert("Invalid call for IndexOf with no list to index into.");
+	//	using value = Size<0>;
+	//};
+
+ //   template <typename SearchElement, typename... Elements>
+	//struct IndexOf<SearchElement, SearchElement, Elements...> : Size<0>
+ //   {};
+
+ //   template <typename SearchElement, typename NotAMatch, typename... Elements>
+	//struct IndexOf<SearchElement, NotAMatch, Elements...> :
+	//	Size<1 + IndexOf<SearchElement, Elements...>::value> 
+	//{};
+
+	template <typename SearchElement, typename... Elements>
+	using IndexOf_t = Size<IndexOf<SearchElement, Elements...>::value>;
 }

@@ -45,8 +45,7 @@
         {
             "name": "Win32",
             "includePath": [
-                "C:/Libraries/Source/glfw/include",
-                "C:/VulkanSDK/1.0.54.0/Include",
+                "C:/VulkanSDK/1.0.65.1/Include",
                 "C:/Libraries/Source/fmt-master",
                 "C:/Libraries/Source/stb-master",
                 "C:/Libraries/Source/glm",
@@ -67,8 +66,7 @@
             "intelliSenseMode": "msvc-x64",
             "browse": {
                 "path": [
-                    "C:/Libraries/glfw-3.2.1.bin.WIN64/include",
-                    "C:/VulkanSDK/1.0.54.0/Include",
+                    "C:/VulkanSDK/1.0.65.1/Include",
                     "C:/Libraries/Source/fmt-master",
                     "C:/Libraries/Source/stb-master",
                     "C:/Libraries/Source/glm",

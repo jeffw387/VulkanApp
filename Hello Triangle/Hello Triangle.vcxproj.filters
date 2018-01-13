@@ -59,13 +59,19 @@
     <ClInclude Include="circularBuffer.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ImageManager.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Bitmap.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vulkanTestAlloc.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MapHelper.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Texture2D.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="VulkanApp2.hxx">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

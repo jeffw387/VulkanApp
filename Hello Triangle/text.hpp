@@ -3,11 +3,11 @@
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
 #include <iostream>
-#include "MPL.hpp"
 #include <utility>
 #include "Bitmap.hpp"
 #include <memory>
 #include <gsl/gsl>
+#include "Texture2D.hpp"
 
 namespace Text
 {
@@ -16,49 +16,36 @@ using FontSize = size_t;
 using GlyphID = FT_UInt;
 using CharCode = FT_ULong;
 
-struct GlyphDeleter
+struct GlyphData
 {
-	GlyphDeleter() {}
-	GlyphDeleter(const GlyphDeleter&) {}
-	GlyphDeleter(GlyphDeleter&&) {}
-
-	GlyphDeleter& operator=(const GlyphDeleter& other)
-	{
-		return *this;
-	}
-
-	void operator()(FT_Glyph* glyph) const
-	{
-		FT_Done_Glyph(*glyph);
-	}
+	FT_Glyph glyph;
+	TextureIndex textureIndex;
 };
-using GlyphPtr = std::unique_ptr<FT_Glyph, GlyphDeleter>;
 
-using GlyphMap = std::map<CharCode, GlyphPtr>;
+using GlyphMap = std::map<CharCode, GlyphData>;
+
+struct SizeData
+{
+	GlyphMap glyphMap;
+	FT_F26Dot6 spaceAdvance;
+};
 
 struct FontData
 {
     FT_Face face;
     std::string path;
-    std::map<FontSize, GlyphMap> glyphsBySize;
+    std::map<FontSize, SizeData> glyphsBySize;
 };
 
-template <typename... fontTypes>
 class TextEngine
 {
-    std::map<FontID, FontData> fontMaps;
-    FT_Library library;
-
-    template <typename FontType>
-    auto getFontID()
-    {
-        return static_cast<FontID>(MPL::IndexOf<FontType, fontTypes...>::value);
-    }
-
 public:
+    FT_Library m_Library;
+    std::map<FontID, FontData> m_FontMaps;
+
     void init()
     {
-        auto error = FT_Init_FreeType(&library);
+        auto error = FT_Init_FreeType(&m_Library);
         if (error != 0)
         {
             std::cerr << "Error initializing Freetype!";
@@ -67,66 +54,46 @@ public:
 
 	void cleanup()
 	{
-		auto error = FT_Done_FreeType(library);
+		for (auto& [fontID, fontData] : m_FontMaps)
+		{
+			for (auto& [size, sizeData] : fontData.glyphsBySize)
+			{
+				for (auto& [charcode, glyphData] : sizeData.glyphMap)
+				{
+					FT_Done_Glyph(glyphData.glyph);
+				}
+			}
+		}
+		auto error = FT_Done_FreeType(m_Library);
 	}
 
-    template <typename FontType>
-    auto LoadFont(FontSize fontSize, size_t DPI, const char* fontPath = FontType::path)
-    {
-        auto fontID = getFontID<FontType>();
-
-        auto& fontData = fontMaps[fontID];
-        FT_Face& face = fontData.face;
-        auto newFaceError = FT_New_Face(library, fontPath, 0, &face);
-        auto setSizeError = FT_Set_Char_Size(face, gsl::narrow_cast<FT_F26Dot6>(0), gsl::narrow_cast<FT_F26Dot6>(fontSize * 64), gsl::narrow<FT_UInt>(DPI), gsl::narrow<FT_UInt>(0U));
-
-        auto& glyphMapForSize = fontData.glyphsBySize[fontSize];
-
-        FT_UInt glyphID;
-        FT_ULong charcode;
-        
-        charcode = FT_Get_First_Char(face, &glyphID);
-
-        while (glyphID)
-        {
-            // load and render glyph
-            auto loadError = FT_Load_Glyph(face, glyphID, FT_LOAD_RENDER);
-			FT_Glyph glyphRawPtr;
-			auto getError = FT_Get_Glyph(face->glyph, &glyphRawPtr);
-            GlyphPtr glyphPtr(&glyphRawPtr);
-			glyphMapForSize.insert(std::make_pair(charcode, std::move(glyphPtr)));
-
-			charcode = FT_Get_Next_Char(face, charcode, &glyphID);
-        }
-
-		return std::make_tuple(glyphMapForSize.cbegin(), glyphMapForSize.cend());
-    }
+	SizeData& getSizeData(FontID fontID, FontSize size)
+	{
+		auto& fontData = m_FontMaps.at(fontID);
+		return fontData.glyphsBySize.at(size);
+	}
 
 	Bitmap getFullBitmap(FT_Glyph glyph)
 	{
 		auto bitmapGlyph = reinterpret_cast<FT_BitmapGlyph>(glyph);
 		auto& sourceBitmap = bitmapGlyph->bitmap;
+		constexpr auto channelCount = 4U;
+		auto outputSize = sourceBitmap.width * sourceBitmap.rows * channelCount;
 
-		struct RGBA
-		{
-			uint8_t r,g,b,a;
-			RGBA()
-			{}
-
-			RGBA(uint8_t r, uint8_t g, uint8_t b, uint8_t a) :
-				r(r), g(g), b(b), a(a)
-			{}
-		};
-
-		std::vector<RGBA> pixels;
-		for (size_t sourceRow = 0; sourceRow < sourceBitmap.rows; sourceRow++)
+		// Have to flip the bitmap so bottom row in source is top in output
+		std::vector<unsigned char> pixels;
+		pixels.reserve(outputSize);
+		for (int sourceRow = sourceBitmap.rows - 1; sourceRow >= 0; sourceRow--)
 		{
 			for (size_t sourceColumn = 0; sourceColumn < sourceBitmap.width; sourceColumn++)
 			{
 				size_t sourcePosition = (sourceRow * sourceBitmap.pitch) + sourceColumn;
 
 				auto source = sourceBitmap.buffer;
-				pixels.emplace_back(255, 255, 255, source[sourcePosition]);
+				pixels.push_back(255);
+				pixels.push_back(255);
+				pixels.push_back(255);
+				pixels.push_back(source[sourcePosition]);
 			}
 		}
 		FT_BBox box;
@@ -136,13 +103,56 @@ public:
 			reinterpret_cast<stbi_uc*>(pixels.data()), 
 			sourceBitmap.width, 
 			sourceBitmap.rows, 
-			std::abs(box.xMin),
+			box.xMin,
 			box.yMax,
-			sourceBitmap.width * sourceBitmap.rows * sizeof(RGBA)
+			outputSize
 		);
 		return resultBitmap;
 	}
 
+	std::optional<FT_Glyph> getGlyph(FontID fontID, FontSize size, CharCode charcode)
+	{
+		SizeData& sizeData = getSizeData(fontID, size);
+		auto it = sizeData.glyphMap.find(charcode);
+		std::optional<FT_Glyph> glyphOptional;
+		if (it != sizeData.glyphMap.end())
+		{
+			glyphOptional = it.operator*().second.glyph;
+		}
+		return glyphOptional;
+	}
+
+	auto getAdvance(FontID fontID, FontSize size, CharCode left)
+	{
+		auto glyphOptional = getGlyph(fontID, size, left);
+		if (glyphOptional)
+		{
+			// 16.16 fixed point to 32 int
+			return static_cast<FT_Int32>((*glyphOptional)->advance.x >> 16);
+		}
+		else
+		{
+			// 16.16 fixed point to 32 int
+			auto advance = getSizeData(fontID, size).spaceAdvance;
+			auto advanceShifted = advance >> 6;
+			return static_cast<FT_Int32>(advanceShifted);
+		}
+	}
+
+	auto getAdvance(FontID fontID, FontSize size, CharCode left, CharCode right)
+	{
+		auto advance = getAdvance(fontID, size, left);
+		auto face = m_FontMaps[fontID].face;
+		GlyphID leftGlyph = FT_Get_Char_Index(face, left);
+		GlyphID rightGlyph = FT_Get_Char_Index(face, right);
+		FT_Vector kerning = { 0, 0 };
+		if (FT_HAS_KERNING(face))
+		{
+			FT_Get_Kerning(face, leftGlyph, rightGlyph, FT_KERNING_DEFAULT, &kerning);
+		}
+		advance += kerning.x >> 6;
+		return advance;
+	}
 
 }; // class TextEngine
 } // namespace Text

@@ -6,6 +6,7 @@
 #include <array>
 #include <algorithm>
 #include <memory>
+#include <stdexcept>
 #include "MemoryAllocator.h"
 #include "fileIO.h"
 
@@ -44,12 +45,12 @@ namespace vke
 			// enable debug layer(s) if in debug mode
 			if (enableValidationLayers && !checkValidationLayerSupport())
 			{
-				throw std::exception("validation layers requested, but not available!");
+				throw std::runtime_error("validation layers requested, but not available!");
 			}
 
 			if (!checkExtensionSupport(m_VulkanExtensions))
 			{
-				throw std::exception("required extension was not available.");
+				throw std::runtime_error("required extension was not available.");
 			}
 
 			// Application Info Struct
@@ -79,7 +80,7 @@ namespace vke
 
 			if (vkCreateInstance(&createInfo, allocators, &m_Instance) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create vulkan instance!");
+				throw std::runtime_error("failed to create vulkan instance!");
 			}
 
 			setupDebugCallback(m_Callback);
@@ -233,7 +234,7 @@ namespace vke
 
 			if (CreateDebugReportCallbackEXT(m_Instance, &createInfo, nullptr, &callback) != VK_SUCCESS)
 			{
-				throw std::exception("failed to set up debug callback!");
+				throw std::runtime_error("failed to set up debug callback!");
 			}
 		}
 	};
@@ -241,10 +242,16 @@ namespace vke
 	class Surface
 	{
 	public:
-		void init(VkSurfaceKHR surface, VkInstance instance)
+		void init(const VkInstance instance, const HINSTANCE hInstance, const HWND hWnd)
 		{
-			m_Surface = surface;
 			m_Instance = instance;
+			VkWin32SurfaceCreateInfoKHR createInfo = {};
+			createInfo.hinstance = hInstance;
+			createInfo.hwnd = hWnd;
+			createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+			createInfo.flags = 0;
+
+			vkCreateWin32SurfaceKHR(instance, &createInfo, nullptr, &m_Surface);
 		}
 
 		void cleanup()
@@ -291,7 +298,7 @@ namespace vke
 
 			if (vkCreateCommandPool(device, &poolInfo, nullptr, &m_Pool) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create command pool!");
+				throw std::runtime_error("failed to create command pool!");
 			}
 		}
 
@@ -428,7 +435,7 @@ namespace vke
 				}
 			}
 
-			throw std::exception("failed to find suitable memory type!");
+			throw std::runtime_error("failed to find suitable memory type!");
 		}
 
 		bool checkDeviceExtensionSupport(VkPhysicalDevice device, const std::vector<const char*> deviceExtensions)
@@ -546,7 +553,7 @@ namespace vke
 
 			if (deviceCount == 0)
 			{
-				throw std::exception("failed to find GPUs with Vulkan support");
+				throw std::runtime_error("failed to find GPUs with Vulkan support");
 			}
 
 			std::vector<VkPhysicalDevice> devices(deviceCount);
@@ -569,7 +576,7 @@ namespace vke
 			// if no suitable devices are found, throw an error
 			if (m_PhysicalDevice == VK_NULL_HANDLE)
 			{
-				throw std::exception("failed to find a suitable GPU");
+				throw std::runtime_error("failed to find a suitable GPU");
 			}
 		}
 
@@ -664,7 +671,7 @@ namespace vke
 			// attempt to create logical device and throw error on failure
 			if (vkCreateDevice(m_PhysicalDevice, &createInfo, nullptr, &m_Device) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create logical device!");
+				throw std::runtime_error("failed to create logical device!");
 			}
 		}
 
@@ -758,7 +765,7 @@ namespace vke
 
 			if (vkCreateShaderModule(device, &createInfo, nullptr, &m_ShaderModule) != VK_SUCCESS) 
 			{
-				throw std::exception("failed to create shader module!");
+				throw std::runtime_error("failed to create shader module!");
 			}
 		}
 
@@ -801,12 +808,12 @@ namespace vke
 
 			if (vkCreateBuffer(device, &m_BufferInfo, nullptr, &m_Buffer) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create buffer!");
+				throw std::runtime_error("failed to create buffer!");
 			}
 			buffersCreated++;
 			if (m_Allocator->allocateBuffer(m_MemoryRange, m_Buffer, properties, allocationStyle) == false)
 			{
-				throw std::exception("failed to allocate memory for buffer!");
+				throw std::runtime_error("failed to allocate memory for buffer!");
 			}
 
 			vkBindBufferMemory(m_Device, m_Buffer, m_MemoryRange.memory, m_MemoryRange.usableStartOffset);
@@ -939,18 +946,18 @@ namespace vke
 
 			if (vkCreateImage(device, &imageInfo, nullptr, &m_Image) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create image!");
+				throw std::runtime_error("failed to create image!");
 			}
 			imagesCreated++;
 			// Allocate memory, bind image to memory
 			if (m_Allocator->allocateImage(m_MemoryRange, m_Image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, allocationStyle) == false)
 			{
-				throw std::exception("failed to allocate memory for image!");
+				throw std::runtime_error("failed to allocate memory for image!");
 			}
 
 			if (vkBindImageMemory(device, m_Image, m_MemoryRange, m_MemoryRange.usableStartOffset) != VK_SUCCESS)
 			{
-				throw std::exception("failed to bind image to memory!");
+				throw std::runtime_error("failed to bind image to memory!");
 			}
 
 			// create image view
@@ -967,7 +974,7 @@ namespace vke
 
 			if (vkCreateImageView(m_Device, &viewInfo, nullptr, &m_View) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create image view!");
+				throw std::runtime_error("failed to create image view!");
 			}
 		}
 
@@ -1210,7 +1217,7 @@ namespace vke
 
 			if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &m_Swapchain) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create swap chain!");
+				throw std::runtime_error("failed to create swap chain!");
 			}
 
 			// get swap chain images
@@ -1361,7 +1368,7 @@ namespace vke
 			VkImageView imageView;
 			if (vkCreateImageView(m_Device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) 
 			{
-				throw std::exception("failed to create texture image view!");
+				throw std::runtime_error("failed to create texture image view!");
 			}
 
 			return imageView;
@@ -1429,7 +1436,7 @@ namespace vke
 
 			if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &m_RenderPass) != VK_SUCCESS) 
 			{
-				throw std::exception("failed to create render pass!");
+				throw std::runtime_error("failed to create render pass!");
 			}
 		}
 
@@ -1465,7 +1472,7 @@ namespace vke
 
 			if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &m_PipelineLayout) != VK_SUCCESS) 
 			{
-				throw std::exception("failed to create pipeline layout!");
+				throw std::runtime_error("failed to create pipeline layout!");
 			}
 		}
 
@@ -1492,26 +1499,41 @@ namespace vke
 			LogicalDevice& device,
 			VkRenderPass renderPass,
 			VkShaderModule vertexShader,
+			uint32_t imageCount,
 			VkShaderModule fragmentShader,
 			std::vector<VkVertexInputBindingDescription> bindingDescriptions,
 			std::vector<VkVertexInputAttributeDescription> attributeDescriptions,
 			VkExtent2D windowExtent,
-			VkPipelineLayout pipelineLayout
+			VkPipelineLayout pipelineLayout,
+			bool DepthEnabled = false
 		)
 		{
 			m_Device = device;
 
-			VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+			VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
 			vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 			vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
 			vertShaderStageInfo.mod = vertexShader;
 			vertShaderStageInfo.pName = "main";
+
+			auto FragmentSpecializationSize = sizeof(uint32_t);
+			VkSpecializationMapEntry imageCountSpecialization = {};
+			imageCountSpecialization.constantID = 0;
+			imageCountSpecialization.offset = 0;
+			imageCountSpecialization.size = FragmentSpecializationSize;
+
+			VkSpecializationInfo fragmentSpecializationInfo = {};
+			fragmentSpecializationInfo.dataSize = FragmentSpecializationSize;
+			fragmentSpecializationInfo.mapEntryCount = 1;
+			fragmentSpecializationInfo.pData = &imageCount;
+			fragmentSpecializationInfo.pMapEntries = &imageCountSpecialization;
 
 			VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
 			fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 			fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 			fragShaderStageInfo.mod = fragmentShader;
 			fragShaderStageInfo.pName = "main";
+			fragShaderStageInfo.pSpecializationInfo = &fragmentSpecializationInfo;
 
 			VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
@@ -1579,15 +1601,22 @@ namespace vke
 
 			VkPipelineDepthStencilStateCreateInfo depthStencil = {};
 			depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-			depthStencil.depthTestEnable = VK_FALSE;
-			depthStencil.depthWriteEnable = VK_FALSE;
-			depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+			depthStencil.flags = 0;
+			depthStencil.depthTestEnable = DepthEnabled;
+			depthStencil.depthWriteEnable = DepthEnabled;
+			depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 			depthStencil.depthBoundsTestEnable = VK_FALSE;
-			depthStencil.minDepthBounds = 0.0f; // Optional
-			depthStencil.maxDepthBounds = 1.0f; // Optional
+			depthStencil.minDepthBounds = 0;
+			depthStencil.maxDepthBounds = 0;
 			depthStencil.stencilTestEnable = VK_FALSE;
-			depthStencil.front = {}; // Optional
-			depthStencil.back = {}; // Optional
+			depthStencil.back.failOp = VK_STENCIL_OP_KEEP;
+			depthStencil.back.passOp = VK_STENCIL_OP_KEEP;
+			depthStencil.back.compareOp = VK_COMPARE_OP_ALWAYS;
+			depthStencil.back.compareMask = 0;
+			depthStencil.back.writeMask = 0;
+			depthStencil.back.reference = 0;
+			depthStencil.back.depthFailOp = VK_STENCIL_OP_KEEP;
+			depthStencil.front = depthStencil.back; // Optional
 
 			const uint32_t dynamicStateCount = 2;
 			std::array<VkDynamicState, dynamicStateCount> dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
@@ -1614,9 +1643,15 @@ namespace vke
 			pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
 			pipelineInfo.basePipelineIndex = -1; // Optional
 
+			try
+			{
 			if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_Pipeline) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create graphics pipeline!");
+				throw std::runtime_error("failed to create graphics pipeline!");
+			}
+			}
+			catch (std::exception e)
+			{
 			}
 
 			vkDestroyShaderModule(device, vertexShader, nullptr);
@@ -1670,7 +1705,7 @@ namespace vke
 
 			if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &m_Framebuffer) != VK_SUCCESS) 
 			{
-				throw std::exception("failed to create framebuffer!");
+				throw std::runtime_error("failed to create framebuffer!");
 			}
 		}
 
@@ -1704,7 +1739,7 @@ namespace vke
 
 			if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &m_DSLayout) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create descriptor set layout!");
+				throw std::runtime_error("failed to create descriptor set layout!");
 			}
 		}
 
@@ -1779,7 +1814,7 @@ namespace vke
 
 			if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &m_Pool) != VK_SUCCESS)
 			{
-				throw std::exception("failed to create descriptor pool!");
+				throw std::runtime_error("failed to create descriptor pool!");
 			}
 		}
 
@@ -1795,7 +1830,7 @@ namespace vke
 
 			if (vkAllocateDescriptorSets(m_Device, &allocInfo, sets.data()) != VK_SUCCESS)
 			{
-				throw std::exception("failed to allocate descriptor set!");
+				throw std::runtime_error("failed to allocate descriptor set!");
 			}
 
 			return sets;

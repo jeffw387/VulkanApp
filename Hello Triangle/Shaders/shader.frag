@@ -12,6 +12,7 @@ layout(push_constant) uniform pushBlock
     float r;
     float g;
     float b;
+    float a;
 } pushConstants;
 
 layout(location = 0) in vec2 fragTexCoord;
@@ -21,7 +22,6 @@ layout(location = 0) out vec4 outColor;
 void main()
 {
     vec4 sampledColor = texture(sampler2D(tex[pushConstants.textureID], samp), fragTexCoord);
-    vec3 pushColor = vec3(pushConstants.r, pushConstants.g, pushConstants.b);
-    vec3 adjustedColor = pushColor * sampledColor.rgb;
-    outColor = vec4(adjustedColor, sampledColor.a);
+    vec4 pushColor = vec4(pushConstants.r, pushConstants.g, pushConstants.b, pushConstants.a);
+    outColor = pushColor * sampledColor;
 }

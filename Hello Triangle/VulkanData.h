@@ -8,8 +8,6 @@ using ImageIndex = uint32_t;
 
 namespace VulkanData
 {
-	const auto TextureCount = 2U;
-
 	struct MVPMatricesDescriptors
 	{
 		std::vector<VkDescriptorSetLayoutBinding> layoutBindings() 
@@ -45,18 +43,18 @@ namespace VulkanData
 	// descriptor set layouts
 	struct SamplerAndImagesDescriptors
 	{
-		std::vector<VkDescriptorSetLayoutBinding> layoutBindings()
+		std::vector<VkDescriptorSetLayoutBinding> layoutBindings(uint32_t imageCount)
 		{
 			return std::vector<VkDescriptorSetLayoutBinding>
 			{
 				binding0_sampler(),
-				binding1_sampledImages()
+				binding1_sampledImages(imageCount)
 			};
 		}
 
-		std::vector<VkDescriptorPoolSize> poolSizes() 
+		std::vector<VkDescriptorPoolSize> poolSizes(uint32_t imageCount) 
 		{ 
-			return std::vector<VkDescriptorPoolSize> { poolSize0, poolSize1, poolSize2 }; 
+			return std::vector<VkDescriptorPoolSize> { poolSize0, poolSize1(imageCount), /*poolSize2*/ }; 
 		}
 
 	private:
@@ -79,45 +77,48 @@ namespace VulkanData
 		};
 
 		// Binding 1: array of TextureCount textures
-		VkDescriptorSetLayoutBinding binding1_sampledImages()
+		VkDescriptorSetLayoutBinding binding1_sampledImages(uint32_t imageCount)
 		{
 			VkDescriptorSetLayoutBinding binding = {
 				1,													// binding
 				VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,					// descriptor type
-				TextureCount,										// descriptor count
+				imageCount,										// descriptor count
 				VK_SHADER_STAGE_FRAGMENT_BIT,						// shader stage
 				nullptr,											// immutable samplers
 			};
 			return binding;
 		}
-		VkDescriptorPoolSize poolSize1 =
+		VkDescriptorPoolSize poolSize1(uint32_t imageCount)
 		{
+			VkDescriptorPoolSize poolsize = {
 			VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,						// descriptor type
-			TextureCount											// descriptor count
+			imageCount			
+			};
+			return poolsize;
 		};
 
-		// Binding 2: uniform vec3 textColor
-		VkDescriptorSetLayoutBinding binding2_textColor()
-		{
-			VkDescriptorSetLayoutBinding binding = {
-				2,
-				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				1,
-				VK_SHADER_STAGE_FRAGMENT_BIT,
-				nullptr
-			};
-			return binding;
-		}
-		VkDescriptorPoolSize poolSize2 =
-		{
-			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			1
-		};
+		//// Binding 2: uniform vec3 textColor
+		//VkDescriptorSetLayoutBinding binding2_textColor()
+		//{
+		//	VkDescriptorSetLayoutBinding binding = {
+		//		2,
+		//		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		//		1,
+		//		VK_SHADER_STAGE_FRAGMENT_BIT,
+		//		nullptr
+		//	};
+		//	return binding;
+		//}
+		//VkDescriptorPoolSize poolSize2 =
+		//{
+		//	VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		//	1
+		//};
 	};
 	struct pushConstantRange1
 	{
 		glm::uint index;
-		glm::float32 r, g, b;
+		glm::float32 r, g, b, a;
 	};
 	struct ModelIndexPushConstant
 	{

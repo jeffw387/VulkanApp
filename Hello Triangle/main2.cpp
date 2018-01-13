@@ -3,108 +3,122 @@
 #include <map>
 
 #include "VulkanApp.h"
-#define _SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING
 #include "stx/btree_map.h"
 #include "profiler.hpp"
-#include "text.hpp"
 #include "ECS.hpp"
-#include "ImageManager.hpp"
-
+#include "MapHelper.hpp"
 
 namespace Image
 {
-	struct Star
+	enum 
 	{
-		static const char* path;
+		Star,
+		Test1,
+		Count
 	};
-	const char* Star::path = "Content/Textures/star.png";
-	struct Test1
+
+	std::array<const char*, static_cast<size_t>(Image::Count)> Paths =
 	{
-		static const char* path;
+		"Content/Textures/star.png",
+		"Content/Textures/texture.jpg"
 	};
-	const char* Test1::path = "Content/Textures/texture.jpg";
+
+	std::map<size_t, size_t> ImageIDToTextureID;
+
+	void LoadHelper(VulkanApp& app, size_t imageID)
+	{
+		ImageIDToTextureID[imageID] = app.initImage(Paths[imageID]);
+	}
 }
 
 namespace Font
 {
-	struct AeroviasBrasil
-	{
-		static std::map<Text::FontSize, std::map<Text::CharCode, Texture2D>> fontMap;
-		static const char* path;
-	};
-	const char* AeroviasBrasil::path = "Content/Fonts/AeroviasBrasilNF.ttf";
+enum
+{
+	AeroviasBrasil,
+	Count
+};
 
-	template <typename FontType, typename TextEngineType>
-	void Load(TextEngineType textEngine, VulkanApp app, Text::FontSize fontSize, uint32_t DPI)
-	{
-		textEngine.LoadFont<FontType>(fontSize, DPI);
-		//auto cbegin = glyphs.cbegin();
-		//auto cend = glyphs.cend();
-		//for (auto pair = cbegin; pair != cend; ++pair)
-		//{
-		//	const auto& charcode = pair->first;
-		//	const auto& glyphPtr = pair->second;
-		//	const auto glyph = *(glyphPtr.get());
-		//	auto fullBitmap = textEngine.getFullBitmap(glyph);
-		//	auto texture = app.createTexture(fullBitmap);
-		//	auto& glyphMap = FontType::fontMap[fontSize];
-		//	glyphMap[charcode] = texture;
-		//}
-	}
+std::array<const char*, static_cast<size_t>(Font::Count)> Paths = 
+{
+	"Content/Fonts/AeroviasBrasilNF.ttf"
+};
+
+void LoadHelper(VulkanApp& app, size_t fontID, Text::FontSize fontSize, size_t DPI)
+{
+	app.LoadFont(fontID, fontSize, DPI, Paths[fontID]);
+}
+}
+
+void LoadTextures(VulkanApp& app)
+{
+	// Load Textures Here
+	Image::LoadHelper(app, Image::Star);
+	Image::LoadHelper(app, Image::Test1);
+
+	Font::LoadHelper(app, Font::AeroviasBrasil, 12, 166);
 }
 
 int main()
 {
-	using ImageMgr = ImageManager<Image::Star, Image::Test1>;
-	ImageMgr images;
-
 	std::string vertexShaderPath = "Shaders/vert.spv";
 	std::string fragmentShaderPath = "Shaders/frag.spv";
 	
-	ECS::Manager ecsManager;
-	stx::btree_map<Entity, Sprite> spriteComponents;
+	ECS::Manager entityManager;
+	SpriteMap spriteComponents;
 
 	VulkanApp app;
-
 	VulkanApp::AppInitData initData;
 	initData.width = 900;
 	initData.height = 900;
 	initData.vertexShaderPath = vertexShaderPath;
 	initData.fragmentShaderPath = fragmentShaderPath;
-	app.initGLFW_Vulkan(initData);
+	initData.loadImagesCallback = LoadTextures;
+	// Init application
+	app.initApp(initData);
 
-	// Load Textures Here
-	images.initImage<Image::Star>(app);
-	images.initImage<Image::Test1>(app);
-
-	Text::TextEngine<Font::AeroviasBrasil> textEngine;
-	Font::Load<Font::AeroviasBrasil>(textEngine, app, 12U, 166U);
-
-	// After loading all textures, copy vertex data to device
-	app.CopyVertexDataToDevice();
-
-	Texture2D starTexture = images.getTexture<Image::Star>();
-	for (auto i = 0.f; i < 100.f; i++)
+	VulkanApp::TextInitInfo initInfo;
+	initInfo.baseline_x = 0;
+	initInfo.baseline_y = 0;
+	initInfo.depth = -0.5f;
+	initInfo.fontID = Font::AeroviasBrasil;
+	initInfo.fontSize = 12;
+	initInfo.text = "Test Text that's a little longer!";
+	initInfo.textColor = glm::vec4(1.f,0.f,0.f,1.f);
+	TextureIndex starTexture = Image::ImageIDToTextureID[Image::Star];
+	for (auto i = 0.f; i < 3.f; i++)
 	{
-		auto entity = ecsManager.CreateEntity();
+		auto entity = entityManager.CreateEntity();
 		auto& sprite = spriteComponents[entity];
-		sprite.textureIndex = starTexture.index;
-		sprite.transform = glm::translate(glm::mat4(1.f), glm::vec3(i, i, 0.f));
+		sprite.textureIndex = starTexture;
+		sprite.color = glm::vec4(1.f);
+		auto position = glm::vec3(i*2, i*2, -1.f);
+		auto transform = glm::translate(glm::mat4(1.f), position);
+		sprite.transform = transform;
 	}
+	auto TextGroup = app.createTextGroup(entityManager, spriteComponents, initInfo);
+	profiler::Describe<0>("Main Loop Timer ");
+	profiler::startTimer<0>();
+
 	bool running = true;
 	while (running)
 	{
+		profiler::endTimer<0>();
+		auto avg = profiler::toMicroseconds(profiler::getRollingAverage<0>(1));
+		std::cout << profiler::getDescription<0>() << avg.count() << "ms\n";
 		//loop
 		if (app.beginRender(spriteComponents.size()) == false)
 		{
 			running = false;
 			continue;
 		}
-		for (const auto& spritePair : spriteComponents)
+		for (const auto& [entity, sprite] : spriteComponents)
 		{
-			app.renderSprite(spritePair.second);
+			app.renderSprite(sprite);
 		}
 		app.endRender();
+		profiler::startTimer<0>();
+
 	}
 	app.cleanup();
 	std::cout << "Remaining allocations: " << g_counter << ". \n";

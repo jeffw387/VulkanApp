@@ -1,7 +1,6 @@
 #pragma once
 #include <Windows.h>
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#include "Window.hxx"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -9,7 +8,8 @@
 #include <gtc/matrix_transform.hpp>
 
 #include "VulkanData.h"
-#include "VulkanBase.h"
+//#include "VulkanBase.h"
+#include "vku/vku.hpp"
 
 //#define FMT_HEADER_ONLY
 //#include <fmt-master/fmt/printf.h>
@@ -18,24 +18,30 @@
 #include <tuple>
 #include <string>
 #include <optional>
+#include <functional>
+#include "stx/btree_map.h"
 #include "fileIO.h"
-#include "Input.h"
+//#include "Input.h"
 #include "Texture2D.hpp"
 #include "Bitmap.hpp"
 #include "vulkanTestAlloc.hpp"
+#include "text.hpp"
+#include "ECS.hpp"
 
 constexpr auto IndicesPerQuad = 6U;
 
 std::vector<const char*> ValidationLayers = 
 {
 	//"VK_LAYER_LUNARG_vktrace",
-	//"VK_LAYER_LUNARG_standard_validation",
+	"VK_LAYER_LUNARG_standard_validation",
 	"VK_LAYER_LUNARG_monitor"
 };
 
-std::vector<const char*> RequiredExtensions = 
+std::vector<const char*> RequiredInstanceExtensions = 
 { 
-	VK_EXT_DEBUG_REPORT_EXTENSION_NAME 
+	VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
+	VK_KHR_SURFACE_EXTENSION_NAME,
+	VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 };
 
 std::vector<const char*> DeviceExtensions =
@@ -77,7 +83,7 @@ Bitmap loadImage(std::string path)
 	uint32_t width, height;
 	width = static_cast<uint32_t>(width_i);
 	height = static_cast<uint32_t>(height_i);
-	Bitmap image = Bitmap(pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height), 0U, 0U, width * height * 4U);
+	Bitmap image = Bitmap(pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height), width * -0.5f, height * 0.5f, width * height * 4U);
 
 	return image;
 }
@@ -98,7 +104,9 @@ struct Sprite
 {
 	uint32_t textureIndex;
 	glm::mat4 transform;
+	glm::vec4 color;
 };
+using SpriteMap = stx::btree_map<Entity, Sprite>;
 
 class Camera2D
 {
@@ -152,28 +160,32 @@ class VulkanApp
 public:
 	struct AppInitData
 	{
-		unsigned int width;
-		unsigned int height;
+		int width;
+		int height;
 		std::string vertexShaderPath;
 		std::string fragmentShaderPath;
+		std::function<void(VulkanApp&)> loadImagesCallback;
 	};
 
-	void initGLFW_Vulkan(AppInitData initData)
+	void initApp(AppInitData initData)
 	{
-		initGLFW(static_cast<int>(initData.width), static_cast<int>(initData.height));
+		m_Window.init(L"Vulkan Window Class", L"Vulkan App", Window::WindowStyle::Windowed, (void*)this, initData.width, initData.height);
+		m_Window.SetResizeCallback(onWindowResized);
 		m_Camera.setSize( { static_cast<float>(initData.width), static_cast<float>(initData.height) } );
 		m_Camera.setPosition( { 0.0f, 0.0f } );
-		initVulkan(initData.vertexShaderPath, initData.fragmentShaderPath);
+		m_TextEngine.init();
+		initVulkan(initData.vertexShaderPath, initData.fragmentShaderPath, initData.loadImagesCallback);
+	}
 
+	template <typename PathType>
+	TextureIndex initImage(PathType path)
+	{
+		return createTexture(loadImage(static_cast<const char*>(path)));
 	}
 
 	bool beginRender(size_t SpriteCount)
 	{
-		glfwPollEvents();
-		if (glfwWindowShouldClose(m_Window))
-		{
-			return false;
-		}
+		m_Window.PollEvents();
 
 		auto success = acquireImage(m_UpdateData.nextImage);
 		if (success != true)
@@ -311,7 +323,7 @@ public:
 		return true;
 	}
 
-	void renderSprite(const Sprite& sprite, glm::vec3 color = glm::vec3(1.0f))
+	void renderSprite(const Sprite& sprite)
 	{
 		auto nextImage = m_UpdateData.nextImage;
 		auto& m = sprite.transform;
@@ -321,6 +333,7 @@ public:
 		auto& matrixStagingBuffer = m_PresentBuffers[nextImage].matrixStagingBuffer;
 		auto& copyOffset = m_UpdateData.copyOffset;
 		auto& spriteIndex = m_UpdateData.spriteIndex;
+		auto& color = sprite.color;
 
 		glm::mat4 mvp =  vp * m;
 		memcpy((char*)matrixStagingBuffer.mappedData + copyOffset, &mvp, sizeof(glm::mat4));
@@ -331,6 +344,7 @@ public:
 		pushRange.r = color.r;
 		pushRange.g = color.g;
 		pushRange.b = color.b;
+		pushRange.a = color.a;
 
 		vkCmdPushConstants(drawCommandBuffer, m_PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VulkanData::pushConstantRange1), &pushRange);
 		uint32_t dynamicOffset = spriteIndex * static_cast<uint32_t>(m_UniformBufferOffsetAlignment);
@@ -346,8 +360,9 @@ public:
 			&dynamicOffset
 		);
 
+		auto firstIndex = sprite.textureIndex * IndicesPerQuad;
 		// draw the sprite
-		vkCmdDrawIndexed(drawCommandBuffer, IndicesPerQuad, 1, 0, 0, 0);
+		vkCmdDrawIndexed(drawCommandBuffer, IndicesPerQuad, 1, firstIndex, 0, 0);
 		spriteIndex++;
 	}
 
@@ -413,6 +428,123 @@ public:
 		}
 	}
 
+	void LoadFont(Text::FontID fontID, Text::FontSize fontSize, uint32_t DPI, const char* fontPath)
+	{
+		Text::FontData& fontData = m_TextEngine.m_FontMaps[fontID];
+		fontData.path = fontPath;
+		auto newFaceError = FT_New_Face(m_TextEngine.m_Library, fontPath, 0, &fontData.face);
+		auto setSizeError = FT_Set_Char_Size(
+			fontData.face, 
+			gsl::narrow_cast<FT_F26Dot6>(0), 
+			gsl::narrow_cast<FT_F26Dot6>(fontSize * 64), 
+			gsl::narrow<FT_UInt>(DPI), 
+			gsl::narrow<FT_UInt>(0U));
+
+		Text::SizeData& sizeData = fontData.glyphsBySize[fontSize];
+		auto loadError = FT_Load_Char(fontData.face, 'r', FT_LOAD_ADVANCE_ONLY);
+		if (loadError)
+		{
+			std::runtime_error("Error loading r character (used to calculate space character size)");
+		}
+		sizeData.spaceAdvance = fontData.face->glyph->advance.x;
+
+		FT_UInt glyphID;
+		FT_ULong charcode = FT_Get_First_Char(fontData.face, &glyphID);
+
+		while (glyphID)
+		{
+			// load and render glyph
+			loadError = FT_Load_Glyph(fontData.face, glyphID, FT_LOAD_RENDER);
+			if (loadError)
+			{
+				std::runtime_error("Error loading or rendering glyph.");
+			}
+			FT_Glyph glyph;
+			auto getError = FT_Get_Glyph(fontData.face->glyph, &glyph);
+			if (getError)
+			{
+				std::runtime_error("Error copying glyph from face.");
+			}
+			Bitmap fullBitmap = m_TextEngine.getFullBitmap(glyph);
+			if (fullBitmap.m_Size == 0)
+			{
+				charcode = FT_Get_Next_Char(fontData.face, charcode, &glyphID);
+				continue;
+			}
+			auto texture = createTexture(fullBitmap);
+			auto& glyphData = sizeData.glyphMap[charcode];
+			glyphData.glyph = glyph;
+			glyphData.textureIndex = texture;
+
+			charcode = FT_Get_Next_Char(fontData.face, charcode, &glyphID);
+		}
+	}
+
+	struct TextGroup
+	{
+		std::vector<Entity> characters;
+	};
+
+	struct TextInitInfo
+	{
+		Text::FontID fontID;
+		Text::FontSize fontSize;
+		std::string text;
+		glm::vec4 textColor;
+		int baseline_x;
+		int baseline_y;
+		float depth;
+	};
+
+	TextGroup createTextGroup(ECS::Manager& manager, SpriteMap& spriteMap, const TextInitInfo& initInfo)
+	{
+		TextGroup textGroup;
+		float pen_x = gsl::narrow_cast<float>(initInfo.baseline_x);
+		float pen_y = gsl::narrow_cast<float>(initInfo.baseline_y);
+		static auto identityMatrix = glm::mat4(1.0f);
+
+		// Get glyph map for font/size
+		auto& fontData = m_TextEngine.m_FontMaps.at(initInfo.fontID);
+		auto& sizeData = fontData.glyphsBySize.at(initInfo.fontSize);
+		auto& glyphMap = sizeData.glyphMap;
+		for (auto it = initInfo.text.begin(); it != initInfo.text.end(); ++it)
+		{
+			auto character = *it;
+
+			// check if texture exists for character
+			auto textureIterator = glyphMap.find(character);
+			if (textureIterator == glyphMap.end())
+			{
+				// texture not found for character, use space instead
+				pen_x += m_TextEngine.getAdvance(initInfo.fontID, initInfo.fontSize, character);
+				continue;
+			}
+
+			// create entity and sprite
+			auto entity = manager.CreateEntity();
+			Sprite& sprite = spriteMap[entity];
+			sprite.textureIndex = textureIterator->second.textureIndex;
+			sprite.transform = glm::translate(identityMatrix, glm::vec3(pen_x, pen_y, initInfo.depth));
+			sprite.color = initInfo.textColor;
+
+			// track entity in textgroup
+			textGroup.characters.push_back(entity);
+
+			auto it_next = it + 1;
+			FT_Int32 advance;
+			if (it_next != initInfo.text.end())
+			{
+				advance = m_TextEngine.getAdvance(initInfo.fontID, initInfo.fontSize, character, *it_next);
+			}
+			else
+			{
+				advance = m_TextEngine.getAdvance(initInfo.fontID, initInfo.fontSize, character);
+			}
+			pen_x += advance;
+		}
+		return textGroup;
+	}
+
 	void cleanup()
 	{
 		vkDeviceWaitIdle(m_Device);
@@ -449,8 +581,11 @@ public:
 		m_Surface.cleanup();
 		m_Instance.cleanup();
 
-		glfwDestroyWindow(m_Window);
+		m_TextEngine.cleanup();
+
+		PostQuitMessage(0);
 	}
+
 
 private:
 	VulkanData::ModelIndexPushConstant modelIndexPushconstant = VulkanData::ModelIndexPushConstant();
@@ -459,9 +594,10 @@ private:
 
 	unsigned int m_Width;
 	unsigned int m_Height;
-	GLFWwindow* m_Window;
+	Window m_Window;
 	Camera2D m_Camera;
-	InputManager m_InputManager;
+	//InputManager m_InputManager;
+	Text::TextEngine m_TextEngine;
 	vke::Instance m_Instance;
 	vke::Surface m_Surface;
 	vke::PhysicalDevice m_PhysicalDevice;
@@ -499,6 +635,83 @@ private:
 	std::vector<uint32_t> m_IndexData;
 	std::vector<Texture2D> m_Textures;
 
+	void CopyVertexDataToDevice()
+		{
+			//
+			// Copy vertex and index data to device buffers
+			//
+			vke::Buffer vertexStagingBuffer;
+			vke::Buffer indexStagingBuffer;
+			vke::CommandBuffer copyCmdBuffer;
+			vke::Fence copyCmdExecuted;
+			copyCmdBuffer.init(m_Device, m_GraphicsCommandPool);
+			copyCmdExecuted.init(m_Device, 0U);
+			auto vertexDataSize = m_VertexData.size() * sizeof(VulkanData::Vertex);
+			auto indexDataSize = m_IndexData.size() * sizeof(ImageIndex);
+
+			// initialize staging buffers
+			vertexStagingBuffer.init(m_Device, &m_Allocator, vertexDataSize, 
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+			indexStagingBuffer.init(m_Device, &m_Allocator, indexDataSize, 
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+			// initialize device buffers
+			m_VertexBuffer.init(m_Device, &m_Allocator, vertexDataSize,
+				VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				vke::AllocationStyle::NewAllocation
+			);
+
+			m_IndexBuffer.init(m_Device, &m_Allocator, indexDataSize,
+				VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				vke::AllocationStyle::NewAllocation
+			);
+
+			// map vertex staging buffer
+			if (vertexStagingBuffer.mapMemoryRange() != true)
+			{
+				throw std::runtime_error("Unable to map vertex staging buffer!");
+			}
+			// copy from host to staging buffer
+			memcpy(vertexStagingBuffer.mappedData, m_VertexData.data(), vertexDataSize);
+			// unmap vertex staging buffer
+			vertexStagingBuffer.unmap();
+
+			std::vector<VkSemaphore> semaphores;
+			// copy from vertex staging buffer to device memory
+			m_VertexBuffer.copyFromBuffer(vertexStagingBuffer, copyCmdBuffer, m_GraphicsQueue, copyCmdExecuted,
+				semaphores, semaphores);
+
+			// map index staging buffer
+			if (indexStagingBuffer.mapMemoryRange() != true)
+			{
+				throw std::runtime_error("Unable to map index staging buffer!");
+			}
+			// copy from host to staging buffer
+			memcpy(indexStagingBuffer.mappedData, m_IndexData.data(), indexDataSize);
+			// unmap index staging buffer
+			indexStagingBuffer.unmap();
+			// copy from index staging buffer to device memory
+			vkWaitForFences(m_Device, 1, copyCmdExecuted, true, (uint64_t)std::numeric_limits<uint64_t>::max());
+			copyCmdBuffer.reset();
+			copyCmdExecuted.reset();
+			m_IndexBuffer.copyFromBuffer(indexStagingBuffer, copyCmdBuffer, m_GraphicsQueue, copyCmdExecuted,
+				semaphores, semaphores);
+
+			vkWaitForFences(m_Device, 1, copyCmdExecuted, true, (uint64_t)std::numeric_limits<uint64_t>::max());
+
+			vertexStagingBuffer.cleanup();
+			indexStagingBuffer.cleanup();
+			copyCmdExecuted.cleanup();
+			copyCmdBuffer.cleanup();
+
+			initDescriptorSet0();
+		}
+
 	bool acquireImage(ImageIndex& imageIndex)
 	{
 		VkResult result = vkAcquireNextImageKHR(m_Device, m_Swapchain, std::numeric_limits<uint64_t>::max(), m_ImageReadyForWriting, VK_NULL_HANDLE, &imageIndex);
@@ -515,19 +728,17 @@ private:
 		return true;
 	}
 
-	static VkExtent2D getCurrentWindowExtent(GLFWwindow* window)
+	static VkExtent2D getCurrentWindowExtent(Window& window)
 	{
-		int x;
-		int y;
-		glfwGetWindowSize(window, &x, &y);
-		return { static_cast<uint32_t>(x), static_cast<uint32_t>(y) };
+		auto size = window.GetClientSize();
+		return { static_cast<uint32_t>(size.width), static_cast<uint32_t>(size.height) };
 	}
 
-	static void onWindowResized(GLFWwindow* window, int width, int height)
+	static void onWindowResized(void* appPtr, ClientSize size)
 	{
-		auto app = reinterpret_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
-		app->recreateSwapChain( { static_cast<uint32_t>(width), static_cast<uint32_t>(height) });
-		app->m_Camera.setSize( {static_cast<float>(width), static_cast<float>(height) } );
+		auto app = reinterpret_cast<VulkanApp*>(appPtr);
+		app->recreateSwapChain( { static_cast<uint32_t>(size.width), static_cast<uint32_t>(size.height) });
+		app->m_Camera.setSize( {static_cast<float>(size.width), static_cast<float>(size.height) } );
 	}
 
 	void createFramebuffers(VkExtent2D swapExtent)
@@ -581,76 +792,16 @@ private:
 		createFramebuffers(m_SwapExtent);
 	}
 
-	void updateInput(GLFWwindow* window, int key, int scancode, int action, int mods)
-	{
-		auto app = reinterpret_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
-		auto cameraPosition = app->m_Camera.getPosition();
-		switch (key)
-		{
-		case GLFW_KEY_LEFT:
-			cameraPosition.x -= 1;
-			break;
-		case GLFW_KEY_RIGHT:
-			cameraPosition.x += 1;
-			break;
-		case GLFW_KEY_UP:
-			cameraPosition.y -= 1;
-			break;
-		case GLFW_KEY_DOWN:
-			cameraPosition.y += 1;
-			break;
-		}
-		app->m_Camera.setPosition(std::move(cameraPosition));
-	}
-
-	static void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
-	{
-		auto app = reinterpret_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
-		app->m_InputManager.cursorPositionCallback(xpos, ypos);
-	}
-
-	static void mouseButtonCallback(GLFWwindow* window, int button, int state, int mods)
-	{
-		auto app = reinterpret_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
-		app->m_InputManager.mouseButtonCallback(button, state, mods);
-	}
-
-	static void keyCallback(GLFWwindow* window, int key, int scancode, int state, int mods)
-	{
-		auto app = reinterpret_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
-		app->m_InputManager.keyCallback(key, scancode, state, mods);
-	}
-
-	void initGLFW(int Width, int Height)
-	{
-		glfwInit();
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		m_Window = glfwCreateWindow(Width, Height, "Vulkan", nullptr, nullptr);
-
-		glfwSetWindowUserPointer(m_Window, this);
-		glfwSetWindowSizeCallback(m_Window, VulkanApp::onWindowResized);
-		glfwSetCursorPosCallback(m_Window, VulkanApp::cursorPositionCallback);
-		glfwSetMouseButtonCallback(m_Window, VulkanApp::mouseButtonCallback);
-		glfwSetKeyCallback(m_Window, VulkanApp::keyCallback);
-	}
-
-	void initVulkan(std::string vertexShaderPath, std::string fragmentShaderPath)
+	void initVulkan(std::string vertexShaderPath, std::string fragmentShaderPath, std::function<void(VulkanApp&)> loadCallback)
 	{
 		uint32_t glfwExtensionCount = 0;
-		auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-		for (uint32_t i = 0; i < glfwExtensionCount; i++)
-		{
-			RequiredExtensions.push_back(glfwExtensions[i]);
-		}
 
 		// create instance
-		m_Instance.init(ValidationLayers, RequiredExtensions, DeviceExtensions, &g_allocators);
+		m_Instance.init(ValidationLayers, RequiredInstanceExtensions, DeviceExtensions, &g_allocators);
 
 		// create surface
 		VkSurfaceKHR surface;
-		glfwCreateWindowSurface(m_Instance, m_Window, nullptr, &surface);
-		m_Surface.init(surface, m_Instance);
+		m_Surface.init(m_Instance, m_Window.m_hInstance, m_Window.m_hWnd);
 
 		// pick physical device
 		m_PhysicalDevice.init(m_Instance, m_Surface);
@@ -672,17 +823,25 @@ private:
 		// create command pools
 		m_GraphicsCommandPool.init(m_Device, m_PhysicalDevice.getGraphicsQueueIndex(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
+		// Allow user to load all textures
+		loadCallback(*this);
+
 		// create descriptor set layouts
-		m_Set0Layout.init(m_Device, set0_samplerAndImagesLayoutData.layoutBindings());
+		m_Set0Layout.init(m_Device, set0_samplerAndImagesLayoutData.layoutBindings(m_Images.size()));
 		m_Set1Layout.init(m_Device, set1_matricesLayoutData.layoutBindings());
 		std::vector<VkDescriptorSetLayout> layouts = { m_Set0Layout, m_Set1Layout };
 
+		// create descriptor pool sizes
+		std::vector<VkDescriptorPoolSize> poolSizes;
+		auto poolsizes0 = set0_samplerAndImagesLayoutData.poolSizes(m_Images.size());
+		auto poolsizes1 = set1_matricesLayoutData.poolSizes();
+		poolSizes.insert(poolSizes.end(), poolsizes0.begin(), poolsizes0.end());
+		poolSizes.insert(poolSizes.end(), poolsizes1.begin(), poolsizes1.end());
+
 		VkExtent2D windowExtent;
-		int width;
-		int height;
-		glfwGetWindowSize(m_Window, &width, &height);
-		windowExtent.width = static_cast<uint32_t>(width);
-		windowExtent.height = static_cast<uint32_t>(height);
+		auto clientSize = m_Window.GetClientSize();
+		windowExtent.width = static_cast<uint32_t>(clientSize.width);
+		windowExtent.height = static_cast<uint32_t>(clientSize.height);
 
 		m_SwapchainSupportDetails = vke::Swapchain::querySwapchainSupport(m_PhysicalDevice, m_Surface);
 		m_SurfaceFormat = vke::Swapchain::chooseSwapSurfaceFormat(m_SwapchainSupportDetails.formats);
@@ -703,7 +862,6 @@ private:
 			&m_Allocator,
 			m_Swapchain.getExtent().width, 
 			m_Swapchain.getExtent().height,
-			/*m_GraphicsCommandPool,*/
 			m_DepthFormat,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
@@ -712,18 +870,10 @@ private:
 			VK_IMAGE_LAYOUT_UNDEFINED);
 		m_DepthImage.transitionImageLayout(m_GraphicsCommandPool, m_GraphicsQueue, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
-		// create descriptor pool sizes
-		std::vector<VkDescriptorPoolSize> poolSizes;
-		auto poolsizes0 = set0_samplerAndImagesLayoutData.poolSizes();
-		auto poolsizes1 = set1_matricesLayoutData.poolSizes();
-		poolSizes.insert(poolSizes.end(), poolsizes0.begin(), poolsizes0.end());
-		poolSizes.insert(poolSizes.end(), poolsizes1.begin(), poolsizes1.end());
-
 		// create present buffers
 		auto swapViews = m_Swapchain.getSwapChainViews();
 		auto presentBufferCount = swapViews.size();
 		m_PresentBuffers.resize(presentBufferCount);
-		// create present buffers
 		size_t bufferIndex = 0;
 		for (auto& presentBuffer : m_PresentBuffers)
 		{
@@ -739,10 +889,10 @@ private:
 			presentBuffer.stagingCommandBuffer.init(m_Device, presentBuffer.pool);
 			presentBuffer.stagingCommandExecuted.cleanup();
 			presentBuffer.stagingCommandExecuted.init(m_Device);
-			
+
 			// initialize descriptor pool
 			presentBuffer.descriptorPool.init(m_Device, poolSizes, 2);
-			
+
 			// initialize descriptor sets
 			std::vector<VkDescriptorSetLayout> set0Layouts = { m_Set0Layout };
 			presentBuffer.descriptorSet0.init(m_Device, presentBuffer.descriptorPool, set0Layouts);
@@ -751,6 +901,9 @@ private:
 			presentBuffer.descriptorSet1.init(m_Device, presentBuffer.descriptorPool, set1Layouts);
 			bufferIndex++;
 		}
+
+		// create sampler
+		m_Sampler.init(m_Device);
 
 		// create shader modules
 		m_VertexShader.init(m_Device, fileIO::readFile(vertexShaderPath));
@@ -763,52 +916,53 @@ private:
 		m_Pipeline.init(
 			m_Device, 
 			m_RenderPass, 
-			m_VertexShader, 
+			m_VertexShader,
+			static_cast<uint32_t>(m_Images.size()),
 			m_FragmentShader, 
 			VulkanData::Vertex::getBindingDescription(), 
 			VulkanData::Vertex::getAttributeDescriptions(),
 			windowExtent,
 			m_PipelineLayout);
 
-		// create sampler
-		m_Sampler.init(m_Device);
-
 		// create semaphores
 		m_ImageReadyForWriting.init(m_Device);
 		m_ImageReadyForPresentation.init(m_Device);
+
+		CopyVertexDataToDevice();
 	}
 
-public:
-	Texture2D createTexture(const Bitmap& image)
+	uint32_t createTexture(const Bitmap& image)
 	{
 		uint32_t textureIndex = static_cast<uint32_t>(m_Textures.size());
 		// create vke::Image2D
 		auto& image2D = m_Images.emplace_back();
 
 		image2D.init(m_Device, &m_Allocator, image.m_Width, image.m_Height);
+		float left	= static_cast<float>(image.m_Left);
+		float top	= static_cast<float>(image.m_Top);
+		float width		= static_cast<float>(image.m_Width);
+		float height	= static_cast<float>(image.m_Height);
 
-		auto left = image.m_Origin_x - image.m_Width;
-		auto top = image.m_Origin_y - image.m_Height;
-		auto right = image.m_Width - image.m_Origin_x;
-		auto bottom = image.m_Height - image.m_Origin_y;
+		float right		= left	+ width;
+		float bottom	= top	- height;
 
 		glm::vec3 LeftTopPos, LeftBottomPos, RightBottomPos, RightTopPos;
-		LeftTopPos = {left, top, 0.0f};
-		LeftBottomPos = {left, bottom, 0.0f};
-		RightBottomPos = {right, bottom, 0.0f};
-		RightTopPos = {right, top, 0.0f};
+		LeftTopPos		= {left,	top,	0.0f};
+		LeftBottomPos	= {left,	bottom, 0.0f};
+		RightBottomPos	= {right,	bottom, 0.0f};
+		RightTopPos		= {right,	top,	0.0f};
 
 		glm::vec2 LeftTopUV, LeftBottomUV, RightBottomUV, RightTopUV;
-		LeftTopUV = {0.0f, 0.0f};
-		LeftBottomUV = {0.0f, 1.0f};
-		RightBottomUV = {1.0f, 1.0f};
-		RightTopUV = {1.0f, 0.0f};
+		LeftTopUV		= {0.0f, 0.0f};
+		LeftBottomUV	= {0.0f, 1.0f};
+		RightBottomUV	= {1.0f, 1.0f};
+		RightTopUV		= {1.0f, 0.0f};
 
 		VulkanData::Vertex LeftTop, LeftBottom, RightBottom, RightTop;
-		LeftTop = {LeftTopPos, LeftTopUV};
-		LeftBottom = {LeftBottomPos, LeftBottomUV};
-		RightBottom = {RightBottomPos, RightBottomUV};
-		RightTop = {RightTopPos, RightTopUV};
+		LeftTop			= {LeftTopPos,		LeftTopUV};
+		LeftBottom		= {LeftBottomPos,	LeftBottomUV};
+		RightBottom		= {RightBottomPos,	RightBottomUV};
+		RightTop		= {RightTopPos,		RightTopUV};
 
 		// push back vertices
 		m_VertexData.push_back(LeftTop);
@@ -852,93 +1006,16 @@ public:
 			throw std::runtime_error("unable to map buffer");
 		}
 
-		memcpy(stagingBuffer.mappedData, image.m_Data.get(), static_cast<size_t>(image.m_Size));
+		memcpy(stagingBuffer.mappedData, image.m_Data.data(), static_cast<size_t>(image.m_Size));
 		stagingBuffer.unmap();
 
 		m_Images.back().copyFromBuffer(stagingBuffer, m_GraphicsCommandPool, m_GraphicsQueue);
 
 		stagingBuffer.cleanup();
 
-		return texture;
+		return texture.index;
 	}
 
-	void CopyVertexDataToDevice()
-	{
-		//
-		// Copy vertex and index data to device buffers
-		//
-		vke::Buffer vertexStagingBuffer;
-		vke::Buffer indexStagingBuffer;
-		vke::CommandBuffer copyCmdBuffer;
-		vke::Fence copyCmdExecuted;
-		copyCmdBuffer.init(m_Device, m_GraphicsCommandPool);
-		copyCmdExecuted.init(m_Device, 0U);
-		auto vertexDataSize = m_VertexData.size() * sizeof(VulkanData::Vertex);
-		auto indexDataSize = m_IndexData.size() * sizeof(ImageIndex);
-
-		// initialize staging buffers
-		vertexStagingBuffer.init(m_Device, &m_Allocator, vertexDataSize, 
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-		indexStagingBuffer.init(m_Device, &m_Allocator, indexDataSize, 
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-		// initialize device buffers
-		m_VertexBuffer.init(m_Device, &m_Allocator, vertexDataSize,
-			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			vke::AllocationStyle::NewAllocation
-		);
-
-		m_IndexBuffer.init(m_Device, &m_Allocator, indexDataSize,
-			VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			vke::AllocationStyle::NewAllocation
-		);
-
-		// map vertex staging buffer
-		if (vertexStagingBuffer.mapMemoryRange() != true)
-		{
-			throw std::runtime_error("Unable to map vertex staging buffer!");
-		}
-		// copy from host to staging buffer
-		memcpy(vertexStagingBuffer.mappedData, m_VertexData.data(), vertexDataSize);
-		// unmap vertex staging buffer
-		vertexStagingBuffer.unmap();
-
-		std::vector<VkSemaphore> semaphores;
-		// copy from vertex staging buffer to device memory
-		m_VertexBuffer.copyFromBuffer(vertexStagingBuffer, copyCmdBuffer, m_GraphicsQueue, copyCmdExecuted,
-			semaphores, semaphores);
-
-		// map index staging buffer
-		if (indexStagingBuffer.mapMemoryRange() != true)
-		{
-			throw std::runtime_error("Unable to map index staging buffer!");
-		}
-		// copy from host to staging buffer
-		memcpy(indexStagingBuffer.mappedData, m_IndexData.data(), indexDataSize);
-		// unmap index staging buffer
-		indexStagingBuffer.unmap();
-		// copy from index staging buffer to device memory
-		vkWaitForFences(m_Device, 1, copyCmdExecuted, true, (uint64_t)std::numeric_limits<uint64_t>::max());
-		copyCmdBuffer.reset();
-		copyCmdExecuted.reset();
-		m_IndexBuffer.copyFromBuffer(indexStagingBuffer, copyCmdBuffer, m_GraphicsQueue, copyCmdExecuted,
-			semaphores, semaphores);
-
-		vkWaitForFences(m_Device, 1, copyCmdExecuted, true, (uint64_t)std::numeric_limits<uint64_t>::max());
-
-		vertexStagingBuffer.cleanup();
-		indexStagingBuffer.cleanup();
-		copyCmdExecuted.cleanup();
-		copyCmdBuffer.cleanup();
-
-		initDescriptorSet0();
-	}
-private:
 	struct UpdateData
 	{
 		glm::mat4 vp;
@@ -961,9 +1038,10 @@ private:
 		set0Writes[0].pImageInfo = &samplerInfo;
 
 		std::vector<VkDescriptorImageInfo> imageInfos;
-		for (auto& view_ : m_Images)
+		imageInfos.reserve(m_Images.size());
+		for (auto& image : m_Images)
 		{
-			auto view = view_.getView();
+			auto view = image.getView();
 			VkDescriptorImageInfo imageInfo = {};
 			imageInfo.imageView = view;
 			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

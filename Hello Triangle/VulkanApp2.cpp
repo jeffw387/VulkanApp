@@ -40,7 +40,7 @@ inline Device::Device(const vk::Instance& instance,
 			&gpuFeatures)
 	);
 
-	
+	imageLoadCallback(app);
 
 	VmaAllocatorCreateInfo allocatorInfo = {};
 	allocatorInfo.physicalDevice = m_PhysicalDevice;
@@ -142,6 +142,22 @@ inline Device::Device(const vk::Instance& instance,
 		dependencies.data());
 	m_RenderPass = m_LogicalDevice.get().createRenderPassUnique(renderPassInfo);
 
+	// create sampler
+	m_Sampler = m_LogicalDevice.get().createSamplerUnique(
+		vk::SamplerCreateInfo(
+			vk::SamplerCreateFlags(),
+			vk::Filter::eLinear,
+			vk::Filter::eLinear,
+			vk::SamplerMipmapMode::eLinear,
+			vk::SamplerAddressMode::eRepeat,
+			vk::SamplerAddressMode::eRepeat,
+			vk::SamplerAddressMode::eRepeat,
+			0.f,
+			1U,
+			16.f,
+			0U,
+			vk::CompareOp::eNever));
+
 	// create shader modules
 	m_VertexShader = createShaderModule(m_LogicalDevice.get(), shaderData.vertexShaderPath);
 	m_FragmentShader = createShaderModule(m_LogicalDevice.get(), shaderData.fragmentShaderPath);
@@ -154,6 +170,141 @@ inline Device::Device(const vk::Instance& instance,
 	if (mailboxPresentMode != surfacePresentModes.end())
 		m_PresentMode = *mailboxPresentMode;
 
+	// create descriptor set layouts
+	m_VertexDescriptorSetLayout = createVertexSetLayout(m_LogicalDevice.get());
+	m_FragmentDescriptorSetLayout = createFragmentSetLayout(m_LogicalDevice.get(), app->m_Textures.size(), m_Sampler.get());
+	m_DescriptorSetLayouts.push_back(m_VertexDescriptorSetLayout.get());
+	m_DescriptorSetLayouts.push_back(m_FragmentDescriptorSetLayout.get());
+
+	// setup push constant ranges
+	m_PushConstantRanges.emplace_back(vk::PushConstantRange(
+		vk::ShaderStageFlagBits::eFragment, 
+		0U, 
+		sizeof(FragmentPushConstants)));
+
+	// create pipeline layout
+	auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo(
+		vk::PipelineLayoutCreateFlags(),
+		m_DescriptorSetLayouts.size(),
+		m_DescriptorSetLayouts.data(),
+		m_PushConstantRanges.size(),
+		m_PushConstantRanges.data());
+	m_PipelineLayout = m_LogicalDevice->createPipelineLayoutUnique(pipelineLayoutInfo);
+
+	m_FragmentSpecializations.emplace_back(vk::SpecializationMapEntry(
+		0U,
+		0U,
+		sizeof(glm::uint32)));
+	m_TextureCount = app->m_Images.size();
+
+	m_VertexSpecializationInfo = vk::SpecializationInfo();
+	m_FragmentSpecializationInfo = vk::SpecializationInfo(
+		m_FragmentSpecializations.size(),
+		m_FragmentSpecializations.data(),
+		sizeof(glm::uint32),
+		&m_TextureCount
+	);
+
+	m_VertexShaderStageInfo = vk::PipelineShaderStageCreateInfo(
+		vk::PipelineShaderStageCreateFlags(),
+		vk::ShaderStageFlagBits::eVertex,
+		m_VertexShader.get(),
+		"main",
+		&m_VertexSpecializationInfo);
+
+	m_FragmentShaderStageInfo = vk::PipelineShaderStageCreateInfo(
+		vk::PipelineShaderStageCreateFlags(),
+		vk::ShaderStageFlagBits::eFragment,
+		m_FragmentShader.get(),
+		"main",
+		&m_FragmentSpecializationInfo);
+
+	m_PipelineShaderStageInfo = std::vector<vk::PipelineShaderStageCreateInfo>{ m_VertexShaderStageInfo, m_FragmentShaderStageInfo };
+
+	m_VertexInputBindings = Vertex::vertexBindingDescriptions();
+	m_VertexAttributes = Vertex::vertexAttributeDescriptions();
+	m_PipelineVertexInputInfo = vk::PipelineVertexInputStateCreateInfo(
+		vk::PipelineVertexInputStateCreateFlags(),
+		m_VertexInputBindings.size(),
+		m_VertexInputBindings.data(),
+		m_VertexAttributes.size(),
+		m_VertexAttributes.data());
+
+	m_PipelineInputAsemblyInfo = vk::PipelineInputAssemblyStateCreateInfo(
+		vk::PipelineInputAssemblyStateCreateFlags(),
+		vk::PrimitiveTopology::eTriangleList);
+
+	m_PipelineTesselationStateInfo = vk::PipelineTessellationStateCreateInfo(
+		vk::PipelineTessellationStateCreateFlags());
+
+	m_PipelineViewportInfo = vk::PipelineViewportStateCreateInfo(
+		vk::PipelineViewportStateCreateFlags(),
+		1U,
+		nullptr,
+		1U,
+		nullptr);
+
+	m_PipelineRasterizationInfo = vk::PipelineRasterizationStateCreateInfo(
+		vk::PipelineRasterizationStateCreateFlags(),
+		0U,
+		0U,
+		vk::PolygonMode::eFill,
+		vk::CullModeFlagBits::eNone,
+		vk::FrontFace::eCounterClockwise,
+		0U,
+		0.f,
+		0.f,
+		0.f);
+
+	m_PipelineMultisampleInfo = vk::PipelineMultisampleStateCreateInfo();
+
+	m_PipelineDepthStencilInfo = vk::PipelineDepthStencilStateCreateInfo();
+
+	m_PipelineColorBlendAttachmentState = vk::PipelineColorBlendAttachmentState(
+		1U,
+		vk::BlendFactor::eSrcAlpha,
+		vk::BlendFactor::eOneMinusSrcAlpha,
+		vk::BlendOp::eAdd,
+		vk::BlendFactor::eZero,
+		vk::BlendFactor::eZero,
+		vk::BlendOp::eAdd,
+		vk::ColorComponentFlagBits::eR |
+		vk::ColorComponentFlagBits::eG |
+		vk::ColorComponentFlagBits::eB |
+		vk::ColorComponentFlagBits::eA);
+
+	m_PipelineBlendStateInfo = vk::PipelineColorBlendStateCreateInfo(
+		vk::PipelineColorBlendStateCreateFlags(),
+		0U,
+		vk::LogicOp::eClear,
+		1U,
+		&m_PipelineColorBlendAttachmentState);
+
+	m_DynamicStates = std::vector<vk::DynamicState>{ vk::DynamicState::eViewport, vk::DynamicState::eScissor };
+
+	m_PipelineDynamicStateInfo = vk::PipelineDynamicStateCreateInfo(
+		vk::PipelineDynamicStateCreateFlags(),
+		m_DynamicStates.size(),
+		m_DynamicStates.data());
+
+	m_PipelineCreateInfo = vk::GraphicsPipelineCreateInfo(
+		vk::PipelineCreateFlags(),
+		m_PipelineShaderStageInfo.size(),
+		m_PipelineShaderStageInfo.data(),
+		&m_PipelineVertexInputInfo,
+		&m_PipelineInputAsemblyInfo,
+		&m_PipelineTesselationStateInfo,
+		&m_PipelineViewportInfo,
+		&m_PipelineRasterizationInfo,
+		&m_PipelineMultisampleInfo,
+		&m_PipelineDepthStencilInfo,
+		&m_PipelineBlendStateInfo,
+		&m_PipelineDynamicStateInfo,
+		m_PipelineLayout.get(),
+		m_RenderPass.get()
+	);
+
+	// create the swapchain along with everything that depends on it
 	m_SwapchainDependencies = SwapChainDependencies(
 		m_PhysicalDevice,
 		m_LogicalDevice.get(),
@@ -168,7 +319,7 @@ inline Device::Device(const vk::Instance& instance,
 		m_VertexShader.get(),
 		m_FragmentShader.get());
 
-	m_FramebufferSupports.resize(m_SwapchainDependencies.swapImageCount);
+	m_FramebufferSupports.resize(m_BufferCount);
 	for (auto& support : m_FramebufferSupports)
 	{
 		support.m_CommandPool = m_LogicalDevice->createCommandPoolUnique(
@@ -179,7 +330,7 @@ inline Device::Device(const vk::Instance& instance,
 				1U))[0]);
 		support.m_VertexLayoutDescriptorPool = createVertexDescriptorPool(
 			m_LogicalDevice.get(), 
-			m_SwapchainDependencies.swapImageCount);
+			m_BufferCount);
 		support.m_BufferCapacity = 0U;
 		support.m_ImagePresentCompleteSemaphore = m_LogicalDevice->createSemaphoreUnique(
 			vk::SemaphoreCreateInfo(
@@ -203,43 +354,44 @@ inline SwapChainDependencies::SwapChainDependencies(SwapChainDependencies && oth
 	m_SwapImages = std::move(other.m_SwapImages);
 	m_SwapViews = std::move(other.m_SwapViews);
 	m_Framebuffers = std::move(other.m_Framebuffers);
-	m_PipelineLayout = std::move(other.m_PipelineLayout);
 	m_Pipeline = std::move(other.m_Pipeline);
 }
 
-inline SwapChainDependencies::SwapChainDependencies(const vk::PhysicalDevice & physicalDevice, 
-	const vk::Device & logicalDevice, 
-	const vk::SurfaceKHR & surface, 
-	const vk::RenderPass & renderPass, 
-	const vk::Format & surfaceFormat, 
-	const vk::ColorSpaceKHR & surfaceColorSpace, 
-	const vk::Extent2D & surfaceExtent, 
-	const uint32_t graphicsQueueFamilyID, 
-	const vk::PresentModeKHR presentMode, 
-	const ShaderData & shaderData, 
-	const vk::ShaderModule vertexShader, 
-	const vk::ShaderModule fragmentShader)
+inline vk::UniqueSwapchainKHR Device::createSwapChain()
 {
-	m_Swapchain = logicalDevice.createSwapchainKHRUnique(
+	return m_LogicalDevice->createSwapchainKHRUnique(
 		vk::SwapchainCreateInfoKHR(
 			vk::SwapchainCreateFlagsKHR(),
-			surface,
-			swapImageCount,
-			surfaceFormat,
-			surfaceColorSpace,
-			surfaceExtent,
+			m_Surface.get(),
+			m_BufferCount,
+			m_SurfaceFormat,
+			m_SurfaceColorSpace,
+			m_SurfaceExtent,
 			1U,
 			vk::ImageUsageFlagBits::eColorAttachment,
 			vk::SharingMode::eExclusive,
 			1U,
-			&graphicsQueueFamilyID,
+			&m_GraphicsQueueFamilyID,
 			vk::SurfaceTransformFlagBitsKHR::eIdentity,
 			vk::CompositeAlphaFlagBitsKHR::eOpaque,
-			presentMode,
+			m_PresentMode,
 			0U));
+}
+
+inline SwapChainDependencies::SwapChainDependencies(
+	const vk::Device & logicalDevice, 
+	vk::UniqueSwapchainKHR swapChain,
+	const uint32_t bufferCount,
+	const vk::RenderPass & renderPass, 
+	const vk::Format & surfaceFormat, 
+	const vk::Extent2D & surfaceExtent, 
+	const vk::GraphicsPipelineCreateInfo& pipelineCreateInfo
+	)
+{
+	m_Swapchain = std::move(swapChain);
 
 	m_SwapImages = logicalDevice.getSwapchainImagesKHR(m_Swapchain.get());
-	for (auto i = 0U; i < swapImageCount; i++)
+	for (auto i = 0U; i < bufferCount; i++)
 	{
 		// create swap image view
 		auto viewInfo = vk::ImageViewCreateInfo(
@@ -267,126 +419,8 @@ inline SwapChainDependencies::SwapChainDependencies(const vk::PhysicalDevice & p
 			1U);
 		m_Framebuffers[i] = logicalDevice.createFramebufferUnique(fbInfo);
 	}
-
-	auto descriptorSetLayouts = std::vector<vk::DescriptorSetLayout>
-	{
-		shaderData.vertexDescriptorSetLayout,
-		shaderData.fragmentDescriptorSetLayout
-	};
-
-	auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo(
-		vk::PipelineLayoutCreateFlags(),
-		descriptorSetLayouts.size(),
-		descriptorSetLayouts.data(),
-		shaderData.pushConstantRanges.size(),
-		shaderData.pushConstantRanges.data());
-
-	m_PipelineLayout = logicalDevice.createPipelineLayoutUnique(pipelineLayoutInfo);
-
-	auto vertexSpecializationInfo = vk::SpecializationInfo(
-		shaderData.vertexSpecializationConstants.size(),
-		shaderData.vertexSpecializationConstants.data());
-
-	auto vertexStageInfo = vk::PipelineShaderStageCreateInfo(
-		vk::PipelineShaderStageCreateFlags(),
-		vk::ShaderStageFlagBits::eVertex,
-		vertexShader,
-		"main",
-		&vertexSpecializationInfo);
-
-	auto fragmentSpecializationInfo = vk::SpecializationInfo(
-		shaderData.fragmentSpecializationConstants.size(),
-		shaderData.fragmentSpecializationConstants.data());
-
-	auto fragmentStageInfo = vk::PipelineShaderStageCreateInfo(
-		vk::PipelineShaderStageCreateFlags(),
-		vk::ShaderStageFlagBits::eFragment,
-		fragmentShader,
-		"main",
-		&fragmentSpecializationInfo);
-
-	auto shaderStages = std::vector<vk::PipelineShaderStageCreateInfo>{ vertexStageInfo, fragmentStageInfo };
-
-	auto vertexInputInfo = vk::PipelineVertexInputStateCreateInfo(
-		vk::PipelineVertexInputStateCreateFlags(),
-		shaderData.vertexBindingDescriptions.size(),
-		shaderData.vertexBindingDescriptions.data(),
-		shaderData.vertexAttributeDescriptions.size(),
-		shaderData.vertexAttributeDescriptions.data());
-
-	auto inputAssemblyStateInfo = vk::PipelineInputAssemblyStateCreateInfo(
-		vk::PipelineInputAssemblyStateCreateFlags(),
-		vk::PrimitiveTopology::eTriangleList);
-
-	auto tesselationState = vk::PipelineTessellationStateCreateInfo(
-		vk::PipelineTessellationStateCreateFlags());
-
-	auto viewportStateInfo = vk::PipelineViewportStateCreateInfo(
-		vk::PipelineViewportStateCreateFlags(),
-		1U,
-		nullptr,
-		1U,
-		nullptr);
-
-	auto rasterizationStateInfo = vk::PipelineRasterizationStateCreateInfo(
-		vk::PipelineRasterizationStateCreateFlags(),
-		0U,
-		0U,
-		vk::PolygonMode::eFill,
-		vk::CullModeFlagBits::eNone,
-		vk::FrontFace::eCounterClockwise,
-		0U,
-		0.f,
-		0.f,
-		0.f);
-
-	auto multisampleStateInfo = vk::PipelineMultisampleStateCreateInfo();
-
-	auto depthStencilInfo = vk::PipelineDepthStencilStateCreateInfo();
-
-	auto colorAttachment = vk::PipelineColorBlendAttachmentState(
-		1U,
-		vk::BlendFactor::eSrcAlpha,
-		vk::BlendFactor::eOneMinusSrcAlpha,
-		vk::BlendOp::eAdd,
-		vk::BlendFactor::eZero,
-		vk::BlendFactor::eZero,
-		vk::BlendOp::eAdd,
-		vk::ColorComponentFlagBits::eR |
-		vk::ColorComponentFlagBits::eG |
-		vk::ColorComponentFlagBits::eB |
-		vk::ColorComponentFlagBits::eA);
-
-	auto blendStateInfo = vk::PipelineColorBlendStateCreateInfo(
-		vk::PipelineColorBlendStateCreateFlags(),
-		0U,
-		vk::LogicOp::eClear,
-		1U,
-		&colorAttachment);
-
-	auto dynamicStates = std::vector<vk::DynamicState>{ vk::DynamicState::eViewport, vk::DynamicState::eScissor };
-
-	auto dynamicStateInfo = vk::PipelineDynamicStateCreateInfo(
-		vk::PipelineDynamicStateCreateFlags(),
-		dynamicStates.size(),
-		dynamicStates.data());
-
-	auto pipelineInfo = vk::GraphicsPipelineCreateInfo(
-		vk::PipelineCreateFlags(),
-		shaderStages.size(),
-		shaderStages.data(),
-		&vertexInputInfo,
-		&inputAssemblyStateInfo,
-		&tesselationState,
-		&viewportStateInfo,
-		&rasterizationStateInfo,
-		&multisampleStateInfo,
-		&depthStencilInfo,
-		&blendStateInfo,
-		&dynamicStateInfo,
-		m_PipelineLayout.get(),
-		renderPass
-	);
+	
+	m_Pipeline = logicalDevice.createGraphicsPipelineUnique(vk::PipelineCache(), pipelineCreateInfo);
 }
 
 inline VulkanApp::VulkanApp(LPTSTR WindowClassName, 
@@ -409,6 +443,7 @@ inline uint32_t VulkanApp::createTexture(const Bitmap & bitmap)
 	auto& image2D = m_Images.emplace_back();
 	auto& imageAlloc = m_ImageAllocations.emplace_back();
 	auto& imageAllocInfo = m_ImageAllocationInfos.emplace_back();
+	auto& texture = m_Textures.emplace_back();
 
 	auto imageInfo = vk::ImageCreateInfo(
 		vk::ImageCreateFlags(),
@@ -429,13 +464,15 @@ inline uint32_t VulkanApp::createTexture(const Bitmap & bitmap)
 	imageAllocCreateInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	VkImage image;
 	VmaAllocation imageAllocation;
-	VmaAllocationInfo imageAllocInfo;
 	vmaCreateImage(m_Device.m_Allocator, 
 		&imageInfo.operator const VkImageCreateInfo &(), 
 		&imageAllocCreateInfo, 
 		&image, 
 		&imageAllocation, 
 		&imageAllocInfo);
+
+	image2D = image;
+	imageAlloc = imageAllocation;
 
 	float left = static_cast<float>(bitmap.m_Left);
 	float top = static_cast<float>(bitmap.m_Top);
@@ -457,56 +494,76 @@ inline uint32_t VulkanApp::createTexture(const Bitmap & bitmap)
 	RightBottomUV = { 1.0f, 1.0f };
 	RightTopUV = { 1.0f, 0.0f };
 
-	VulkanData::Vertex LeftTop, LeftBottom, RightBottom, RightTop;
+	Vertex LeftTop, LeftBottom, RightBottom, RightTop;
 	LeftTop = { LeftTopPos,		LeftTopUV };
 	LeftBottom = { LeftBottomPos,	LeftBottomUV };
 	RightBottom = { RightBottomPos,	RightBottomUV };
 	RightTop = { RightTopPos,		RightTopUV };
 
 	// push back vertices
-	m_VertexData.push_back(LeftTop);
-	m_VertexData.push_back(LeftBottom);
-	m_VertexData.push_back(RightBottom);
-	m_VertexData.push_back(RightTop);
+	m_Vertices.push_back(LeftTop);
+	m_Vertices.push_back(LeftBottom);
+	m_Vertices.push_back(RightBottom);
+	m_Vertices.push_back(RightTop);
 
 	auto verticesPerTexture = 4U;
 	uint32_t indexOffset = verticesPerTexture * textureIndex;
 
 	// push back indices
-	m_IndexData.push_back(indexOffset + 0);
-	m_IndexData.push_back(indexOffset + 1);
-	m_IndexData.push_back(indexOffset + 2);
-	m_IndexData.push_back(indexOffset + 2);
-	m_IndexData.push_back(indexOffset + 3);
-	m_IndexData.push_back(indexOffset + 0);
+	m_Indices.push_back(indexOffset + 0);
+	m_Indices.push_back(indexOffset + 1);
+	m_Indices.push_back(indexOffset + 2);
+	m_Indices.push_back(indexOffset + 2);
+	m_Indices.push_back(indexOffset + 3);
+	m_Indices.push_back(indexOffset + 0);
 
 	// Create a Texture2D object for this texture
 	Texture2D texture = {};
-	texture.index = static_cast<uint32_t>(m_Textures.size());
+	texture.index = textureIndex;
 	texture.width = bitmap.m_Width;
 	texture.height = bitmap.m_Height;
-	texture.size = m_Images.back().getMemoryRange().totalSize;
-	texture.imageHandle = m_Images.back().getImage();
+	texture.size = imageAllocInfo.size;
 
 	// add the texture to a vector and a map by name
 	m_Textures.push_back(texture);
 
-	vke::Buffer stagingBuffer;
-	stagingBuffer.init(
-		m_Device,
-		&m_Allocator,
+	auto stagingBufferInfo = vk::BufferCreateInfo(
+		vk::BufferCreateFlags(),
 		texture.size,
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-	);
+		vk::BufferUsageFlagBits::eTransferSrc,
+		vk::SharingMode::eExclusive,
+		1U,
+		&m_Device.m_GraphicsQueueFamilyID).operator const VkBufferCreateInfo &();
 
-	if (stagingBuffer.mapMemoryRange() != true)
-	{
-		throw std::runtime_error("unable to map buffer");
-	}
+	auto stagingAllocCreateInfo = VmaAllocationCreateInfo{};
+	stagingAllocCreateInfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_CPU_ONLY;
+	VkBuffer stagingBuffer;
+	VmaAllocation stagingMemory;
+	VmaAllocationInfo stagingMemoryInfo;
+	vmaCreateBuffer(m_Device.m_Allocator, &stagingBufferInfo, &stagingAllocCreateInfo, &stagingBuffer, &stagingMemory, &stagingMemoryInfo);
 
-	memcpy(stagingBuffer.mappedData, bitmap.m_Data.data(), static_cast<size_t>(bitmap.m_Size));
-	stagingBuffer.unmap();
+	// copy from host to staging buffer
+	void* stagingBufferData;
+	vmaMapMemory(m_Device.m_Allocator, stagingMemory, &stagingBufferData);
+	memcpy(stagingBufferData, bitmap.m_Data.data(), static_cast<size_t>(bitmap.m_Size));
+	vmaUnmapMemory(m_Device.m_Allocator, stagingMemory);
+
+	auto tempCommandPool = m_Device.m_LogicalDevice->createCommandPoolUnique(
+		vk::CommandPoolCreateInfo(
+			vk::CommandPoolCreateFlagBits::eTransient,
+			m_Device.m_GraphicsQueueFamilyID));
+
+	auto tempCommandBuffer = m_Device.m_LogicalDevice->allocateCommandBuffersUnique(
+		vk::CommandBufferAllocateInfo(
+			tempCommandPool.get(),
+			vk::CommandBufferLevel::ePrimary,
+			1U));
+
+	tempCommandBuffer[0].get().begin(vk::CommandBufferBeginInfo(
+		vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+	tempCommandBuffer[0]->copyBufferToImage(stagingBuffer, image2D, vk::ImageLayout::eTransferDstOptimal, 
+		{ 
+			vk::BufferImageCopy(0U, 
 
 	m_Images.back().copyFromBuffer(stagingBuffer, m_GraphicsCommandPool, m_GraphicsQueue);
 

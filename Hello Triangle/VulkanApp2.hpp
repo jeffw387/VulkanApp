@@ -27,6 +27,12 @@ struct Vertex
 	static std::vector<vk::VertexInputAttributeDescription> vertexAttributeDescriptions();
 };
 
+struct FragmentPushConstants
+{
+	glm::uint32 textureID;
+	glm::float32 r,g,b,a;
+};
+
 struct VMAWrapper
 {
 	VMAWrapper() {}
@@ -52,25 +58,19 @@ public:
 		*this = std::move(other);
 	}
 	SwapChainDependencies(
-		const vk::PhysicalDevice& physicalDevice, 
-		const vk::Device& logicalDevice, 
-		const vk::SurfaceKHR& surface,
-		const vk::RenderPass& renderPass,
-		const vk::Format& surfaceFormat, 
-		const vk::ColorSpaceKHR& surfaceColorSpace,
-		const vk::Extent2D& surfaceExtent,
-		const uint32_t graphicsQueueFamilyID,
-		const vk::PresentModeKHR presentMode,
-		const ShaderData& shaderData,
-		const vk::ShaderModule vertexShader,
-		const vk::ShaderModule fragmentShader);
+		const vk::Device & logicalDevice, 
+		vk::UniqueSwapchainKHR swapChain,
+		const uint32_t bufferCount,
+		const vk::RenderPass & renderPass, 
+		const vk::Format & surfaceFormat, 
+		const vk::Extent2D & surfaceExtent, 
+		const vk::GraphicsPipelineCreateInfo& pipelineCreateInfo
+		);
 
-	const uint32_t swapImageCount = 3U;
 	vk::UniqueSwapchainKHR m_Swapchain;
 	std::vector<vk::Image> m_SwapImages;
 	std::vector<vk::UniqueImageView> m_SwapViews;
 	std::vector<vk::UniqueFramebuffer> m_Framebuffers;
-	vk::UniquePipelineLayout m_PipelineLayout;
 	vk::UniquePipeline m_Pipeline;
 };
 
@@ -101,6 +101,8 @@ public:
 		std::function<void(VulkanApp*)> imageLoadCallback,
 		VulkanApp* app);
 
+	vk::UniqueSwapchainKHR createSwapChain();
+
 	vk::UniqueShaderModule createShaderModule(const vk::Device& device, const char* path);
 	vk::UniqueDescriptorPool createVertexDescriptorPool(const vk::Device & logicalDevice, uint32_t bufferCount);
 	vk::UniqueDescriptorPool createFragmentDescriptorPool(const vk::Device & logicalDevice, uint32_t textureCount);
@@ -121,11 +123,40 @@ public:
 	vk::ColorSpaceKHR m_SurfaceColorSpace;
 	std::vector<vk::SubpassDependency> m_SubpassDependencies;
 	vk::UniqueRenderPass m_RenderPass;
+	vk::UniqueSampler m_Sampler;
+	vk::UniqueDescriptorSetLayout m_VertexDescriptorSetLayout;
+	vk::UniqueDescriptorSetLayout m_FragmentDescriptorSetLayout;
+	std::vector<vk::DescriptorSetLayout> m_DescriptorSetLayouts;
+	std::vector<vk::PushConstantRange> m_PushConstantRanges;
 	vk::UniqueShaderModule m_VertexShader;
 	vk::UniqueShaderModule m_FragmentShader;
 	vk::UniqueDescriptorPool m_FragmentLayoutDescriptorPool;
 	vk::UniqueDescriptorSet m_FragmentDescriptorSet;
 	vk::PresentModeKHR m_PresentMode;
+	const uint32_t m_BufferCount = 3U;
+	uint32_t m_TextureCount = 0U;
+	vk::UniquePipelineLayout m_PipelineLayout;
+	std::vector<vk::SpecializationMapEntry> m_VertexSpecializations;
+	std::vector<vk::SpecializationMapEntry> m_FragmentSpecializations;
+	vk::SpecializationInfo m_VertexSpecializationInfo;
+	vk::SpecializationInfo m_FragmentSpecializationInfo;
+	vk::PipelineShaderStageCreateInfo m_VertexShaderStageInfo;
+	vk::PipelineShaderStageCreateInfo m_FragmentShaderStageInfo;
+	std::vector<vk::PipelineShaderStageCreateInfo> m_PipelineShaderStageInfo;
+	std::vector<vk::VertexInputBindingDescription> m_VertexInputBindings;
+	std::vector<vk::VertexInputAttributeDescription> m_VertexAttributes;
+	vk::PipelineVertexInputStateCreateInfo m_PipelineVertexInputInfo;
+	vk::PipelineInputAssemblyStateCreateInfo m_PipelineInputAsemblyInfo;
+	vk::PipelineTessellationStateCreateInfo m_PipelineTesselationStateInfo;
+	vk::PipelineViewportStateCreateInfo m_PipelineViewportInfo;
+	vk::PipelineRasterizationStateCreateInfo m_PipelineRasterizationInfo;
+	vk::PipelineMultisampleStateCreateInfo m_PipelineMultisampleInfo;
+	vk::PipelineDepthStencilStateCreateInfo m_PipelineDepthStencilInfo;
+	vk::PipelineColorBlendAttachmentState m_PipelineColorBlendAttachmentState;
+	vk::PipelineColorBlendStateCreateInfo m_PipelineBlendStateInfo;
+	std::vector<vk::DynamicState> m_DynamicStates;
+	vk::PipelineDynamicStateCreateInfo m_PipelineDynamicStateInfo;
+	vk::GraphicsPipelineCreateInfo m_PipelineCreateInfo;
 	SwapChainDependencies m_SwapchainDependencies;
 	std::vector<FramebufferSupports> m_FramebufferSupports;
 };
@@ -154,4 +185,6 @@ public:
 	std::vector<Texture2D> m_Textures;
 	std::vector<VmaAllocation> m_ImageAllocations;
 	std::vector<VmaAllocationInfo> m_ImageAllocationInfos;
+	std::vector<Vertex> m_Vertices;
+	std::vector<uint32_t> m_Indices;
 };

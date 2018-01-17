@@ -2,14 +2,13 @@
 
 #include <map>
 #include <vector>
-#include <GLFW/glfw3.h>
 using Action = uint32_t;
 using KeyCode = int;
 
 enum class InputState
 {
-	Pressed = GLFW_PRESS,
-	Released = GLFW_RELEASE
+	/*Pressed = GLFW_PRESS,
+	Released = GLFW_RELEASE*/
 };
 
 enum class InputType

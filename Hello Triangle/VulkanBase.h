@@ -1499,7 +1499,7 @@ namespace vke
 			LogicalDevice& device,
 			VkRenderPass renderPass,
 			VkShaderModule vertexShader,
-			uint32_t imageCount,
+			uint32_t textureCount,
 			VkShaderModule fragmentShader,
 			std::vector<VkVertexInputBindingDescription> bindingDescriptions,
 			std::vector<VkVertexInputAttributeDescription> attributeDescriptions,
@@ -1525,7 +1525,7 @@ namespace vke
 			VkSpecializationInfo fragmentSpecializationInfo = {};
 			fragmentSpecializationInfo.dataSize = FragmentSpecializationSize;
 			fragmentSpecializationInfo.mapEntryCount = 1;
-			fragmentSpecializationInfo.pData = &imageCount;
+			fragmentSpecializationInfo.pData = &textureCount;
 			fragmentSpecializationInfo.pMapEntries = &imageCountSpecialization;
 
 			VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
@@ -1765,7 +1765,7 @@ namespace vke
 		void init(VkDevice device, VkDescriptorPool pool, std::vector<VkDescriptorSetLayout>& setLayouts)
 		{
 			m_Device = device;
-			m_DescriptorPool = pool;
+			m_VertexLayoutDescriptorPool = pool;
 
 			VkDescriptorSetAllocateInfo allocateInfo = {};
 			allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1795,7 +1795,7 @@ namespace vke
 
 	private:
 		VkDevice m_Device = VK_NULL_HANDLE;
-		VkDescriptorPool m_DescriptorPool = VK_NULL_HANDLE;
+		VkDescriptorPool m_VertexLayoutDescriptorPool = VK_NULL_HANDLE;
 		VkDescriptorSet m_DescriptorSet = VK_NULL_HANDLE;
 	};
 

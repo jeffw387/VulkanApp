@@ -18,6 +18,9 @@
     <ClCompile Include="main2.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="VulkanApp2.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="fileIO.h">
@@ -26,13 +29,7 @@
     <ClInclude Include="math.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="VulkanBase.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="VulkanData.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="MemoryAllocator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="alignedAlloc.h">
@@ -42,9 +39,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="VulkanApp.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="MPL.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="profiler.hpp">
@@ -62,16 +56,13 @@
     <ClInclude Include="Bitmap.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="vulkanTestAlloc.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="MapHelper.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Texture2D.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="VulkanApp2.hxx">
+    <ClInclude Include="VulkanApp2.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="get_matches.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

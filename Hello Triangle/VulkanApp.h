@@ -9,7 +9,7 @@
 
 #include "VulkanData.h"
 //#include "VulkanBase.h"
-#include "vku/vku.hpp"
+#include "vulkan/vulkan.hpp"
 
 //#define FMT_HEADER_ONLY
 //#include <fmt-master/fmt/printf.h>
@@ -19,6 +19,8 @@
 #include <string>
 #include <optional>
 #include <functional>
+#include <array>
+#include <set>
 #include "stx/btree_map.h"
 #include "fileIO.h"
 //#include "Input.h"
@@ -30,21 +32,21 @@
 
 constexpr auto IndicesPerQuad = 6U;
 
-std::vector<const char*> ValidationLayers = 
+std::array<const char const*, 2> ValidationLayers = 
 {
 	//"VK_LAYER_LUNARG_vktrace",
 	"VK_LAYER_LUNARG_standard_validation",
 	"VK_LAYER_LUNARG_monitor"
 };
 
-std::vector<const char*> RequiredInstanceExtensions = 
+std::array<const char const*, 3> RequiredInstanceExtensions = 
 { 
 	VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
 	VK_KHR_SURFACE_EXTENSION_NAME,
 	VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 };
 
-std::vector<const char*> DeviceExtensions =
+std::array<const char const*, 1> DeviceExtensions =
 {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
@@ -58,21 +60,21 @@ enum class DrawLayers
 	UI = 4
 };
 
-struct BufferStruct
+
+class FramebufferSupport
 {
-	vke::CommandPool pool;
-	vke::Fence drawCommandExecuted;
-	vke::CommandBuffer drawCommandBuffer;
-	vke::CommandBuffer stagingCommandBuffer;
-	vke::Buffer matrixBuffer;
-	vke::Buffer matrixStagingBuffer;
-	vke::Semaphore matrixBufferStaged;
-	vke::Fence stagingCommandExecuted;
+	vk::UniqueCommandPool pool;
+	vk::UniqueFence drawCommandExecuted;
+	vk::UniqueCommandBuffer drawCommandBuffer;
+	vk::UniqueCommandBuffer stagingCommandBuffer;
+	vk::UniqueBuffer matrixBuffer;
+	vk::UniqueBuffer matrixStagingBuffer;
+	vk::UniqueSemaphore matrixBufferStaged;
+	vk::UniqueFence stagingCommandExecuted;
+	vk::UniqueDescriptorPool descriptorPool;
+	vk::UniqueDescriptorSet descriptorSet0;
+	vk::UniqueDescriptorSet descriptorSet1;
 	size_t matrixBufferCapacity;
-	vke::Framebuffer framebuffer;
-	vke::DescriptorPool descriptorPool;
-	vke::DescriptorSet descriptorSet0;
-	vke::DescriptorSet descriptorSet1;
 };
 
 Bitmap loadImage(std::string path)
@@ -164,17 +166,19 @@ public:
 		int height;
 		std::string vertexShaderPath;
 		std::string fragmentShaderPath;
+		std::string appName;
+		std::string appWindowClassName;
 		std::function<void(VulkanApp&)> loadImagesCallback;
 	};
 
 	void initApp(AppInitData initData)
 	{
-		m_Window.init(L"Vulkan Window Class", L"Vulkan App", Window::WindowStyle::Windowed, (void*)this, initData.width, initData.height);
+		m_Window.init(initData.appWindowClassName.c_str(), initData.appName.c_str(), Window::WindowStyle::Windowed, (void*)this, initData.width, initData.height);
 		m_Window.SetResizeCallback(onWindowResized);
 		m_Camera.setSize( { static_cast<float>(initData.width), static_cast<float>(initData.height) } );
 		m_Camera.setPosition( { 0.0f, 0.0f } );
 		m_TextEngine.init();
-		initVulkan(initData.vertexShaderPath, initData.fragmentShaderPath, initData.loadImagesCallback);
+		initVulkan(initData);
 	}
 
 	template <typename PathType>
@@ -598,37 +602,37 @@ private:
 	Camera2D m_Camera;
 	//InputManager m_InputManager;
 	Text::TextEngine m_TextEngine;
-	vke::Instance m_Instance;
-	vke::Surface m_Surface;
-	vke::PhysicalDevice m_PhysicalDevice;
-	vke::LogicalDevice m_Device;
-	vke::Queue m_GraphicsQueue;
-	vke::Queue m_PresentQueue;
-	vke::CommandPool m_GraphicsCommandPool;
+	vk::UniqueInstance m_Instance;
+	vk::UniqueSurfaceKHR m_Surface;
+	vk::PhysicalDevice m_PhysicalDevice;
+	vk::UniqueDevice m_Device;
+	vk::Queue m_GraphicsQueue;
+	vk::Queue m_PresentQueue;
+	vk::UniqueCommandPool m_GraphicsCommandPool;
 	std::vector<BufferStruct> m_PresentBuffers;
-	vke::DescriptorSetLayout m_Set0Layout;
-	vke::DescriptorSetLayout m_Set1Layout;
-	vke::ShaderModule m_VertexShader;
-	vke::ShaderModule m_FragmentShader;
-	vke::PipelineLayout m_PipelineLayout;
-	vke::Pipeline m_Pipeline;
+	vk::UniqueDescriptorSetLayout m_Set0Layout;
+	vk::UniqueDescriptorSetLayout m_Set1Layout;
+	vk::UniqueShaderModule m_VertexShader;
+	vk::UniqueShaderModule m_FragmentShader;
+	vk::UniquePipelineLayout m_PipelineLayout;
+	vk::UniquePipeline m_Pipeline;
 	VkFormat m_DepthFormat;
-	vke::Image2D m_DepthImage;
-	vke::RenderPass m_RenderPass;
+	vk::UniqueImage m_DepthImage;
+	vk::UniqueRenderPass m_RenderPass;
 	vke::SwapchainSupportDetails m_SwapchainSupportDetails;
 	VkSurfaceFormatKHR m_SurfaceFormat;
 	VkPresentModeKHR m_PresentMode;
 	VkExtent2D m_SwapExtent;
 	uint32_t m_SwapImageCount;
-	vke::Swapchain m_Swapchain;
+	vk::UniqueSwapchainKHR m_Swapchain;
 	vke::Allocator m_Allocator;
-	vke::Buffer m_VertexBuffer;
-	vke::Buffer m_IndexBuffer;
+	vk::UniqueBuffer m_VertexBuffer;
+	vk::UniqueBuffer m_IndexBuffer;
 	VkDeviceSize m_UniformBufferOffsetAlignment;
-	std::vector<vke::Image2D> m_Images;
-	vke::Sampler2D m_Sampler;
-	vke::Semaphore m_ImageReadyForWriting;
-	vke::Semaphore m_ImageReadyForPresentation;
+	std::vector<vk::UniqueImage> m_Images;
+	vk::UniqueSampler m_Sampler;
+	vk::UniqueSemaphore m_ImageReadyForWriting;
+	vk::UniqueSemaphore m_ImageReadyForPresentation;
 
 	// host-side data
 	std::vector<VulkanData::Vertex> m_VertexData;
@@ -750,6 +754,10 @@ private:
 		}
 	}
 
+	struct SwapchainHierarchy
+	{
+
+	};
 	void recreateSwapChain(VkExtent2D currentWindowExtent)
 	{
 		// wait for resources to finish being used
@@ -792,22 +800,36 @@ private:
 		createFramebuffers(m_SwapExtent);
 	}
 
-	void initVulkan(std::string vertexShaderPath, std::string fragmentShaderPath, std::function<void(VulkanApp&)> loadCallback)
+	void initVulkan(AppInitData initData)
 	{
-		uint32_t glfwExtensionCount = 0;
-
 		// create instance
-		m_Instance.init(ValidationLayers, RequiredInstanceExtensions, DeviceExtensions, &g_allocators);
+		auto appInfo = vk::ApplicationInfo(initData.appName.c_str());
+		vk::InstanceCreateInfo instanceCreateInfo = {
+			vk::InstanceCreateFlags(),
+			&vk::ApplicationInfo(initData.appName.c_str()), 
+			ValidationLayers.size(),
+			ValidationLayers.data(),
+			RequiredInstanceExtensions.size(),
+			RequiredInstanceExtensions.data()
+			};
+		m_Instance = vk::createInstanceUnique(instanceCreateInfo);
 
 		// create surface
-		VkSurfaceKHR surface;
-		m_Surface.init(m_Instance, m_Window.m_hInstance, m_Window.m_hWnd);
+		vk::Win32SurfaceCreateInfoKHR surfaceCreateInfo =
+		{
+			vk::Win32SurfaceCreateFlagsKHR(),
+			m_Window.m_hInstance,
+			m_Window.m_hWnd
+		};
+		m_Surface = m_Instance->createWin32SurfaceKHRUnique(surfaceCreateInfo);
 
 		// pick physical device
-		m_PhysicalDevice.init(m_Instance, m_Surface);
+		auto physicalDevices = m_Instance->enumeratePhysicalDevices();
+		m_PhysicalDevice = physicalDevices[0];
 
 		// store the minimum uniform buffer offset alignment
-		m_UniformBufferOffsetAlignment = m_PhysicalDevice.getPhysicalProperties().limits.minUniformBufferOffsetAlignment;
+		auto props = m_PhysicalDevice.getProperties2KHR();
+		m_UniformBufferOffsetAlignment = props.properties.limits.minUniformBufferOffsetAlignment;
 
 		// create logical device
 		std::set<int> uniqueQueueFamilies = { m_PhysicalDevice.getGraphicsQueueIndex(), m_PhysicalDevice.getPresentQueueIndex() };

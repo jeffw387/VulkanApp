@@ -7,7 +7,9 @@
 #include "Bitmap.hpp"
 #include <memory>
 #include <gsl/gsl>
+#include <optional>
 #include "Texture2D.hpp"
+#include <map>
 
 namespace Text
 {
@@ -100,7 +102,7 @@ public:
 		FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_PIXELS, &box);
 
 		Bitmap resultBitmap = Bitmap(
-			reinterpret_cast<stbi_uc*>(pixels.data()), 
+			reinterpret_cast<unsigned char*>(pixels.data()), 
 			sourceBitmap.width, 
 			sourceBitmap.rows, 
 			box.xMin,

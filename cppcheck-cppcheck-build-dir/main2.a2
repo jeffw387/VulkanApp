@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<analyzerinfo checksum="669068931">
+        <error id="preprocessorErrorDirective" severity="error" msg="No header in #include" verbose="No header in #include">
+            <location file="C:\Projects\Hello Triangle\Hello Triangle\text.hpp" line="3"/>
+        </error>
+</analyzerinfo>

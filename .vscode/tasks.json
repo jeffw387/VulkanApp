@@ -4,13 +4,12 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "build main2.cpp",
+            "label": "g++ debug 64 bit",
             "type": "shell",
-            "command": "cl /EHsc /MT /O2 /I C:/VulkanSDK/1.0.54.0/Include /I C:/Libraries/Compiled/glfw-3.2.1.bin.WIN64/include /I C:/Libraries/Source/fmt-master /I C:/Libraries/Source/stb-master /I C:/Libraries/Source/glm main2.cpp /link /LIBPATH:C:/Libraries/Compiled/glfw-3.2.1.bin.WIN64/lib-vc2015 /LIBPATH:C:/VulkanSDK/1.0.54.0/Lib",
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
+            "command": "gcc64debugcompile.bat",
+            "problemMatcher": [
+                "$gcc"
+            ]
         }
     ]
 }

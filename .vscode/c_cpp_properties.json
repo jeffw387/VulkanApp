@@ -45,14 +45,8 @@
         {
             "name": "Win32",
             "includePath": [
-                "C:/VulkanSDK/1.0.65.1/Include",
-                "C:/Libraries/Source/fmt-master",
-                "C:/Libraries/Source/stb-master",
-                "C:/Libraries/Source/glm",
-                "C:/Libraries/Source/stx-btree-0.9/include",
-                "C:/Libraries/Source/freetype-2.8.1/include",
-                "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Tools/MSVC/14.11.25503/include/*",
-                "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Tools/MSVC/14.11.25503/atlmfc/include/*",
+                "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Tools/MSVC/14.12.25827/include/*",
+                "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Tools/MSVC/14.12.25827/atlmfc/include/*",
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.16299.0/um",
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.16299.0/ucrt",
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.16299.0/shared",
@@ -66,14 +60,8 @@
             "intelliSenseMode": "msvc-x64",
             "browse": {
                 "path": [
-                    "C:/VulkanSDK/1.0.65.1/Include",
-                    "C:/Libraries/Source/fmt-master",
-                    "C:/Libraries/Source/stb-master",
-                    "C:/Libraries/Source/glm",
-                    "C:/Libraries/Source/stx-btree-0.9/include",
-                    "C:/Libraries/Source/freetype-2.8.1/include",
-                    "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Tools/MSVC/14.11.25503/include/*",
-                    "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Tools/MSVC/14.11.25503/atlmfc/include/*",
+                    "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Tools/MSVC/14.12.25827/include/*",
+                    "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Tools/MSVC/14.12.25827/atlmfc/include/*",
                     "C:/Program Files (x86)/Windows Kits/10/Include/10.0.16299.0/um",
                     "C:/Program Files (x86)/Windows Kits/10/Include/10.0.16299.0/ucrt",
                     "C:/Program Files (x86)/Windows Kits/10/Include/10.0.16299.0/shared",

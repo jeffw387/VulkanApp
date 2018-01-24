@@ -1,6 +1,0 @@
--Allow reference to fonts by compile-time indexing of some sort
--at load time, render all glyphs for font-size combos that are known to be needed
--allow loading of additional font-size combos at runtime
--cache any fonts that are loaded
--allow explicit deletion of cached glyphs for a given font-size combo
--text will depend on vulkan app header

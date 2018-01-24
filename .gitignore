@@ -265,3 +265,9 @@ Hello Triangle/Hello Trianglex64.ipdb
 Hello Triangle/freetype281MTd.lib
 Hello Triangle/freetype281MT.lib
 Hello Triangle/main2.exe
+*.db
+*.lastcodeanalysissucceeded
+*.exe
+*.ipdb
+*.ruleset
+*.iobj

@@ -106,7 +106,7 @@ public:
 			if (msg.message == WM_QUIT)
 			{
 				loop = false;
-				return loop;
+				return false;
 			}
 			loop = result;
 		}

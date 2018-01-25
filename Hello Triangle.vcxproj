@@ -12,7 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main2.cpp" />
-    <ClCompile Include="VulkanApp2.cpp" />
+    <ClCompile Include="VulkanApp2.hpp" />
     <ClCompile Include="VulkanFunctions.cpp" />
     <ClCompile Include="Window.cpp" />
   </ItemGroup>
@@ -29,7 +29,6 @@
     <ClInclude Include="Sprite.hpp" />
     <ClInclude Include="Texture2D.hpp" />
     <ClInclude Include="UniqueHandle.hpp" />
-    <ClInclude Include="VulkanApp2.hpp" />
     <ClInclude Include="VulkanData.h" />
     <ClInclude Include="alignedAlloc.h" />
     <ClInclude Include="VulkanFunctions.hpp" />

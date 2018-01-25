@@ -1,13 +1,13 @@
+#define VMA_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
 #include "VulkanApp2.hpp"
 #include <algorithm>
 #include <iostream>
 #include <map>
 
 #include "stx/btree_map.h"
-//#include "profiler.hpp"
 #include "ECS.hpp"
 #include "text.hpp"
-#include "UniqueHandle.hpp"
 
 namespace Image
 {
@@ -26,7 +26,7 @@ namespace Image
 
 	std::map<size_t, size_t> ImageIDToTextureID;
 
-	void LoadHelper(vka::VulkanApp* app, size_t imageID)
+	void LoadHelper(vka::SuperClass* app, size_t imageID)
 	{
 		ImageIDToTextureID[imageID] = app->createTexture(loadImageFromFile(Paths[imageID]));
 	}
@@ -46,22 +46,15 @@ std::array<const char*, static_cast<size_t>(Font::COUNT)> Paths =
 };
 }
 
-void LoadTextures(vka::VulkanApp* app)
+void LoadTextures(vka::SuperClass* app)
 {
 	// Load Textures Here
 	Image::LoadHelper(app, Image::Star);
 	Image::LoadHelper(app, Image::Test1);
-	vka::VulkanApp::Text::FontID fontID;
-	vka::VulkanApp::Text::FontSize fontSize;
-	uint32_t DPI;
-	const char* fontPath;
-
-	app->LoadFont(Font::AeroviasBrasil, 12U, 166U, Font::Paths[Font::AeroviasBrasil]);
 }
 
 int main()
 {
-
 	ECS::Manager entityManager;
 	using SpriteMap = stx::btree_map<Entity, Sprite>;
 	SpriteMap spriteComponents;
@@ -73,16 +66,16 @@ int main()
 	std::vector<const char*> Layers = 
 	{
 		"VK_LAYER_LUNARG_standard_validation",
-		//"VK_LAYER_LUNARG_device_limits",
-		"VK_LAYER_LUNARG_api_dump",
-		//"VK_LAYER_GOOGLE_unique_objects",
+		//"VK_LAYER_LUNARG_api_dump",
 	};
+
 	std::vector<const char*> InstanceExtensions = 
 	{
 		VK_KHR_SURFACE_EXTENSION_NAME,
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 		VK_EXT_DEBUG_REPORT_EXTENSION_NAME
 	};
+
 	const vk::InstanceCreateInfo instanceCreateInfo = vk::InstanceCreateInfo(
 		vk::InstanceCreateFlags(),
 		&vk::ApplicationInfo(),
@@ -96,7 +89,7 @@ int main()
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
 	};
 	const vka::ShaderData shaderData = { "Shaders/vert.spv", "Shaders/frag.spv" };
-	std::function<void(vka::VulkanApp*)> imageLoadCallback = LoadTextures;
+	std::function<void(vka::SuperClass*)> imageLoadCallback = LoadTextures;
 	vka::InitData initData = 
 	{
 		WindowClassName,
@@ -109,22 +102,16 @@ int main()
 		shaderData,
 		imageLoadCallback
 	};
-	auto app = vka::VulkanApp::VulkanApp(initData);
+	vka::SuperClass app;
+	app.init(initData);
 	vka::LoopCallbacks callbacks;
 	callbacks.BeforeRenderCallback = [&]() -> vka::SpriteCount{
 		return 0U;
 	};
-	callbacks.RenderCallback = [&](vka::VulkanApp* app){};
+	callbacks.RenderCallback = [&](vka::SuperClass* app){};
 	callbacks.AfterRenderCallback = [&](){};
 	app.Run(callbacks);
-	vka::VulkanApp::Text::InitInfo initInfo;
-	initInfo.baseline_x = 0;
-	initInfo.baseline_y = 0;
-	initInfo.depth = -0.5f;
-	initInfo.fontID = Font::AeroviasBrasil;
-	initInfo.fontSize = 12;
-	initInfo.text = "Test Text that's a little longer!";
-	initInfo.textColor = glm::vec4(1.f,0.f,0.f,1.f);
+	
 	TextureIndex starTexture = gsl::narrow<TextureIndex>(Image::ImageIDToTextureID[Image::Star]);
 	for (auto i = 0.f; i < 3.f; i++)
 	{
@@ -136,7 +123,6 @@ int main()
 		auto transform = glm::translate(glm::mat4(1.f), position);
 		sprite.transform = transform;
 	}
-	auto TextGroup = app.m_Text.createTextGroup(initInfo);
 
 	return 0;
 }

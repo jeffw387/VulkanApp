@@ -10,7 +10,6 @@
 #include "gtc/matrix_transform.hpp"
 #include "VulkanFunctions.hpp"
 #include "vulkan/vulkan.hpp"
-#include "vulkan_ext.h"
 #include "Window.hpp"
 #include "fileIO.h"
 #define VMA_STATIC_VULKAN_FUNCTIONS 0

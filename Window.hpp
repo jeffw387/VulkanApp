@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Windows.h"
+#include "nowide/convert.hpp"
 #include <functional>
+#include <iostream>
 
 struct ClientSize
 {
@@ -28,14 +30,14 @@ class Window
 public:
 	enum WindowStyle
 	{
-		Windowed = WS_OVERLAPPEDWINDOW,
+		Windowed = WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
 		Fullscreen = WS_POPUP
 	};
 
 	Window() = default;
 
-	Window (char const* WindowClassName, 
-		char const* WindowTitle, 
+	Window (std::string WindowClassName, 
+		std::string WindowTitle, 
 		WindowStyle windowStyle,
 		ResizeCallback resizeCallback,
 		void* applicationPointer, 
@@ -43,34 +45,37 @@ public:
 		int height = CW_USEDEFAULT) :
 		m_ResizeCallback(resizeCallback),
 		m_ApplicationPointer(applicationPointer),
-		m_hInstance(GetModuleHandle(nullptr))
+		m_hInstance(GetModuleHandle(0))
 	{
+		auto className = nowide::widen(WindowClassName).data();
+		auto windowTitle = nowide::widen(WindowTitle).data();
 		// Register the window class.
 		WNDCLASSEX wcex = { };
 
+		wcex.cbSize = sizeof(WNDCLASSEX);
 		wcex.lpfnWndProc   = WindowProc;
 		wcex.hInstance     = m_hInstance;
-		wcex.lpszClassName = LPCTSTR(WindowClassName);
+		wcex.lpszClassName = className;
 		wcex.style = CS_HREDRAW | CS_VREDRAW;
+		wcex.hCursor = LoadCursor(NULL, IDC_ARROW);;
+		wcex.hIcon = NULL;
 		wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-		wcex.cbSize = sizeof(WNDCLASSEX);
+		wcex.lpszMenuName = NULL;
+		wcex.hIconSm = NULL;
 
-		auto registerResult = RegisterClassEx(&wcex);
+		auto registerResult = RegisterClassExW(&wcex);
 
-		DWORD     dwExStyle		= 0;
-		LPCTSTR   lpClassName 	= LPCTSTR(WindowClassName);
-		LPCTSTR   lpWindowName 	= LPCTSTR(WindowTitle);
-		DWORD     dwStyle 		= windowStyle;
-		int       x				= CW_USEDEFAULT;
-		int       y				= CW_USEDEFAULT;
+		//DWORD     dwExStyle		= WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
+		DWORD     dwStyle 		= WS_OVERLAPPEDWINDOW;
+		int       x				= 20;
+		int       y				= 20;
 		HWND      hWndParent 	= NULL;
 		HMENU     hMenu 		= NULL;
 		LPVOID    lpParam 		= NULL;
-		m_hWnd = HWNDPtr(CreateWindowEx(
-			dwExStyle,
-			lpClassName,
-			lpWindowName,
-			dwStyle,
+		m_hWnd = HWNDPtr(CreateWindowW(
+			className,
+			windowTitle,
+			WS_OVERLAPPEDWINDOW,
 			x,
 			y,
 			width,
@@ -132,6 +137,7 @@ public:
 	{
 		switch (message)
 		{
+			case WM_KEYDOWN:
 			case WM_DESTROY:
 			{
 				PostQuitMessage(0);
@@ -144,6 +150,7 @@ public:
 				break;
 			}
 		}
+		std::cout << "DefWindowProc: " << message << "\n";
 		// handle messages
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}

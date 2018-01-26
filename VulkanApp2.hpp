@@ -401,7 +401,7 @@ struct VulkanApp
 			std::numeric_limits<uint64_t>::max(), 
 			vk::Semaphore(),
 			renderFinishedFence);
-		m_Supports[nextImage.value].m_ImagePresentCompleteFence = vk::UniqueFence(renderFinishedFence);
+		m_Supports[nextImage.value].m_ImagePresentCompleteFence = vk::UniqueFence(renderFinishedFence, vk::FenceDeleter(m_LogicalDevice.get()));
 		return nextImage;
 	}
 
@@ -525,7 +525,7 @@ struct VulkanApp
 		supports.m_CommandBuffer->bindDescriptorSets(
 			vk::PipelineBindPoint::eGraphics,
 			m_PipelineLayout.get(),
-			0U,
+			1U,
 			{ m_FragmentDescriptorSet.get() },
 			{});
 
@@ -577,8 +577,8 @@ struct VulkanApp
 		vmaUnmapMemory(m_Allocator.get(), supports.m_MatrixStagingMemory.get());
 
 		CopyToBuffer(
-			supports.m_MatrixBuffer.get(),
 			supports.m_MatrixStagingBuffer.get(),
+			supports.m_MatrixBuffer.get(),
 			supports.m_MatrixMemoryInfo.size,
 			supports.m_MatrixStagingMemoryInfo.offset,
 			supports.m_MatrixMemoryInfo.offset,
@@ -1340,23 +1340,23 @@ struct VulkanApp
 				support.m_VertexLayoutDescriptorPool.get()));
 	}
 
+	// Window resize callback
+	static void resizeFunc(void* ptr, ClientSize size)
+	{
+		((VulkanApp*)ptr)->resizeWindow(size);
+	};
+
 	void init(InitData initData)
 	{
 		m_Window = Window(
 			initData.WindowClassName, 
 			initData.WindowTitle, 
 			initData.windowStyle, 
+			resizeFunc,
 			this, 
 			initData.width, 
 			initData.height);
 			m_Camera = Camera2D();
-
-			// Window resize callback
-			m_Window.SetResizeCallback([](void* ptr, ClientSize size)
-			{
-				((VulkanApp*)ptr)->resizeWindow(size);
-			}
-			);
 			m_Camera.setSize({static_cast<float>(initData.width), static_cast<float>(initData.height)});
 
 			// load vulkan dll, entry point, and instance/global function pointers
@@ -1413,10 +1413,10 @@ struct VulkanApp
 				m_DebugBreakpointCallbackData = m_Instance->createDebugReportCallbackEXTUnique(
 					vk::DebugReportCallbackCreateInfoEXT(
 						vk::DebugReportFlagBitsEXT::ePerformanceWarning |
-						vk::DebugReportFlagBitsEXT::eError |
-						vk::DebugReportFlagBitsEXT::eDebug |
-						vk::DebugReportFlagBitsEXT::eInformation |
-						vk::DebugReportFlagBitsEXT::eWarning,
+						vk::DebugReportFlagBitsEXT::eError,
+						//vk::DebugReportFlagBitsEXT::eDebug |
+						//vk::DebugReportFlagBitsEXT::eInformation |
+						//vk::DebugReportFlagBitsEXT::eWarning,
 						reinterpret_cast<PFN_vkDebugReportCallbackEXT>(&debugBreakCallback)
 					));
 			}

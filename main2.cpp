@@ -62,7 +62,7 @@ int main()
 	char const* WindowClassName = "VulkanWindowClass";
 	char const* WindowTitle = "Vulkan App";
 	Window::WindowStyle windowStyle = Window::WindowStyle::Windowed;
-	int width = 500; int height = 500;
+	int width = 900; int height = 900;
 	std::vector<const char*> Layers = 
 	{
 		"VK_LAYER_LUNARG_standard_validation",
@@ -104,13 +104,6 @@ int main()
 	};
 	vka::VulkanApp app;
 	app.init(initData);
-	vka::LoopCallbacks callbacks;
-	callbacks.BeforeRenderCallback = [&]() -> vka::SpriteCount{
-		return 0U;
-	};
-	callbacks.RenderCallback = [&](vka::VulkanApp* app){};
-	callbacks.AfterRenderCallback = [&](){};
-	app.Run(callbacks);
 	
 	TextureIndex starTexture = gsl::narrow<TextureIndex>(Image::ImageIDToTextureID[Image::Star]);
 	for (auto i = 0.f; i < 3.f; i++)
@@ -123,6 +116,21 @@ int main()
 		auto transform = glm::translate(glm::mat4(1.f), position);
 		sprite.transform = transform;
 	}
+
+	vka::LoopCallbacks callbacks;
+	callbacks.BeforeRenderCallback = [&]() -> vka::SpriteCount
+	{
+		return spriteComponents.size();
+	};
+	callbacks.RenderCallback = [&](vka::VulkanApp* app)
+	{
+		for (const auto& [entity, sprite] : spriteComponents)
+		{
+			app->RenderSprite(sprite);
+		}
+	};
+	callbacks.AfterRenderCallback = [&](){};
+	app.Run(callbacks);
 
 	return 0;
 }

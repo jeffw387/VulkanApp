@@ -583,7 +583,7 @@ struct VulkanApp
 			supports.m_MatrixStagingMemoryInfo.offset,
 			supports.m_MatrixMemoryInfo.offset,
 			{},
-		{ 
+		{
 			supports.m_MatrixBufferStagingCompleteSemaphore.get() 
 		});
 
@@ -630,6 +630,7 @@ struct VulkanApp
 			//loop
 			if (!m_Window.PollEvents())
 			{
+				m_LogicalDevice->waitIdle();
 				return;
 			}
 			auto spriteCount = callbacks.BeforeRenderCallback();
@@ -1206,22 +1207,22 @@ struct VulkanApp
 				vk::SurfaceTransformFlagBitsKHR::eIdentity,
 				vk::CompositeAlphaFlagBitsKHR::eOpaque,
 				m_PresentMode,
-				0U));
+				0U//,
+				/*m_Swapchain.get()*/
+				));
 	}
 
 	void createSwapchainDependencies()
 	{
-		for (auto& framebuffer : m_Framebuffers)
-		{
-			framebuffer.reset();
-		}
-		for (auto& swapView : m_SwapViews)
-		{
-			swapView.reset();
-		}
-		
-		m_Swapchain.reset();
-
+		//for (auto& framebuffer : m_Framebuffers)
+		//{
+		//	framebuffer.reset();
+		//}
+		//for (auto& swapView : m_SwapViews)
+		//{
+		//	swapView.reset();
+		//}
+		//
 		createSwapChain();
 		m_SwapImages = m_LogicalDevice->getSwapchainImagesKHR(m_Swapchain.get());
 
@@ -1465,9 +1466,7 @@ struct VulkanApp
 			auto inst = m_Window.getHINSTANCE();
 			auto hwnd = m_Window.getHWND();
 			auto surfaceCreateInfo = vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), inst, hwnd);
-			VkSurfaceKHR surface;
-			vkCreateWin32SurfaceKHR(m_Instance.get(), &surfaceCreateInfo.operator const VkWin32SurfaceCreateInfoKHR &(), nullptr, &surface);
-			m_Surface = vk::UniqueSurfaceKHR(surface, vk::SurfaceKHRDeleter(m_Instance.get()));
+			m_Surface = m_Instance->createWin32SurfaceKHRUnique(surfaceCreateInfo);
 			// get surface format from supported list
 			auto surfaceFormats = m_PhysicalDevice.getSurfaceFormatsKHR(m_Surface.get());
 			if (surfaceFormats.size() == 1 && surfaceFormats[0].format == vk::Format::eUndefined)

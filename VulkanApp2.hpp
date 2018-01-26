@@ -14,15 +14,20 @@
 #include "Bitmap.hpp"
 #include "Sprite.hpp"
 #include "Camera.hpp"
+#include "ECS.hpp"
 #include "gsl/gsl"
+#include "ft2build.h"
+#include FT_FREETYPE_H
+#include FT_GLYPH_H
 
 #include <iostream>
+#include <map>
 
 namespace vka
 {
 	using SpriteCount = size_t;
 	using ImageIndex = uint32_t;
-	struct SuperClass;
+	struct VulkanApp;
 	struct ShaderData
 	{
 		const char* vertexShaderPath;
@@ -59,7 +64,7 @@ namespace vka
 	struct LoopCallbacks
 	{
 		std::function<SpriteCount()> BeforeRenderCallback;
-		std::function<void(SuperClass*)> RenderCallback;
+		std::function<void(VulkanApp*)> RenderCallback;
 		std::function<void()> AfterRenderCallback;
 	};
 
@@ -104,7 +109,7 @@ namespace vka
 		const vk::InstanceCreateInfo instanceCreateInfo;
 		const std::vector<const char*> deviceExtensions;
 		const ShaderData shaderData;
-		std::function<void(SuperClass*)> imageLoadCallback;
+		std::function<void(VulkanApp*)> imageLoadCallback;
 	};
 
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugBreakCallback(
@@ -133,7 +138,7 @@ namespace vka
 		return false;
 	}
 
-struct SuperClass
+struct VulkanApp
 {
 	struct Supports
 	{
@@ -1139,7 +1144,7 @@ struct SuperClass
 			vertexBufferSize,
 			vertexStagingResult.allocationInfo.offset,
 			vertexResult.allocationInfo.offset);
-		// transfer ownership to SuperClass
+		// transfer ownership to VulkanApp
 		auto vertexBufferDeleter = vk::BufferDeleter(m_LogicalDevice.get());
 		m_VertexBuffer = vk::UniqueBuffer(vertexResult.buffer.release(), vertexBufferDeleter);
 		m_VertexMemoryInfo = vertexResult.allocationInfo;
@@ -1170,7 +1175,7 @@ struct SuperClass
 			indexBufferSize,
 			indexStagingResult.allocationInfo.offset,
 			indexResult.allocationInfo.offset);
-		// transfer ownership to SuperClass
+		// transfer ownership to VulkanApp
 		auto indexBufferDeleter = vk::BufferDeleter(m_LogicalDevice.get());
 		m_IndexBuffer = vk::UniqueBuffer(indexResult.buffer.release(), indexBufferDeleter);
 		m_IndexMemoryInfo = indexResult.allocationInfo;
@@ -1349,7 +1354,7 @@ struct SuperClass
 			// Window resize callback
 			m_Window.SetResizeCallback([](void* ptr, ClientSize size)
 			{
-				((SuperClass*)ptr)->resizeWindow(size);
+				((VulkanApp*)ptr)->resizeWindow(size);
 			}
 			);
 			m_Camera.setSize({static_cast<float>(initData.width), static_cast<float>(initData.height)});
@@ -1573,6 +1578,86 @@ struct SuperClass
 				InitializeSupportStruct(support);
 			}
 	}
+};
+
+class Text
+{
+public:
+	using FontID = size_t;
+	using FontSize = size_t;
+	using GlyphID = FT_UInt;
+	using CharCode = FT_ULong;
+
+	struct FT_LibraryDeleter
+	{
+		using pointer = FT_Library;
+		void operator()(FT_Library library)
+		{
+			FT_Done_FreeType(library);
+		}
+	};
+	using UniqueFTLibrary = std::unique_ptr<FT_Library, FT_LibraryDeleter>;
+
+	struct FT_GlyphDeleter
+	{
+		using pointer = FT_Glyph;
+		void operator()(FT_Glyph glyph) noexcept
+		{
+			FT_Done_Glyph(glyph);
+		}
+	};
+	using UniqueFTGlyph = std::unique_ptr<FT_Glyph, FT_GlyphDeleter>;
+
+	struct GlyphData
+	{
+		UniqueFTGlyph glyph;
+		TextureIndex textureIndex;
+	};
+
+	using GlyphMap = std::map<CharCode, GlyphData>;
+
+	struct SizeData
+	{
+		GlyphMap glyphMap;
+		FT_F26Dot6 spaceAdvance;
+	};
+
+	struct FontData
+	{
+		FT_Face face;
+		std::string path;
+		std::map<FontSize, SizeData> glyphsBySize;
+	};
+
+	struct TextGroup
+	{
+		std::vector<Entity> characters;
+	};
+
+	struct InitInfo
+	{
+		Text::FontID fontID;
+		Text::FontSize fontSize;
+		std::string text;
+		glm::vec4 textColor;
+		int baseline_x;
+		int baseline_y;
+		float depth;
+	};
+
+	UniqueFTLibrary m_FreeTypeLibrary;
+	std::map<FontID, FontData> m_FontMaps;
+	VulkanApp* m_VulkanApp = nullptr;
+
+	Text() = default;
+	Text(VulkanApp* app);
+	Text::SizeData & getSizeData(Text::FontID fontID, Text::FontSize size);
+	Bitmap getFullBitmap(FT_Glyph glyph);
+	std::optional<FT_Glyph> getGlyph(Text::FontID fontID, Text::FontSize size, Text::CharCode charcode);
+	auto getAdvance(Text::FontID fontID, Text::FontSize size, Text::CharCode left);
+	auto getAdvance(Text::FontID fontID, Text::FontSize size, Text::CharCode left, Text::CharCode right);
+	void LoadFont(Text::FontID fontID, Text::FontSize fontSize, uint32_t DPI, const char * fontPath);
+	std::vector<Sprite> createTextGroup(const Text::InitInfo & initInfo);
 };
 
 }

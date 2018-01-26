@@ -26,7 +26,7 @@ namespace Image
 
 	std::map<size_t, size_t> ImageIDToTextureID;
 
-	void LoadHelper(vka::SuperClass* app, size_t imageID)
+	void LoadHelper(vka::VulkanApp* app, size_t imageID)
 	{
 		ImageIDToTextureID[imageID] = app->createTexture(loadImageFromFile(Paths[imageID]));
 	}
@@ -46,7 +46,7 @@ std::array<const char*, static_cast<size_t>(Font::COUNT)> Paths =
 };
 }
 
-void LoadTextures(vka::SuperClass* app)
+void LoadTextures(vka::VulkanApp* app)
 {
 	// Load Textures Here
 	Image::LoadHelper(app, Image::Star);
@@ -89,7 +89,7 @@ int main()
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
 	};
 	const vka::ShaderData shaderData = { "Shaders/vert.spv", "Shaders/frag.spv" };
-	std::function<void(vka::SuperClass*)> imageLoadCallback = LoadTextures;
+	std::function<void(vka::VulkanApp*)> imageLoadCallback = LoadTextures;
 	vka::InitData initData = 
 	{
 		WindowClassName,
@@ -102,13 +102,13 @@ int main()
 		shaderData,
 		imageLoadCallback
 	};
-	vka::SuperClass app;
+	vka::VulkanApp app;
 	app.init(initData);
 	vka::LoopCallbacks callbacks;
 	callbacks.BeforeRenderCallback = [&]() -> vka::SpriteCount{
 		return 0U;
 	};
-	callbacks.RenderCallback = [&](vka::SuperClass* app){};
+	callbacks.RenderCallback = [&](vka::VulkanApp* app){};
 	callbacks.AfterRenderCallback = [&](){};
 	app.Run(callbacks);
 	

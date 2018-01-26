@@ -34,10 +34,17 @@ public:
 
 	Window() = default;
 
-	Window (char const* WindowClassName, char const* WindowTitle, WindowStyle windowStyle, void* applicationPointer, int width = CW_USEDEFAULT, int height = CW_USEDEFAULT)
+	Window (char const* WindowClassName, 
+		char const* WindowTitle, 
+		WindowStyle windowStyle,
+		ResizeCallback resizeCallback,
+		void* applicationPointer, 
+		int width = CW_USEDEFAULT, 
+		int height = CW_USEDEFAULT) :
+		m_ResizeCallback(resizeCallback),
+		m_ApplicationPointer(applicationPointer),
+		m_hInstance(GetModuleHandle(nullptr))
 	{
-		m_ApplicationPointer = applicationPointer;
-		m_hInstance = GetModuleHandle( nullptr );
 		// Register the window class.
 		WNDCLASSEX wcex = { };
 
@@ -121,8 +128,6 @@ public:
 		return {rect.right, rect.bottom};
 	}
 
-	void SetResizeCallback(ResizeCallback resizeCallback);
-
 	LRESULT WindowProcedure(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		switch (message)
@@ -149,3 +154,13 @@ private:
 	HWNDPtr m_hWnd;
 	HINSTANCE m_hInstance = nullptr;
 };
+
+inline LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	Window* window = (Window*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+	if (window == nullptr)
+	{
+		return true;
+	}
+	return window->WindowProcedure(hWnd, message, wParam, lParam);
+}

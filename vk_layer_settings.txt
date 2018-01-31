@@ -1,2 +1,0 @@
-lunarg_api_dump.file = TRUE
-lunarg_api_dump.no_addr = TRUE

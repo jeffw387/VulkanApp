@@ -4,10 +4,10 @@
 #include <algorithm>
 #include <iostream>
 #include <map>
+#include <stdlib.h>
 
 #include "stx/btree_map.h"
 #include "ECS.hpp"
-#include "text.hpp"
 
 namespace Image
 {
@@ -59,10 +59,6 @@ int main()
 	using SpriteMap = stx::btree_map<Entity, Sprite>;
 	SpriteMap spriteComponents;
 
-	char const* WindowClassName = "VulkanWindowClass";
-	char const* WindowTitle = "Vulkan App";
-	Window::WindowStyle windowStyle = Window::WindowStyle::Windowed;
-	int width = 900; int height = 900;
 	std::vector<const char*> Layers = 
 	{
 		"VK_LAYER_LUNARG_standard_validation",
@@ -76,12 +72,13 @@ int main()
 		VK_EXT_DEBUG_REPORT_EXTENSION_NAME
 	};
 
+    auto appInfo = vk::ApplicationInfo();
 	const vk::InstanceCreateInfo instanceCreateInfo = vk::InstanceCreateInfo(
 		vk::InstanceCreateFlags(),
-		&vk::ApplicationInfo(),
-		gsl::narrow<uint32_t>(Layers.size()),
+		&appInfo,
+		static_cast<uint32_t>(Layers.size()),
 		Layers.data(),
-		gsl::narrow<uint32_t>(InstanceExtensions.size()),
+		static_cast<uint32_t>(InstanceExtensions.size()),
 		InstanceExtensions.data()
 	);
 	const std::vector<const char*> deviceExtensions = 
@@ -92,11 +89,9 @@ int main()
 	std::function<void(vka::VulkanApp*)> imageLoadCallback = LoadTextures;
 	vka::InitData initData = 
 	{
-		WindowClassName,
-		WindowTitle,
-		windowStyle,
-		width,
-		height,
+		"Vulkan App",
+		500,
+		500,
 		instanceCreateInfo,
 		deviceExtensions,
 		shaderData,
@@ -105,7 +100,7 @@ int main()
 	vka::VulkanApp app;
 	app.init(initData);
 	
-	TextureIndex starTexture = gsl::narrow<TextureIndex>(Image::ImageIDToTextureID[Image::Star]);
+	TextureIndex starTexture = static_cast<TextureIndex>(Image::ImageIDToTextureID[Image::Star]);
 	for (auto i = 0.f; i < 3.f; i++)
 	{
 		auto entity = entityManager.CreateEntity();

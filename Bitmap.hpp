@@ -1,7 +1,6 @@
 #pragma once
 #include <memory>
 #include "stb_image.h"
-#include "gsl/gsl"
 
 struct Bitmap
 {
@@ -24,7 +23,7 @@ inline Bitmap loadImageFromFile(std::string path)
 	uint32_t width, height;
 	width = static_cast<uint32_t>(width_i);
 	height = static_cast<uint32_t>(height_i);
-	Bitmap image = Bitmap(pixels, width, height, gsl::narrow<int32_t>(std::ceil(width * -0.5f)), gsl::narrow<int32_t>(std::ceil(height * 0.5f)), width * height * 4U);
+	Bitmap image = Bitmap(pixels, width, height, static_cast<int32_t>(std::ceil(width * -0.5f)), static_cast<int32_t>(std::ceil(height * 0.5f)), width * height * 4U);
 
 	return image;
 }

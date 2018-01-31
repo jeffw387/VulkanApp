@@ -1,8 +1,0 @@
-main2.a1:Debug|Win32:C:/Projects/Hello Triangle/Hello Triangle/main2.cpp
-main2.a2:Release|Win32:C:/Projects/Hello Triangle/Hello Triangle/main2.cpp
-main2.a3:Debug|x64:C:/Projects/Hello Triangle/Hello Triangle/main2.cpp
-main2.a4:Release|x64:C:/Projects/Hello Triangle/Hello Triangle/main2.cpp
-VulkanApp2.a1:Debug|Win32:C:/Projects/Hello Triangle/Hello Triangle/VulkanApp2.cpp
-VulkanApp2.a2:Release|Win32:C:/Projects/Hello Triangle/Hello Triangle/VulkanApp2.cpp
-VulkanApp2.a3:Debug|x64:C:/Projects/Hello Triangle/Hello Triangle/VulkanApp2.cpp
-VulkanApp2.a4:Release|x64:C:/Projects/Hello Triangle/Hello Triangle/VulkanApp2.cpp

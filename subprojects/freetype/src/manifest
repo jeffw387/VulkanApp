@@ -1,0 +1,7 @@
+: 1
+name: freetype
+version: 2.8.1
+summary: FreeType library
+license: FreeType License(FTL)
+url: https://www.freetype.org
+email: none

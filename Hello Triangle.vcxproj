@@ -90,7 +90,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;_SCL_SECURE_NO_WARNINGS;VK_USE_PLATFORM_WIN32_KHR;%(PreprocessorDefinitions);VK_NO_PROTOTYPES</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Libraries\Source\nowide_standalone\;C:\Libraries\Source\VulkanMemoryAllocator\src;C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Projects\WindowsPlatform</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Libraries\Source\glfw\include;C:\Libraries\Source\VulkanMemoryAllocator\src;C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <EnableModules>true</EnableModules>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
@@ -101,8 +101,8 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>C:\Libraries\Source\freetype\2.8.1\freetype-2.8.1\builds\windows\vc2010\Bin\x64\Debug Multithreaded;C:\VulkanSDK\1.0.65.1\Lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;freetype281MTd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Libraries\Source\freetype\2.8.1\freetype-2.8.1\builds\windows\vc2010\Bin\x64\Debug Multithreaded;C:\VulkanSDK\1.0.65.1\Lib;C:\Libraries\Compiled\glfw\src\Debug</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vulkan-1.lib;freetype281MTd.lib;glfw3.dll;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
@@ -114,7 +114,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;VK_USE_PLATFORM_WIN32_KHR;%(PreprocessorDefinitions);VK_NO_PROTOTYPES</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Libraries\Source\nowide_standalone\;C:\Libraries\Source\VulkanMemoryAllocator\src;C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm;C:\Projects\WindowsPlatform</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Libraries\Source\glfw\include;C:\Libraries\Source\VulkanMemoryAllocator\src;C:\VulkanSDK\1.0.65.1\Include;C:\Libraries\Source\stb-master;C:\Libraries\Source\GSL\include;C:\Libraries\Source\stx-btree-0.9\include;C:\Libraries\Source\freetype-2.8.1\include;C:\Libraries\Source\glm</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <EnableModules>true</EnableModules>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
@@ -127,8 +127,8 @@
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>C:\Libraries\Source\freetype\2.8.1\freetype-2.8.1\builds\windows\vc2010\Bin\x64\Release Multithreaded;C:\VulkanSDK\1.0.65.1\Lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;freetype281MT.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Libraries\Source\freetype\2.8.1\freetype-2.8.1\builds\windows\vc2010\Bin\x64\Release Multithreaded;C:\VulkanSDK\1.0.65.1\Lib;C:\Libraries\Compiled\glfw\src\Release</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vulkan-1.lib;freetype281MT.lib;glfw3.dll;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>

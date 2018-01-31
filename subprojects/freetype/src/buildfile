@@ -1,0 +1,14 @@
+lib{freetype}: \
+{c}ftsystem \
+{c}ftinit \
+{c}ftdebug \
+{c}ftbase \
+{c}ftbbox \
+{c}ftglyph \
+{c}ftbitmap \
+{c}truetype \
+{c}sfnt \
+{c}psnames \
+
+c.poptions =+ "/Iinclude"
+c.poptions =+ "/DFT2_BUILD_LIBRARY"

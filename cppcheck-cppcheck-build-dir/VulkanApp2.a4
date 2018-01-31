@@ -1,6 +1,0 @@
-<?xml version="1.0"?>
-<analyzerinfo checksum="750358198">
-        <error id="syntaxError" severity="error" msg="syntax error" verbose="syntax error">
-            <location file0="C:\Projects\Hello Triangle\Hello Triangle\VulkanApp2.cpp" file="C:\Libraries\Source\glm\detail\type_vec2.inl" line="38"/>
-        </error>
-</analyzerinfo>

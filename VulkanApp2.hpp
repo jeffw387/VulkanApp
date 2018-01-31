@@ -6,13 +6,8 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "VulkanFunctions.hpp"
 #include "vulkan/vulkan.hpp"
-//#include "Window.hpp"
-#define GLFW_DLL
 #include "GLFW/glfw3.h"
 #include "fileIO.h"
-// #include "mingw.mutex.h"
-//#define _aligned_malloc(ARG1,ARG2) aligned_alloc(ARG1,ARG2)
-//#define _aligned_free(ARG1) free(ARG1)
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #include "vk_mem_alloc.h"
 #include "Texture2D.hpp"
@@ -1351,19 +1346,19 @@ struct VulkanApp
 		((VulkanApp*)ptr)->resizeWindow(vk::Extent2D(static_cast<uint32_t>(width), static_cast<uint32_t>(height)));
 	};
 
-	int init(InitData initData)
+	void init(InitData initData)
 	{
 		auto glfwInitError = glfwInit();
 		if (!glfwInitError)
 		{
 			std::runtime_error("Error initializing GLFW.");
-			return glfwInitError;
+			exit(glfwInitError);
 		}
 		m_Window = glfwCreateWindow(initData.width, initData.height, initData.WindowTitle, NULL, NULL);
 		if (m_Window == NULL)
 		{
 			std::runtime_error("Error creating GLFW window.");
-			return -1;
+			exit(-1);
 		}
 		glfwSetWindowUserPointer(m_Window, this);
 		m_Camera = Camera2D();

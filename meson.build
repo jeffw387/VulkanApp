@@ -15,23 +15,25 @@ vulkan = vulkan_proj.get_variable('vulkan_dep')
 glm_proj = subproject('glm')
 glm = glm_proj.get_variable('glm_dep')
 
+libtype = get_option('default_library')
+if  libtype == 'static'
+    set_variable('glfwLink', '')
+elif libtype == 'shared'
+    set_variable('glfwLink', '/DGLFW_DLL')
+endif
+
+contentroot = ''.join(['/DCONTENTROOT=','"',meson.source_root(),'/"'])
+message(contentroot)
 deps = [freetype, stb, glfw, btree, vma, vulkan, glm]
 executable('VulkanApp', 
-    'main2.cpp', 
+    'main2.cpp',
+    'VulkanFunctions.cpp',
     dependencies : deps,
     override_options : 'cpp_std=c++17',
-    cpp_args : ['std:c++latest', '/DVK_USE_PLATFORM_WIN32_KHR', '/DVK_NO_PROTOTYPES', '/DVK_NO_STDINT_H', '/DSTBI_NO_STDIO', '/DGLFW_DLL'],
-    link_args : ['/LIBPATH:%VULKAN_SDK%\Lib', '/DGLFW_DLL',
-    'vulkan-1.lib', 
-    'kernel32.lib',
-    'user32.lib',
-    'gdi32.lib',
-    'winspool.lib',
-    'comdlg32.lib',
-    'advapi32.lib',
-    'shell32.lib',
-    'ole32.lib',
-    'oleaut32.lib',
-    'uuid.lib',
-    'odbc32.lib',
-    'odbccp32.lib'])
+    cpp_args : ['/std:c++latest', 
+    '/DVK_USE_PLATFORM_WIN32_KHR', 
+    '/DVK_NO_PROTOTYPES',
+    contentroot,
+    glfwLink,
+    '/D_SCL_SECURE_NO_WARNINGS'],
+    install : true)

@@ -24,4 +24,5 @@ lib = library('glfw',
     'window.c',
     version : '3.3.0',
     include_directories : incdir,
-    c_args : ['/D_GLFW_WIN32', buildArg])
+    c_args : ['/D_GLFW_WIN32', buildArg],
+    install : true)

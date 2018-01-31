@@ -4,12 +4,13 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "g++ debug 64 bit",
+            "label": "echo",
             "type": "shell",
-            "command": "gcc64debugcompile.bat",
-            "problemMatcher": [
-                "$gcc"
-            ]
+            "command": "",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }

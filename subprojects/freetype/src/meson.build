@@ -11,4 +11,5 @@ lib = library('freetype',
     'psnames.c',
     version : '2.8.1',
     include_directories : incdir,
-    c_args : '/DFT2_BUILD_LIBRARY')
+    c_args : '/DFT2_BUILD_LIBRARY',
+    install : true)

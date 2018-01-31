@@ -4,10 +4,13 @@
 #include <algorithm>
 #include <iostream>
 #include <map>
-#include <stdlib.h>
 
 #include "stx/btree_map.h"
 #include "ECS.hpp"
+
+#ifndef CONTENTROOT
+#define CONTENTROOT
+#endif
 
 namespace Image
 {
@@ -20,8 +23,8 @@ namespace Image
 
 	std::array<std::string, static_cast<size_t>(Image::COUNT)> Paths =
 	{
-		"Content/Textures/star.png",
-		"Content/Textures/texture.jpg"
+		CONTENTROOT "Content/Textures/star.png",
+		CONTENTROOT "Content/Textures/texture.jpg"
 	};
 
 	std::map<size_t, size_t> ImageIDToTextureID;
@@ -42,7 +45,7 @@ enum
 
 std::array<const char*, static_cast<size_t>(Font::COUNT)> Paths = 
 {
-	"Content/Fonts/AeroviasBrasilNF.ttf"
+	CONTENTROOT "Content/Fonts/AeroviasBrasilNF.ttf"
 };
 }
 
@@ -85,7 +88,7 @@ int main()
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
 	};
-	const vka::ShaderData shaderData = { "Shaders/vert.spv", "Shaders/frag.spv" };
+	const vka::ShaderData shaderData = { CONTENTROOT "Shaders/vert.spv", CONTENTROOT "Shaders/frag.spv" };
 	std::function<void(vka::VulkanApp*)> imageLoadCallback = LoadTextures;
 	vka::InitData initData = 
 	{

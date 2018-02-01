@@ -8,10 +8,10 @@
             "name": "(Windows) Launch",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/Hello Triangle/main2.exe",
+            "program": "${workspaceFolder}/build/debug/meson-out/VulkanApp.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/Hello Triangle/",
+            "cwd": "${workspaceFolder}/build/debug/meson-out/",
             "environment": [],
             "externalConsole": true
         }

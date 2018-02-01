@@ -57,6 +57,9 @@
         "chrono": "cpp",
         "ratio": "cpp",
         "optional": "cpp",
-        "*.rh": "cpp"
+        "*.rh": "cpp",
+        "xlocmes": "cpp",
+        "xlocmon": "cpp",
+        "xloctime": "cpp"
     }
 }

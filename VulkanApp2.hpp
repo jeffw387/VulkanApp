@@ -40,7 +40,10 @@ namespace vka
 		glm::vec2 UV;
 		static std::vector<vk::VertexInputBindingDescription> vertexBindingDescriptions()
 		{
-			auto bindingDescriptions = std::vector<vk::VertexInputBindingDescription>{ vk::VertexInputBindingDescription(0U, sizeof(Vertex), vk::VertexInputRate::eVertex) };
+			auto bindingDescriptions = std::vector<vk::VertexInputBindingDescription>
+			{ 
+				vk::VertexInputBindingDescription(0U, sizeof(Vertex), vk::VertexInputRate::eVertex) 
+			};
 			return bindingDescriptions;
 		}
 
@@ -310,6 +313,7 @@ struct VulkanApp
 		vk::DeviceSize bufferSize, 
 		vk::BufferUsageFlags bufferUsage, 
 		VmaMemoryUsage memoryUsage,
+		VkMemoryPropertyFlags requiredMemoryFlags,
 		VmaAllocationCreateFlags memoryCreateFlags)
 	{
 		BufferCreateResult result;
@@ -323,6 +327,7 @@ struct VulkanApp
 		auto allocationCreateInfo = VmaAllocationCreateInfo {};
 		allocationCreateInfo.usage = memoryUsage;
 		allocationCreateInfo.flags = memoryCreateFlags;
+		allocationCreateInfo.requiredFlags = requiredMemoryFlags;
 		VkBuffer buffer;
 		VmaAllocation allocation;
 		vmaCreateBuffer(m_Allocator.get(), 
@@ -433,6 +438,8 @@ struct VulkanApp
 			auto stagingBufferResult = CreateBuffer(newBufferSize, 
 				vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eUniformBuffer,
 				VMA_MEMORY_USAGE_CPU_ONLY,
+				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+					VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 				VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 			supports.m_MatrixStagingBuffer = std::move(stagingBufferResult.buffer);
 			supports.m_MatrixStagingMemory = std::move(stagingBufferResult.allocation);
@@ -442,6 +449,7 @@ struct VulkanApp
 			auto matrixBufferResult = CreateBuffer(newBufferSize,
 				vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer,
 				VMA_MEMORY_USAGE_GPU_ONLY,
+				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 				VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 			supports.m_MatrixBuffer = std::move(matrixBufferResult.buffer);
 			supports.m_MatrixMemory = std::move(matrixBufferResult.allocation);
@@ -457,7 +465,7 @@ struct VulkanApp
         auto descriptorBufferInfo = vk::DescriptorBufferInfo(
                 supports.m_MatrixBuffer.get(),
                 0U,
-                m_UniformBufferOffsetAlignment);
+                supports.m_MatrixMemoryInfo.size);
 		m_LogicalDevice->updateDescriptorSets(
 			{ 
 				vk::WriteDescriptorSet(
@@ -751,6 +759,8 @@ struct VulkanApp
 		auto stagingBufferResult = CreateBuffer(texture.size,
 			vk::BufferUsageFlagBits::eTransferSrc,
 			VmaMemoryUsage::VMA_MEMORY_USAGE_CPU_ONLY,
+			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
 			VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 		// copy from host to staging buffer
 		void* stagingBufferData;
@@ -1134,12 +1144,16 @@ struct VulkanApp
 		auto vertexBufferSize = sizeof(Vertex) * m_Vertices.size();
 		auto vertexStagingResult = CreateBuffer(vertexBufferSize,
 			vk::BufferUsageFlagBits::eVertexBuffer |
-			vk::BufferUsageFlagBits::eTransferSrc,
+				vk::BufferUsageFlagBits::eTransferSrc,
 			VmaMemoryUsage::VMA_MEMORY_USAGE_CPU_ONLY,
+			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 		auto vertexResult = CreateBuffer(vertexBufferSize,
-			vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+			vk::BufferUsageFlagBits::eVertexBuffer | 
+				vk::BufferUsageFlagBits::eTransferDst,
 			VmaMemoryUsage::VMA_MEMORY_USAGE_GPU_ONLY,
+			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			0);
 		// copy data to vertex buffer
 		void* vertexStagingData;
@@ -1163,13 +1177,16 @@ struct VulkanApp
 		auto indexBufferSize = sizeof(Index) * m_Indices.size();
 		auto indexStagingResult = CreateBuffer(indexBufferSize,
 			vk::BufferUsageFlagBits::eTransferSrc |
-			vk::BufferUsageFlagBits::eIndexBuffer,
+				vk::BufferUsageFlagBits::eIndexBuffer,
 			VmaMemoryUsage::VMA_MEMORY_USAGE_CPU_ONLY,
+			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 		auto indexResult = CreateBuffer(indexBufferSize,
 			vk::BufferUsageFlagBits::eTransferDst |
-			vk::BufferUsageFlagBits::eIndexBuffer,
+				vk::BufferUsageFlagBits::eIndexBuffer,
 			VmaMemoryUsage::VMA_MEMORY_USAGE_GPU_ONLY,
+			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			0);
 
 		// copy data to index buffer
@@ -1419,10 +1436,10 @@ struct VulkanApp
 			m_DebugBreakpointCallbackData = m_Instance->createDebugReportCallbackEXTUnique(
 				vk::DebugReportCallbackCreateInfoEXT(
 					vk::DebugReportFlagBitsEXT::ePerformanceWarning |
-					vk::DebugReportFlagBitsEXT::eError,
-					//vk::DebugReportFlagBitsEXT::eDebug |
-					//vk::DebugReportFlagBitsEXT::eInformation |
-					//vk::DebugReportFlagBitsEXT::eWarning,
+					vk::DebugReportFlagBitsEXT::eError |
+					vk::DebugReportFlagBitsEXT::eDebug |
+					vk::DebugReportFlagBitsEXT::eInformation |
+					vk::DebugReportFlagBitsEXT::eWarning,
 					reinterpret_cast<PFN_vkDebugReportCallbackEXT>(&debugBreakCallback)
 				));
 		}

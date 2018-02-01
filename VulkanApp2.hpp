@@ -55,8 +55,13 @@ namespace vka
 			return std::vector<vk::VertexInputAttributeDescription>{ attrib0, attrib1 };
 		}
 	};
-	using Index = uint32_t;
+
+	using Index = uint16_t;
 	constexpr Index IndicesPerQuad = 6U;
+	constexpr std::array<Index, IndicesPerQuad> IndexArray = 
+	{
+		0, 1, 2, 2, 3, 0
+	};
 
 	struct FragmentPushConstants
 	{
@@ -180,6 +185,7 @@ struct VulkanApp
 	vk::UniqueInstance m_Instance;
 	vk::PhysicalDevice m_PhysicalDevice;
 	vk::DeviceSize m_UniformBufferOffsetAlignment;
+	vk::DeviceSize m_MatrixBufferOffsetAlignment;
 	uint32_t m_GraphicsQueueFamilyID;
 	vk::UniqueDevice m_LogicalDevice;
 	vk::Queue m_GraphicsQueue;
@@ -194,7 +200,6 @@ struct VulkanApp
 	vk::UniqueBuffer m_VertexBuffer;
 	UniqueVmaAllocation m_VertexMemory;
 	VmaAllocationInfo m_VertexMemoryInfo;
-	std::vector<uint32_t> m_Indices;
 	vk::UniqueBuffer m_IndexBuffer;
 	UniqueVmaAllocation m_IndexMemory;
 	VmaAllocationInfo m_IndexMemoryInfo;
@@ -376,7 +381,8 @@ struct VulkanApp
 		auto command = CreateTemporaryCommandBuffer();
 		command.buffer->begin(vk::CommandBufferBeginInfo(
 			vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-		command.buffer->copyBuffer(source, destination, {vk::BufferCopy(sourceOffset, destinationOffset, size)});
+		command.buffer->copyBuffer(source, destination, 
+		{vk::BufferCopy(sourceOffset, destinationOffset, size)});
 		command.buffer->end();
 		m_GraphicsQueue.submit( {vk::SubmitInfo(
 			static_cast<uint32_t>(waitSemaphores.size()),
@@ -432,7 +438,7 @@ struct VulkanApp
 		{
 			supports.m_BufferCapacity = instanceCount * 2;
 
-			auto newBufferSize = supports.m_BufferCapacity * m_UniformBufferOffsetAlignment;
+			auto newBufferSize = supports.m_BufferCapacity * m_MatrixBufferOffsetAlignment;
 
 			// create staging buffer
 			auto stagingBufferResult = CreateBuffer(newBufferSize, 
@@ -465,7 +471,7 @@ struct VulkanApp
         auto descriptorBufferInfo = vk::DescriptorBufferInfo(
                 supports.m_MatrixBuffer.get(),
                 0U,
-                supports.m_MatrixMemoryInfo.size);
+                m_MatrixBufferOffsetAlignment);
 		m_LogicalDevice->updateDescriptorSets(
 			{ 
 				vk::WriteDescriptorSet(
@@ -519,14 +525,16 @@ struct VulkanApp
 		supports.m_CommandBuffer->setScissor(0U, { scissorRect });
 		supports.m_CommandBuffer->beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
 		supports.m_CommandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, m_Pipeline.get());
+		auto vertexBuffer = m_VertexBuffer.get();
 		supports.m_CommandBuffer->bindVertexBuffers(
-			0U, 
-			{ m_VertexBuffer.get() }, 
+			0U,
+			{ vertexBuffer }, 
 			{ 0U });
+		auto indexBuffer = m_IndexBuffer.get();
 		supports.m_CommandBuffer->bindIndexBuffer(
-			m_IndexBuffer.get(), 
+			indexBuffer, 
 			0U, 
-			vk::IndexType::eUint32);
+			vk::IndexType::eUint16);
 
 		// bind sampler and images uniforms
 		supports.m_CommandBuffer->bindDescriptorSets(
@@ -546,7 +554,7 @@ struct VulkanApp
 		glm::mat4 mvp =  m_UpdateData.vp * sprite.transform;
 
 		memcpy((char*)m_UpdateData.mapped + m_UpdateData.copyOffset, &mvp, sizeof(glm::mat4));
-		m_UpdateData.copyOffset += m_UniformBufferOffsetAlignment;
+		m_UpdateData.copyOffset += m_MatrixBufferOffsetAlignment;
 
 		FragmentPushConstants pushRange;
 		pushRange.textureID = sprite.textureIndex;
@@ -561,7 +569,7 @@ struct VulkanApp
 			0U,
 			{ pushRange });
 
-		uint32_t dynamicOffset = static_cast<uint32_t>(m_UpdateData.spriteIndex * m_UniformBufferOffsetAlignment);
+		uint32_t dynamicOffset = static_cast<uint32_t>(m_UpdateData.spriteIndex * m_MatrixBufferOffsetAlignment);
 
 		// bind dynamic matrix uniform
 		supports.m_CommandBuffer->bindDescriptorSets(
@@ -571,9 +579,10 @@ struct VulkanApp
 			{ supports.m_VertexDescriptorSet.get() },
 			{ dynamicOffset });
 
-		auto firstIndex = sprite.textureIndex * IndicesPerQuad;
+		auto vertexOffset = sprite.textureIndex * IndicesPerQuad;
 		// draw the sprite
-		supports.m_CommandBuffer->drawIndexed(IndicesPerQuad, 1U, firstIndex, 0U, 0U);
+		supports.m_CommandBuffer->
+			drawIndexed(IndicesPerQuad, 1U, 0U, vertexOffset, 0U);
 		m_UpdateData.spriteIndex++;
 	}
 
@@ -739,16 +748,7 @@ struct VulkanApp
 		m_Vertices.push_back(RightBottom);
 		m_Vertices.push_back(RightTop);
 
-		auto verticesPerTexture = 4U;
-		uint32_t indexOffset = verticesPerTexture * textureIndex;
-
-		// push back indices
-		m_Indices.push_back(indexOffset + 0);
-		m_Indices.push_back(indexOffset + 1);
-		m_Indices.push_back(indexOffset + 2);
-		m_Indices.push_back(indexOffset + 2);
-		m_Indices.push_back(indexOffset + 3);
-		m_Indices.push_back(indexOffset + 0);
+		// auto verticesPerTexture = 4U;
 
 		// initialize the texture object
 		texture.index = textureIndex;
@@ -1141,7 +1141,8 @@ struct VulkanApp
 	void CreateVertexBuffer()
 	{
 		// create vertex buffers
-		auto vertexBufferSize = sizeof(Vertex) * m_Vertices.size();
+		auto vertSize = sizeof(Vertex);
+		auto vertexBufferSize = vertSize * m_Vertices.size();
 		auto vertexStagingResult = CreateBuffer(vertexBufferSize,
 			vk::BufferUsageFlagBits::eVertexBuffer |
 				vk::BufferUsageFlagBits::eTransferSrc,
@@ -1163,8 +1164,8 @@ struct VulkanApp
 		CopyToBuffer(vertexStagingResult.buffer.get(),
 			vertexResult.buffer.get(),
 			vertexBufferSize,
-			vertexStagingResult.allocationInfo.offset,
-			vertexResult.allocationInfo.offset);
+			0U,
+			0U);
 		// transfer ownership to VulkanApp
 		auto vertexBufferDeleter = vk::BufferDeleter(m_LogicalDevice.get());
 		m_VertexBuffer = vk::UniqueBuffer(vertexResult.buffer.release(), vertexBufferDeleter);
@@ -1174,7 +1175,7 @@ struct VulkanApp
 	void CreateIndexBuffer()
 	{
 		//create index buffers
-		auto indexBufferSize = sizeof(Index) * m_Indices.size();
+		auto indexBufferSize = sizeof(Index) * IndicesPerQuad;
 		auto indexStagingResult = CreateBuffer(indexBufferSize,
 			vk::BufferUsageFlagBits::eTransferSrc |
 				vk::BufferUsageFlagBits::eIndexBuffer,
@@ -1192,13 +1193,13 @@ struct VulkanApp
 		// copy data to index buffer
 		void* indexStagingData;
 		vmaMapMemory(m_Allocator.get(), indexStagingResult.allocation.get(), &indexStagingData);
-		memcpy(indexStagingData, m_Indices.data(), indexBufferSize);
+		memcpy(indexStagingData, IndexArray.data(), indexBufferSize);
 		vmaUnmapMemory(m_Allocator.get(), indexStagingResult.allocation.get());
 		CopyToBuffer(indexStagingResult.buffer.get(),
 			indexResult.buffer.get(),
 			indexBufferSize,
-			indexStagingResult.allocationInfo.offset,
-			indexResult.allocationInfo.offset);
+			0U,
+			0U);
 		// transfer ownership to VulkanApp
 		auto indexBufferDeleter = vk::BufferDeleter(m_LogicalDevice.get());
 		m_IndexBuffer = vk::UniqueBuffer(indexResult.buffer.release(), indexBufferDeleter);
@@ -1397,6 +1398,13 @@ struct VulkanApp
 		m_PhysicalDevice = devices[0];
 
 		m_UniformBufferOffsetAlignment = m_PhysicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
+		auto offsetsForMatrix = sizeof(glm::mat4) / m_UniformBufferOffsetAlignment;
+		if (offsetsForMatrix == 0)
+		{
+			offsetsForMatrix = 1;
+		}
+		m_MatrixBufferOffsetAlignment = offsetsForMatrix * m_UniformBufferOffsetAlignment;
+
 
 		// find graphics queue
 		auto gpuQueueProperties = m_PhysicalDevice.getQueueFamilyProperties();

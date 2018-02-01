@@ -1140,6 +1140,12 @@ struct VulkanApp
 
 	void CreateVertexBuffer()
 	{
+		std::array<Vertex, 8> debugVertices;
+		for (auto i = 0U; i < 8; i++)
+		{
+			debugVertices[i].Position = {i, i};
+			debugVertices[i].UV = {i, i};
+		}
 		// create vertex buffers
 		auto vertSize = sizeof(Vertex);
 		auto vertexBufferSize = vertSize * m_Vertices.size();
@@ -1159,7 +1165,8 @@ struct VulkanApp
 		// copy data to vertex buffer
 		void* vertexStagingData;
 		vmaMapMemory(m_Allocator.get(), vertexStagingResult.allocation.get(), &vertexStagingData);
-		memcpy(vertexStagingData, m_Vertices.data(), vertexBufferSize);
+		// Debug vertex copy here
+		memcpy(vertexStagingData, debugVertices.data(), vertexBufferSize);
 		vmaUnmapMemory(m_Allocator.get(), vertexStagingResult.allocation.get());
 		CopyToBuffer(vertexStagingResult.buffer.get(),
 			vertexResult.buffer.get(),

@@ -50,6 +50,7 @@ namespace vka
     {
     public:
         static const vk::DeviceSize DefaultMemoryBlockSize = 1000000U;
+        Allocator() = default;
         Allocator(vk::PhysicalDevice physicalDevice, 
             vk::Device device, 
             vk::DeviceSize defaultBlockSize = DefaultMemoryBlockSize);

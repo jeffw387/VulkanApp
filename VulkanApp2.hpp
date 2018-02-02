@@ -8,8 +8,6 @@
 #include "vulkan/vulkan.hpp"
 #include "GLFW/glfw3.h"
 #include "fileIO.h"
-#define VMA_STATIC_VULKAN_FUNCTIONS 0
-#include "vk_mem_alloc.h"
 #include "Texture2D.hpp"
 #include "Bitmap.hpp"
 #include "Sprite.hpp"
@@ -18,10 +16,13 @@
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
+#include "Allocator.hpp"
 
+#undef max
 #include <iostream>
 #include <map>
 #include <functional>
+#include <limits>
 
 namespace vka
 {
@@ -76,32 +77,6 @@ namespace vka
 		std::function<void()> AfterRenderCallback;
 	};
 
-	struct VmaAllocatorDeleter
-	{
-		using pointer = VmaAllocator;
-		void operator()(VmaAllocator allocator)
-		{
-			vmaDestroyAllocator(allocator);
-		}
-	};
-	using UniqueVmaAllocator = std::unique_ptr<VmaAllocator, VmaAllocatorDeleter>;
-
-	struct VmaAllocationDeleter
-	{
-		using pointer = VmaAllocation;
-		VmaAllocationDeleter() noexcept = default;
-		explicit VmaAllocationDeleter(VmaAllocator allocator) :
-			m_Allocator(allocator)
-		{
-		}
-		void operator()(VmaAllocation allocation)
-		{
-			vmaFreeMemory(m_Allocator, allocation);
-		}
-		VmaAllocator m_Allocator = nullptr;
-	};
-	using UniqueVmaAllocation = std::unique_ptr<VmaAllocation, VmaAllocationDeleter>;
-
 	struct TemporaryCommandStructure
 	{
 		vk::UniqueCommandPool pool;
@@ -151,11 +126,9 @@ struct VulkanApp
 		vk::UniqueCommandPool m_CommandPool;
 		vk::UniqueCommandBuffer m_CommandBuffer;
 		vk::UniqueBuffer m_MatrixStagingBuffer;
-		UniqueVmaAllocation m_MatrixStagingMemory;
-		VmaAllocationInfo m_MatrixStagingMemoryInfo;
+		UniqueAllocation m_MatrixStagingMemory;
 		vk::UniqueBuffer m_MatrixBuffer;
-		UniqueVmaAllocation m_MatrixMemory;
-		VmaAllocationInfo m_MatrixMemoryInfo;
+		UniqueAllocation m_MatrixMemory;
 		size_t m_BufferCapacity = 0U;
 		vk::UniqueDescriptorPool m_VertexLayoutDescriptorPool;
 		vk::UniqueDescriptorSet m_VertexDescriptorSet;
@@ -190,19 +163,16 @@ struct VulkanApp
 	vk::UniqueDevice m_LogicalDevice;
 	vk::Queue m_GraphicsQueue;
 	vk::UniqueDebugReportCallbackEXT m_DebugBreakpointCallbackData;
-	UniqueVmaAllocator m_Allocator;
+	Allocator m_Allocator;
 	std::vector<vk::UniqueImage> m_Images;
-	std::vector<UniqueVmaAllocation> m_ImageAllocations;
+	std::vector<UniqueAllocation> m_ImageAllocations;
 	std::vector<vk::UniqueImageView> m_ImageViews;
 	std::vector<Texture2D> m_Textures;
-	std::vector<VmaAllocationInfo> m_ImageAllocationInfos;
 	std::vector<Vertex> m_Vertices;
 	vk::UniqueBuffer m_VertexBuffer;
-	UniqueVmaAllocation m_VertexMemory;
-	// VmaAllocationInfo m_VertexMemoryInfo;
+	UniqueAllocation m_VertexMemory;
 	vk::UniqueBuffer m_IndexBuffer;
-	UniqueVmaAllocation m_IndexMemory;
-	VmaAllocationInfo m_IndexMemoryInfo;
+	UniqueAllocation m_IndexMemory;
 	vk::UniqueSurfaceKHR m_Surface;
 	vk::Extent2D m_SurfaceExtent;
 	vk::Format m_SurfaceFormat;
@@ -311,15 +281,13 @@ struct VulkanApp
 	struct BufferCreateResult
 	{
 		vk::UniqueBuffer buffer;
-		UniqueVmaAllocation allocation;
-		VmaAllocationInfo allocationInfo;
+		UniqueAllocation allocation;
 	};
-	auto CreateBuffer(
-		vk::DeviceSize bufferSize, 
-		vk::BufferUsageFlags bufferUsage, 
-		VmaMemoryUsage memoryUsage,
-		VkMemoryPropertyFlags requiredMemoryFlags,
-		VmaAllocationCreateFlags memoryCreateFlags)
+	BufferCreateResult CreateBuffer(
+		const vk::DeviceSize bufferSize, 
+		const vk::BufferUsageFlags bufferUsage,
+		const vk::MemoryPropertyFlags memoryFlags,
+		const bool DedicatedAllocation)
 	{
 		BufferCreateResult result;
 		auto bufferCreateInfo = vk::BufferCreateInfo(
@@ -329,23 +297,13 @@ struct VulkanApp
 			vk::SharingMode::eExclusive,
 			1U,
 			&m_GraphicsQueueFamilyID);
-		auto allocationCreateInfo = VmaAllocationCreateInfo {};
-		allocationCreateInfo.usage = memoryUsage;
-		allocationCreateInfo.flags = memoryCreateFlags;
-		allocationCreateInfo.requiredFlags = requiredMemoryFlags;
-		VkBuffer buffer;
-		VmaAllocation allocation;
-		vmaCreateBuffer(m_Allocator.get(), 
-			&bufferCreateInfo.operator const VkBufferCreateInfo &(),
-			&allocationCreateInfo,
-			&buffer,
-			&allocation,
-			&result.allocationInfo);
 
+		VkBuffer buffer = m_LogicalDevice->createBuffer(bufferCreateInfo);
+		result.allocation = m_Allocator.AllocateForBuffer(DedicatedAllocation, buffer, memoryFlags);
+		m_LogicalDevice->bindBufferMemory(buffer, 
+			result.allocation->memory, 
+			result.allocation->offsetInDeviceMemory);
 		result.buffer = vk::UniqueBuffer(buffer, vk::BufferDeleter(m_LogicalDevice.get()));
-		VmaAllocationDeleter allocationDeleter = VmaAllocationDeleter(m_Allocator.get());
-		result.allocation = UniqueVmaAllocation(allocation, allocationDeleter);
-
 		return result;
 	}
 
@@ -441,28 +399,28 @@ struct VulkanApp
 			auto newBufferSize = supports.m_BufferCapacity * m_MatrixBufferOffsetAlignment;
 
 			// create staging buffer
-			auto stagingBufferResult = CreateBuffer(newBufferSize, 
-				vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eUniformBuffer,
-				VMA_MEMORY_USAGE_CPU_ONLY,
-				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-					VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-				VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+			auto stagingBufferResult = CreateBuffer(newBufferSize,
+				vk::BufferUsageFlagBits::eTransferSrc,
+				vk::MemoryPropertyFlagBits::eHostCoherent |
+				vk::MemoryPropertyFlagBits::eHostVisible,
+				false);
+				
 			supports.m_MatrixStagingBuffer = std::move(stagingBufferResult.buffer);
 			supports.m_MatrixStagingMemory = std::move(stagingBufferResult.allocation);
-			supports.m_MatrixStagingMemoryInfo = stagingBufferResult.allocationInfo;
 
 			// create matrix buffer
 			auto matrixBufferResult = CreateBuffer(newBufferSize,
 				vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer,
-				VMA_MEMORY_USAGE_GPU_ONLY,
-				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-				VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+				vk::MemoryPropertyFlagBits::eDeviceLocal,
+				false);
 			supports.m_MatrixBuffer = std::move(matrixBufferResult.buffer);
 			supports.m_MatrixMemory = std::move(matrixBufferResult.allocation);
-			supports.m_MatrixMemoryInfo = matrixBufferResult.allocationInfo;
 		}
 
-		vmaMapMemory(m_Allocator.get(), supports.m_MatrixStagingMemory.get(), &m_UpdateData.mapped);
+		m_UpdateData.mapped = m_LogicalDevice->mapMemory(
+			supports.m_MatrixStagingMemory->memory, 
+			supports.m_MatrixStagingMemory->offsetInDeviceMemory,
+			supports.m_MatrixStagingMemory->size);
 
 		m_UpdateData.copyOffset = 0;
 		m_UpdateData.vp = m_Camera.getMatrix();
@@ -598,14 +556,14 @@ struct VulkanApp
 	{
 		auto& supports = m_Supports[m_UpdateData.nextImage];
 		// copy matrices from staging buffer to gpu buffer
-		vmaUnmapMemory(m_Allocator.get(), supports.m_MatrixStagingMemory.get());
+		m_LogicalDevice->unmapMemory(supports.m_MatrixStagingMemory->memory);
 
 		CopyToBuffer(
 			supports.m_MatrixStagingBuffer.get(),
 			supports.m_MatrixBuffer.get(),
-			supports.m_MatrixMemoryInfo.size,
-			supports.m_MatrixStagingMemoryInfo.offset,
-			supports.m_MatrixMemoryInfo.offset,
+			supports.m_MatrixMemory->size,
+			0U,
+			0U,
 			{},
 		{
 			supports.m_MatrixBufferStagingCompleteSemaphore.get() 
@@ -668,11 +626,14 @@ struct VulkanApp
 		m_LogicalDevice->waitIdle();
 	}
 
-	void createVulkanImageForBitmap(const Bitmap& bitmap,
-		VmaAllocationInfo& imageAllocInfo,
-		vk::UniqueImage& image2D,
-		UniqueVmaAllocation& imageAlloc)
+	struct ImageCreateResult
 	{
+		vk::UniqueImage image;
+		UniqueAllocation allocation;
+	};
+	ImageCreateResult CreateImageFromBitmap(const Bitmap& bitmap)
+	{
+		ImageCreateResult result;
 		auto imageInfo = vk::ImageCreateInfo(
 			vk::ImageCreateFlags(),
 			vk::ImageType::e2D,
@@ -688,21 +649,11 @@ struct VulkanApp
 			&m_GraphicsQueueFamilyID,
 			vk::ImageLayout::eUndefined);
 
-		auto imageAllocCreateInfo = VmaAllocationCreateInfo{};
-		imageAllocCreateInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-		VkImage image;
-		VmaAllocation imageAllocation;
 
-		vmaCreateImage(m_Allocator.get(),
-			&imageInfo.operator const VkImageCreateInfo &(),
-			&imageAllocCreateInfo,
-			&image,
-			&imageAllocation,
-			&imageAllocInfo);
-
-		auto imageDeleter = vk::ImageDeleter(m_LogicalDevice.get());
-		image2D = vk::UniqueImage(vk::Image(image), imageDeleter);
-		imageAlloc = UniqueVmaAllocation(imageAllocation, VmaAllocationDeleter(m_Allocator.get()));
+		result.image = m_LogicalDevice->createImageUnique(imageInfo);
+		result.allocation = m_Allocator.AllocateForImage(false, result.image.get(), 
+			vk::MemoryPropertyFlagBits::eDeviceLocal);
+		return result;
 	}
 
 	TextureIndex createTexture(const Bitmap & bitmap)
@@ -712,10 +663,11 @@ struct VulkanApp
 		auto& image2D = m_Images.emplace_back();
 		auto& imageView = m_ImageViews.emplace_back();
 		auto& imageAlloc = m_ImageAllocations.emplace_back();
-		auto& imageAllocInfo = m_ImageAllocationInfos.emplace_back();
 		auto& texture = m_Textures.emplace_back();
 
-		createVulkanImageForBitmap(bitmap, imageAllocInfo, image2D, imageAlloc);
+		auto imageResult = CreateImageFromBitmap(bitmap);
+		image2D = std::move(imageResult.image);
+		imageAlloc = std::move(imageResult.allocation);
 
 		float left = static_cast<float>(bitmap.m_Left);
 		float top = static_cast<float>(bitmap.m_Top);
@@ -754,19 +706,21 @@ struct VulkanApp
 		texture.index = textureIndex;
 		texture.width = bitmap.m_Width;
 		texture.height = bitmap.m_Height;
-		texture.size = imageAllocInfo.size;
+		texture.size = bitmap.m_Size;
 
 		auto stagingBufferResult = CreateBuffer(texture.size,
 			vk::BufferUsageFlagBits::eTransferSrc,
-			VmaMemoryUsage::VMA_MEMORY_USAGE_CPU_ONLY,
-			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-			VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+			vk::MemoryPropertyFlagBits::eHostCoherent |
+			vk::MemoryPropertyFlagBits::eHostVisible,
+			false);
+			
 		// copy from host to staging buffer
-		void* stagingBufferData;
-		vmaMapMemory(m_Allocator.get(), stagingBufferResult.allocation.get(), &stagingBufferData);
+		void* stagingBufferData = m_LogicalDevice->mapMemory(
+			stagingBufferResult.allocation->memory,
+			stagingBufferResult.allocation->offsetInDeviceMemory,
+			stagingBufferResult.allocation->size);
 		memcpy(stagingBufferData, bitmap.m_Data.data(), static_cast<size_t>(bitmap.m_Size));
-		vmaUnmapMemory(m_Allocator.get(), stagingBufferResult.allocation.get());
+		m_LogicalDevice->unmapMemory(stagingBufferResult.allocation->memory);
 
 		// get command pool and buffer
 		auto command = CreateTemporaryCommandBuffer();
@@ -1138,111 +1092,45 @@ struct VulkanApp
 		);
 	}
 
-	struct BufferMemoryGroup
-	{
-		vk::Buffer buffer;
-		vk::DeviceMemory memory;
-		VmaAllocation allocation;
-	};
-	BufferMemoryGroup CreateBufferVMA(vk::DeviceSize vertexBufferSize)
-	{
-		BufferCreateResult vertexResult = CreateBuffer(vertexBufferSize,
-			vk::BufferUsageFlagBits::eVertexBuffer | 
-				vk::BufferUsageFlagBits::eTransferDst,
-			VmaMemoryUsage::VMA_MEMORY_USAGE_GPU_ONLY,
-			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			0);
-		BufferMemoryGroup result = {};
-		result.buffer = vertexResult.buffer.release();
-		result.allocation = vertexResult.allocation.release();
-		return result;
-	}
-
-	BufferMemoryGroup CreateBufferManual(vk::DeviceSize vertexBufferSize)
-	{
-		vk::Buffer vertexBuffer;
-		auto vertexBufferCreateInfo = vk::BufferCreateInfo(vk::BufferCreateFlags(),
-			vertexBufferSize,
-			vk::BufferUsageFlagBits::eVertexBuffer |
-			vk::BufferUsageFlagBits::eTransferDst,
-			vk::SharingMode::eExclusive,
-			1U,
-			&m_GraphicsQueueFamilyID);
-		vertexBuffer = m_LogicalDevice->createBuffer(vertexBufferCreateInfo);
-
-		auto vertexBufferMemoryRequirements = m_LogicalDevice->getBufferMemoryRequirements(vertexBuffer);
-		vk::DeviceMemory vertexBufferMemory;
-
-		auto memoryProperties = m_PhysicalDevice.getMemoryProperties();
-
-		auto vertexMemoryFlags = vk::MemoryPropertyFlagBits::eDeviceLocal;
-
-		uint32_t memoryID;
-		bool memoryFound = false;
-		for(auto i = 0U; i < memoryProperties.memoryTypeCount; i++)
-		{
-			if (((1 << i) & vertexBufferMemoryRequirements.memoryTypeBits) &&
-				((memoryProperties.memoryTypes[i].propertyFlags & vertexMemoryFlags) == vertexMemoryFlags))
-			{
-				memoryID = i;
-				memoryFound = true;
-				break;
-			}
-		}
-		if (!memoryFound)
-		{
-			std::runtime_error("Compatible memory type not found!");
-		}
-
-		auto vertexMemoryAllocateInfo = 
-			vk::MemoryAllocateInfo(
-				vertexBufferMemoryRequirements.size, 
-				memoryID);
-		vertexBufferMemory = m_LogicalDevice->allocateMemory(vertexMemoryAllocateInfo);
-		m_LogicalDevice->bindBufferMemory(vertexBuffer, vertexBufferMemory, 0U);
-
-		BufferMemoryGroup result = {};
-		result.buffer = vertexBuffer;
-		result.memory = vertexBufferMemory;
-		return result;
-	}
-
 	void CreateVertexBuffer()
 	{
-		std::array<Vertex, 8> debugVertices;
-		for (auto i = 0U; i < 8; i++)
-		{
-			debugVertices[i].Position = {i, i};
-			debugVertices[i].UV = {i, i};
-		}
+		// std::array<Vertex, 8> debugVertices;
+		// for (auto i = 0U; i < 8; i++)
+		// {
+		// 	debugVertices[i].Position = {i, i};
+		// 	debugVertices[i].UV = {i, i};
+		// }
 		// create vertex buffers
 		auto vertSize = sizeof(Vertex);
 		auto vertexBufferSize = vertSize * m_Vertices.size();
 		auto vertexStagingResult = CreateBuffer(vertexBufferSize,
-				vk::BufferUsageFlagBits::eTransferSrc,
-			VmaMemoryUsage::VMA_MEMORY_USAGE_CPU_ONLY,
-			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+			vk::BufferUsageFlagBits::eTransferSrc,
+			vk::MemoryPropertyFlagBits::eHostVisible |
+			vk::MemoryPropertyFlagBits::eHostCoherent,
+			false);
 		
-		BufferMemoryGroup vertGroup = CreateBufferVMA(vertexBufferSize);
-		auto vertexBuffer = vertGroup.buffer;
+		auto vertexBufferResult = CreateBuffer(vertexBufferSize, 
+			vk::BufferUsageFlagBits::eTransferDst |
+			vk::BufferUsageFlagBits::eVertexBuffer,
+			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			false);
 
 		// copy data to vertex buffer
-		void* vertexStagingData;
-		vmaMapMemory(m_Allocator.get(), vertexStagingResult.allocation.get(), &vertexStagingData);
-		// Debug vertex copy here
-		memcpy(vertexStagingData, debugVertices.data(), vertexBufferSize);
-		vmaUnmapMemory(m_Allocator.get(), vertexStagingResult.allocation.get());
+		void* vertexStagingData = m_LogicalDevice->mapMemory(
+			vertexStagingResult.allocation->memory,
+			vertexStagingResult.allocation->offsetInDeviceMemory,
+			vertexStagingResult.allocation->size);
+		
+		memcpy(vertexStagingData, m_Vertices.data(), vertexBufferSize);
+		m_LogicalDevice->unmapMemory(vertexStagingResult.allocation->memory);
 		CopyToBuffer(vertexStagingResult.buffer.get(),
-			vertexBuffer,
+			vertexBufferResult.buffer.get(),
 			vertexBufferSize,
 			0U,
 			0U);
 		// transfer ownership to VulkanApp
-		auto vertexBufferDeleter = vk::BufferDeleter(m_LogicalDevice.get());
-		m_VertexBuffer = vk::UniqueBuffer(vertexBuffer, vertexBufferDeleter);
-		// m_VertexMemoryInfo = vertexResult.allocationInfo;
+		m_VertexBuffer = std::move(vertexBufferResult.buffer);
+		m_VertexMemory = std::move(vertexBufferResult.allocation);
 	}
 
 	void CreateIndexBuffer()
@@ -1251,31 +1139,31 @@ struct VulkanApp
 		auto indexBufferSize = sizeof(Index) * IndicesPerQuad;
 		auto indexStagingResult = CreateBuffer(indexBufferSize,
 			vk::BufferUsageFlagBits::eTransferSrc,
-			VmaMemoryUsage::VMA_MEMORY_USAGE_CPU_ONLY,
-			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+			vk::MemoryPropertyFlagBits::eHostVisible |
+				vk::MemoryPropertyFlagBits::eHostCoherent,
+				false);
 		auto indexResult = CreateBuffer(indexBufferSize,
 			vk::BufferUsageFlagBits::eTransferDst |
 				vk::BufferUsageFlagBits::eIndexBuffer,
-			VmaMemoryUsage::VMA_MEMORY_USAGE_GPU_ONLY,
-			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			0);
+			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			false);
 
 		// copy data to index buffer
-		void* indexStagingData;
-		vmaMapMemory(m_Allocator.get(), indexStagingResult.allocation.get(), &indexStagingData);
+		void* indexStagingData = m_LogicalDevice->mapMemory(
+			indexStagingResult.allocation->memory,
+			indexStagingResult.allocation->offsetInDeviceMemory,
+			indexStagingResult.allocation->size);
+		
 		memcpy(indexStagingData, IndexArray.data(), indexBufferSize);
-		vmaUnmapMemory(m_Allocator.get(), indexStagingResult.allocation.get());
+		m_LogicalDevice->unmapMemory(indexStagingResult.allocation->memory);	
 		CopyToBuffer(indexStagingResult.buffer.get(),
 			indexResult.buffer.get(),
 			indexBufferSize,
 			0U,
 			0U);
 		// transfer ownership to VulkanApp
-		auto indexBufferDeleter = vk::BufferDeleter(m_LogicalDevice.get());
-		m_IndexBuffer = vk::UniqueBuffer(indexResult.buffer.release(), indexBufferDeleter);
-		m_IndexMemoryInfo = indexResult.allocationInfo;
+		m_IndexBuffer = std::move(indexResult.buffer);
+		m_IndexMemory = std::move(indexResult.allocation);
 	}
 
 	void createSwapChain()
@@ -1525,36 +1413,7 @@ struct VulkanApp
 		}
 
 		// create the allocator
-		auto makeAllocator = [&]()
-		{
-			VmaAllocatorCreateInfo allocatorInfo = {};
-			allocatorInfo.physicalDevice = m_PhysicalDevice.operator VkPhysicalDevice();
-			allocatorInfo.device = m_LogicalDevice->operator VkDevice();
-			allocatorInfo.frameInUseCount = 1U;
-			VmaVulkanFunctions vulkanFunctions = {};
-			vulkanFunctions.vkAllocateMemory = vkAllocateMemory;
-			vulkanFunctions.vkBindBufferMemory = vkBindBufferMemory;
-			vulkanFunctions.vkBindImageMemory = vkBindImageMemory;
-			vulkanFunctions.vkCreateBuffer = vkCreateBuffer;
-			vulkanFunctions.vkCreateImage = vkCreateImage;
-			vulkanFunctions.vkDestroyBuffer = vkDestroyBuffer;
-			vulkanFunctions.vkDestroyImage = vkDestroyImage;
-			vulkanFunctions.vkFreeMemory = vkFreeMemory;
-			vulkanFunctions.vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements;
-			vulkanFunctions.vkGetBufferMemoryRequirements2KHR = vkGetBufferMemoryRequirements2KHR;
-			vulkanFunctions.vkGetImageMemoryRequirements = vkGetImageMemoryRequirements;
-			vulkanFunctions.vkGetImageMemoryRequirements = vkGetImageMemoryRequirements;
-			vulkanFunctions.vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties;
-			vulkanFunctions.vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties;
-			vulkanFunctions.vkMapMemory = vkMapMemory;
-			vulkanFunctions.vkUnmapMemory = vkUnmapMemory;
-			allocatorInfo.pVulkanFunctions = &vulkanFunctions;
-
-			VmaAllocator alloc;
-			vmaCreateAllocator(&allocatorInfo, &alloc);
-			m_Allocator = UniqueVmaAllocator(alloc);
-		};
-		makeAllocator();
+		m_Allocator = Allocator(m_PhysicalDevice, m_LogicalDevice.get());
 
 		// allow client app to load images
 		initData.imageLoadCallback(this);

@@ -28,6 +28,7 @@ deps = [freetype, stb, glfw, btree, vma, vulkan, glm]
 executable('VulkanApp', 
     'main2.cpp',
     'VulkanFunctions.cpp',
+    'Allocator.cpp',
     dependencies : deps,
     override_options : 'cpp_std=c++17',
     cpp_args : ['/std:c++latest', 

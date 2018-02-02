@@ -60,6 +60,18 @@
         "*.rh": "cpp",
         "xlocmes": "cpp",
         "xlocmon": "cpp",
-        "xloctime": "cpp"
+        "xloctime": "cpp",
+        "atomic": "cpp",
+        "ctime": "cpp",
+        "deque": "cpp",
+        "hash_map": "cpp",
+        "hash_set": "cpp",
+        "iomanip": "cpp",
+        "locale": "cpp",
+        "mutex": "cpp",
+        "numeric": "cpp",
+        "thread": "cpp",
+        "unordered_set": "cpp",
+        "xlocbuf": "cpp"
     }
 }

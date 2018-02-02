@@ -199,7 +199,7 @@ struct VulkanApp
 	std::vector<Vertex> m_Vertices;
 	vk::UniqueBuffer m_VertexBuffer;
 	UniqueVmaAllocation m_VertexMemory;
-	VmaAllocationInfo m_VertexMemoryInfo;
+	// VmaAllocationInfo m_VertexMemoryInfo;
 	vk::UniqueBuffer m_IndexBuffer;
 	UniqueVmaAllocation m_IndexMemory;
 	VmaAllocationInfo m_IndexMemoryInfo;
@@ -1138,6 +1138,75 @@ struct VulkanApp
 		);
 	}
 
+	struct BufferMemoryGroup
+	{
+		vk::Buffer buffer;
+		vk::DeviceMemory memory;
+		VmaAllocation allocation;
+	};
+	BufferMemoryGroup CreateBufferVMA(vk::DeviceSize vertexBufferSize)
+	{
+		BufferCreateResult vertexResult = CreateBuffer(vertexBufferSize,
+			vk::BufferUsageFlagBits::eVertexBuffer | 
+				vk::BufferUsageFlagBits::eTransferDst,
+			VmaMemoryUsage::VMA_MEMORY_USAGE_GPU_ONLY,
+			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			0);
+		BufferMemoryGroup result = {};
+		result.buffer = vertexResult.buffer.release();
+		result.allocation = vertexResult.allocation.release();
+		return result;
+	}
+
+	BufferMemoryGroup CreateBufferManual(vk::DeviceSize vertexBufferSize)
+	{
+		vk::Buffer vertexBuffer;
+		auto vertexBufferCreateInfo = vk::BufferCreateInfo(vk::BufferCreateFlags(),
+			vertexBufferSize,
+			vk::BufferUsageFlagBits::eVertexBuffer |
+			vk::BufferUsageFlagBits::eTransferDst,
+			vk::SharingMode::eExclusive,
+			1U,
+			&m_GraphicsQueueFamilyID);
+		vertexBuffer = m_LogicalDevice->createBuffer(vertexBufferCreateInfo);
+
+		auto vertexBufferMemoryRequirements = m_LogicalDevice->getBufferMemoryRequirements(vertexBuffer);
+		vk::DeviceMemory vertexBufferMemory;
+
+		auto memoryProperties = m_PhysicalDevice.getMemoryProperties();
+
+		auto vertexMemoryFlags = vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+		uint32_t memoryID;
+		bool memoryFound = false;
+		for(auto i = 0U; i < memoryProperties.memoryTypeCount; i++)
+		{
+			if (((1 << i) & vertexBufferMemoryRequirements.memoryTypeBits) &&
+				((memoryProperties.memoryTypes[i].propertyFlags & vertexMemoryFlags) == vertexMemoryFlags))
+			{
+				memoryID = i;
+				memoryFound = true;
+				break;
+			}
+		}
+		if (!memoryFound)
+		{
+			std::runtime_error("Compatible memory type not found!");
+		}
+
+		auto vertexMemoryAllocateInfo = 
+			vk::MemoryAllocateInfo(
+				vertexBufferMemoryRequirements.size, 
+				memoryID);
+		vertexBufferMemory = m_LogicalDevice->allocateMemory(vertexMemoryAllocateInfo);
+		m_LogicalDevice->bindBufferMemory(vertexBuffer, vertexBufferMemory, 0U);
+
+		BufferMemoryGroup result = {};
+		result.buffer = vertexBuffer;
+		result.memory = vertexBufferMemory;
+		return result;
+	}
+
 	void CreateVertexBuffer()
 	{
 		std::array<Vertex, 8> debugVertices;
@@ -1150,18 +1219,15 @@ struct VulkanApp
 		auto vertSize = sizeof(Vertex);
 		auto vertexBufferSize = vertSize * m_Vertices.size();
 		auto vertexStagingResult = CreateBuffer(vertexBufferSize,
-			vk::BufferUsageFlagBits::eVertexBuffer |
 				vk::BufferUsageFlagBits::eTransferSrc,
 			VmaMemoryUsage::VMA_MEMORY_USAGE_CPU_ONLY,
 			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-		auto vertexResult = CreateBuffer(vertexBufferSize,
-			vk::BufferUsageFlagBits::eVertexBuffer | 
-				vk::BufferUsageFlagBits::eTransferDst,
-			VmaMemoryUsage::VMA_MEMORY_USAGE_GPU_ONLY,
-			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			0);
+		
+		BufferMemoryGroup vertGroup = CreateBufferVMA(vertexBufferSize);
+		auto vertexBuffer = vertGroup.buffer;
+
 		// copy data to vertex buffer
 		void* vertexStagingData;
 		vmaMapMemory(m_Allocator.get(), vertexStagingResult.allocation.get(), &vertexStagingData);
@@ -1169,14 +1235,14 @@ struct VulkanApp
 		memcpy(vertexStagingData, debugVertices.data(), vertexBufferSize);
 		vmaUnmapMemory(m_Allocator.get(), vertexStagingResult.allocation.get());
 		CopyToBuffer(vertexStagingResult.buffer.get(),
-			vertexResult.buffer.get(),
+			vertexBuffer,
 			vertexBufferSize,
 			0U,
 			0U);
 		// transfer ownership to VulkanApp
 		auto vertexBufferDeleter = vk::BufferDeleter(m_LogicalDevice.get());
-		m_VertexBuffer = vk::UniqueBuffer(vertexResult.buffer.release(), vertexBufferDeleter);
-		m_VertexMemoryInfo = vertexResult.allocationInfo;
+		m_VertexBuffer = vk::UniqueBuffer(vertexBuffer, vertexBufferDeleter);
+		// m_VertexMemoryInfo = vertexResult.allocationInfo;
 	}
 
 	void CreateIndexBuffer()
@@ -1184,8 +1250,7 @@ struct VulkanApp
 		//create index buffers
 		auto indexBufferSize = sizeof(Index) * IndicesPerQuad;
 		auto indexStagingResult = CreateBuffer(indexBufferSize,
-			vk::BufferUsageFlagBits::eTransferSrc |
-				vk::BufferUsageFlagBits::eIndexBuffer,
+			vk::BufferUsageFlagBits::eTransferSrc,
 			VmaMemoryUsage::VMA_MEMORY_USAGE_CPU_ONLY,
 			VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 				VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,

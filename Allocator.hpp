@@ -6,7 +6,6 @@
 
 namespace vka
 {
-
     struct Allocation
     {
         vk::DeviceMemory memory;
@@ -15,43 +14,37 @@ namespace vka
         uint32_t typeID;
     };
 
-    namespace internal
+    struct MemoryBlock;
+    struct AllocationDeleter
     {
+        void operator()(Allocation* allocation);
+        AllocationDeleter(const AllocationDeleter&) noexcept = default;
+        AllocationDeleter() noexcept = default;
+        MemoryBlock* block;
+    };
+    using UniqueAllocation = std::unique_ptr<Allocation, AllocationDeleter>;
+
         struct SubAllocation
         {
             vk::DeviceSize size = 0U;
             bool allocated = false;
         };
-        
-        bool CanSuballocate(
-            const SubAllocation& subAllocation,
-            const vk::MemoryRequirements& requirements);
+        using SubAllocationMap = std::map<vk::DeviceSize, SubAllocation>;
 
         struct MemoryBlock
         {
             MemoryBlock(vk::UniqueDeviceMemory&& memory, const vk::MemoryAllocateInfo& allocateInfo);
+            std::optional<vk::DeviceSize> CanSuballocate(const vk::MemoryRequirements& requirements);
             vk::DeviceSize DivideSubAllocation(
                 const vk::DeviceSize allocationOffset,
                 const vk::MemoryRequirements& requirements);
-            Allocation CreateExternalAllocationFromSuballocation(vk::DeviceSize allocationOffset);
+            UniqueAllocation CreateExternalAllocationFromSuballocation(vk::DeviceSize allocationOffset);
             void DeallocateMemory(Allocation allocation);
 
             vk::UniqueDeviceMemory m_DeviceMemory;
             vk::MemoryAllocateInfo m_AllocateInfo;
-            std::map<vk::DeviceSize, SubAllocation> m_Suballocations;
+            SubAllocationMap m_Suballocations;
         };
-    }// namespace internal
-
-    struct AllocationDeleter
-    {
-        using pointer = Allocation;
-        void operator()(Allocation allocation)
-        {
-            block->DeallocateMemory(allocation);
-        }
-        internal::MemoryBlock* block;
-    };
-    using UniqueAllocation = std::unique_ptr<Allocation, AllocationDeleter>;
 
     class Allocator
     {
@@ -60,21 +53,24 @@ namespace vka
         Allocator(vk::PhysicalDevice physicalDevice, 
             vk::Device device, 
             vk::DeviceSize defaultBlockSize = DefaultMemoryBlockSize);
-        std::optional<uint32_t> Allocator::ChooseMemoryType(vk::MemoryPropertyFlags memoryFlags);
-        UniqueAllocation AllocateMemory(bool DedicatedAllocation, vk::MemoryRequirements requirements);
+        std::optional<uint32_t> Allocator::ChooseMemoryType(vk::MemoryPropertyFlags memoryFlags, 
+        const vk::MemoryRequirements& requirements);
+        UniqueAllocation AllocateMemory(const bool DedicatedAllocation, 
+        const vk::MemoryRequirements& requirements, 
+        const vk::MemoryPropertyFlags memoryFlags);
         UniqueAllocation AllocateForImage(
-            bool DedicatedAllocation, 
-            vk::Image image, 
-            vk::MemoryPropertyFlags memoryFlags);
+            const bool DedicatedAllocation, 
+            const vk::Image image, 
+            const vk::MemoryPropertyFlags memoryFlags);
         UniqueAllocation AllocateForBuffer(
-            bool DedicatedAllocation, 
-            vk::Buffer buffer, 
-            vk::MemoryPropertyFlags memoryFlags);
+            const bool DedicatedAllocation, 
+            const vk::Buffer buffer, 
+            const vk::MemoryPropertyFlags memoryFlags);
 
     private:
-        internal::MemoryBlock&& AllocateNewBlock(const vk::MemoryAllocateInfo& allocateInfo);
+        MemoryBlock& AllocateNewBlock(const vk::MemoryAllocateInfo& allocateInfo);
 
-        std::vector<internal::MemoryBlock> m_MemoryBlocks;
+        std::vector<MemoryBlock> m_MemoryBlocks;
         vk::PhysicalDevice m_PhysicalDevice;
         vk::Device m_Device;
         vk::DeviceSize m_DefaultBlockSize;

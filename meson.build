@@ -22,8 +22,16 @@ elif libtype == 'shared'
     set_variable('glfwLink', '/DGLFW_DLL')
 endif
 
+buildtype = get_option('buildtype')
+if (buildtype == 'release') or (buildtype == 'debugoptimized')
+    set_variable('Validation', '/DNO_VALIDATION')
+else
+    set_variable('Validation', '')
+endif
+
 contentroot = ''.join(['/DCONTENTROOT=','"',meson.source_root(),'/"'])
 message(contentroot)
+message(buildtype)
 deps = [freetype, stb, glfw, btree, vma, vulkan, glm]
 executable('VulkanApp', 
     'main2.cpp',
@@ -34,6 +42,7 @@ executable('VulkanApp',
     cpp_args : ['/std:c++latest', 
     '/DVK_USE_PLATFORM_WIN32_KHR', 
     '/DVK_NO_PROTOTYPES',
+    Validation,
     contentroot,
     glfwLink,
     '/D_SCL_SECURE_NO_WARNINGS'],

@@ -164,6 +164,9 @@ struct VulkanApp
 	vk::Queue m_GraphicsQueue;
 	vk::UniqueDebugReportCallbackEXT m_DebugBreakpointCallbackData;
 	Allocator m_Allocator;
+	vk::UniqueCommandPool m_CopyCommandPool;
+	vk::UniqueCommandBuffer m_CopyCommandBuffer;
+	vk::UniqueFence m_CopyCommandFence;
 	std::vector<vk::UniqueImage> m_Images;
 	std::vector<UniqueAllocation> m_ImageAllocations;
 	std::vector<vk::UniqueImageView> m_ImageViews;
@@ -335,25 +338,24 @@ struct VulkanApp
 		std::vector<vk::Semaphore> signalSemaphores = {}
 	)
 	{
-		auto fence = m_LogicalDevice->createFenceUnique(vk::FenceCreateInfo());
-		auto command = CreateTemporaryCommandBuffer();
-		command.buffer->begin(vk::CommandBufferBeginInfo(
+		// m_LogicalDevice->waitForFences({m_CopyCommandFence.get()}, vk::Bool32(true), std::numeric_limits<uint64_t>::max());
+		m_CopyCommandBuffer->begin(vk::CommandBufferBeginInfo(
 			vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-		command.buffer->copyBuffer(source, destination, 
+		m_CopyCommandBuffer->copyBuffer(source, destination, 
 		{vk::BufferCopy(sourceOffset, destinationOffset, size)});
-		command.buffer->end();
+		m_CopyCommandBuffer->end();
 		m_GraphicsQueue.submit( {vk::SubmitInfo(
 			static_cast<uint32_t>(waitSemaphores.size()),
 			waitSemaphores.data(),
 			nullptr,
 			1U,
-			&command.buffer.get(),
+			&m_CopyCommandBuffer.get(),
 			static_cast<uint32_t>(signalSemaphores.size()),
-			signalSemaphores.data()) }, fence.get());
+			signalSemaphores.data()) }, m_CopyCommandFence.get());
 
 		// wait for buffer to finish execution
 		m_LogicalDevice->waitForFences(
-			{fence.get()}, 
+			{m_CopyCommandFence.get()}, 
 			static_cast<vk::Bool32>(true), 
 			std::numeric_limits<uint64_t>::max());
 	}
@@ -403,7 +405,7 @@ struct VulkanApp
 				vk::BufferUsageFlagBits::eTransferSrc,
 				vk::MemoryPropertyFlagBits::eHostCoherent |
 				vk::MemoryPropertyFlagBits::eHostVisible,
-				false);
+				true);
 				
 			supports.m_MatrixStagingBuffer = std::move(stagingBufferResult.buffer);
 			supports.m_MatrixStagingMemory = std::move(stagingBufferResult.allocation);
@@ -412,7 +414,7 @@ struct VulkanApp
 			auto matrixBufferResult = CreateBuffer(newBufferSize,
 				vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer,
 				vk::MemoryPropertyFlagBits::eDeviceLocal,
-				false);
+				true);
 			supports.m_MatrixBuffer = std::move(matrixBufferResult.buffer);
 			supports.m_MatrixMemory = std::move(matrixBufferResult.allocation);
 		}
@@ -599,7 +601,7 @@ struct VulkanApp
 		if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR)
 		{
 			m_SurfaceExtent = GetWindowSize();
-			createSwapchainWithDependencies();
+			createSwapchainWithDependencies(m_SurfaceExtent);
 		}
 		else if (result != vk::Result::eSuccess)
 		{
@@ -651,8 +653,13 @@ struct VulkanApp
 
 
 		result.image = m_LogicalDevice->createImageUnique(imageInfo);
-		result.allocation = m_Allocator.AllocateForImage(false, result.image.get(), 
+		result.allocation = m_Allocator.AllocateForImage(true, result.image.get(), 
 			vk::MemoryPropertyFlagBits::eDeviceLocal);
+		m_LogicalDevice->bindImageMemory(
+			result.image.get(),
+			result.allocation->memory,
+			result.allocation->offsetInDeviceMemory);
+		
 		return result;
 	}
 
@@ -712,7 +719,7 @@ struct VulkanApp
 			vk::BufferUsageFlagBits::eTransferSrc,
 			vk::MemoryPropertyFlagBits::eHostCoherent |
 			vk::MemoryPropertyFlagBits::eHostVisible,
-			false);
+			true);
 			
 		// copy from host to staging buffer
 		void* stagingBufferData = m_LogicalDevice->mapMemory(
@@ -1107,13 +1114,13 @@ struct VulkanApp
 			vk::BufferUsageFlagBits::eTransferSrc,
 			vk::MemoryPropertyFlagBits::eHostVisible |
 			vk::MemoryPropertyFlagBits::eHostCoherent,
-			false);
+			true);
 		
 		auto vertexBufferResult = CreateBuffer(vertexBufferSize, 
 			vk::BufferUsageFlagBits::eTransferDst |
 			vk::BufferUsageFlagBits::eVertexBuffer,
 			vk::MemoryPropertyFlagBits::eDeviceLocal,
-			false);
+			true);
 
 		// copy data to vertex buffer
 		void* vertexStagingData = m_LogicalDevice->mapMemory(
@@ -1141,12 +1148,12 @@ struct VulkanApp
 			vk::BufferUsageFlagBits::eTransferSrc,
 			vk::MemoryPropertyFlagBits::eHostVisible |
 				vk::MemoryPropertyFlagBits::eHostCoherent,
-				false);
+				true);
 		auto indexResult = CreateBuffer(indexBufferSize,
 			vk::BufferUsageFlagBits::eTransferDst |
 				vk::BufferUsageFlagBits::eIndexBuffer,
 			vk::MemoryPropertyFlagBits::eDeviceLocal,
-			false);
+			true);
 
 		// copy data to index buffer
 		void* indexStagingData = m_LogicalDevice->mapMemory(
@@ -1196,8 +1203,12 @@ struct VulkanApp
 				));
 	}
 
-	void createSwapchainWithDependencies()
+	void createSwapchainWithDependencies(vk::Extent2D size)
 	{
+		m_LogicalDevice->waitIdle();
+		m_Swapchain.reset();
+		CreateSurface(size);
+
 		createSwapChain();
 		m_SwapImages = m_LogicalDevice->getSwapchainImagesKHR(m_Swapchain.get());
 
@@ -1234,8 +1245,8 @@ struct VulkanApp
 
 	void resizeWindow(vk::Extent2D size)
 	{
-		m_SurfaceExtent = size;
-		createSwapchainWithDependencies();
+		m_Camera.setSize(glm::vec2(static_cast<float>(size.width), static_cast<float>(size.height)));
+		createSwapchainWithDependencies(size);
 	}
 
 	void CreateAndUpdateFragmentDescriptorSet()
@@ -1317,6 +1328,44 @@ struct VulkanApp
 				support.m_VertexLayoutDescriptorPool.get()));
 	}
 
+	void CreateSurface(std::optional<vk::Extent2D> extent)
+	{
+		VkSurfaceKHR surface;
+		glfwCreateWindowSurface(m_Instance.get(), m_Window, nullptr, &surface);
+		m_Surface = vk::UniqueSurfaceKHR(surface, vk::SurfaceKHRDeleter(m_Instance.get()));
+		
+		// get surface format from supported list
+		auto surfaceFormats = m_PhysicalDevice.getSurfaceFormatsKHR(m_Surface.get());
+		if (surfaceFormats.size() == 1 && surfaceFormats[0].format == vk::Format::eUndefined)
+			m_SurfaceFormat = vk::Format::eB8G8R8A8Unorm;
+		else
+			m_SurfaceFormat = surfaceFormats[0].format;
+		// get surface color space
+		m_SurfaceColorSpace = surfaceFormats[0].colorSpace;
+
+		m_SurfaceFormatProperties = m_PhysicalDevice.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
+		m_SurfaceCapabilities = m_PhysicalDevice.getSurfaceCapabilitiesKHR(m_Surface.get());
+		m_SurfacePresentModes = m_PhysicalDevice.getSurfacePresentModesKHR(m_Surface.get());
+
+		if (!(m_SurfaceFormatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eColorAttachmentBlend))
+		{
+			std::runtime_error("Blend not supported by surface format.");
+		}
+		// get surface extent
+		if (m_SurfaceCapabilities.currentExtent.width == -1 ||
+			m_SurfaceCapabilities.currentExtent.height == -1)
+		{
+			if (extent)
+				m_SurfaceExtent = extent.value();
+			else
+				m_SurfaceExtent = GetWindowSize();
+		}
+		else
+		{
+			m_SurfaceExtent = m_SurfaceCapabilities.currentExtent;
+		}
+	}
+
 	// Window resize callback
 	static void resizeFunc(GLFWwindow* window, int width, int height)
 	{
@@ -1339,6 +1388,7 @@ struct VulkanApp
 			exit(-1);
 		}
 		glfwSetWindowUserPointer(m_Window, this);
+		glfwSetWindowSizeCallback(m_Window, resizeFunc);
 		m_Camera = Camera2D();
 		m_Camera.setSize({static_cast<float>(initData.width), static_cast<float>(initData.height)});
 
@@ -1415,6 +1465,22 @@ struct VulkanApp
 		// create the allocator
 		m_Allocator = Allocator(m_PhysicalDevice, m_LogicalDevice.get());
 
+		// create copy command objects
+		auto copyPoolCreateInfo = vk::CommandPoolCreateInfo(
+			vk::CommandPoolCreateFlagBits::eResetCommandBuffer |
+			vk::CommandPoolCreateFlagBits::eTransient,
+			m_GraphicsQueueFamilyID);
+		m_CopyCommandPool = m_LogicalDevice->createCommandPoolUnique(copyPoolCreateInfo);
+		auto copyCmdBufferInfo = vk::CommandBufferAllocateInfo(
+			m_CopyCommandPool.get(),
+			vk::CommandBufferLevel::ePrimary,
+			1U);
+		
+		m_CopyCommandBuffer = std::move(
+			m_LogicalDevice->allocateCommandBuffersUnique(copyCmdBufferInfo)[0]);
+		m_CopyCommandFence = m_LogicalDevice->createFenceUnique(
+			vk::FenceCreateInfo(/*vk::FenceCreateFlagBits::eSignaled*/));
+
 		// allow client app to load images
 		initData.imageLoadCallback(this);
 		m_TextureCount = static_cast<uint32_t>(m_Images.size());
@@ -1424,37 +1490,7 @@ struct VulkanApp
 		CreateIndexBuffer();
 
 		// create surface
-		VkSurfaceKHR surface;
-		glfwCreateWindowSurface(m_Instance.get(), m_Window, nullptr, &surface);
-		m_Surface = vk::UniqueSurfaceKHR(surface, vk::SurfaceKHRDeleter(m_Instance.get()));
-		
-		// get surface format from supported list
-		auto surfaceFormats = m_PhysicalDevice.getSurfaceFormatsKHR(m_Surface.get());
-		if (surfaceFormats.size() == 1 && surfaceFormats[0].format == vk::Format::eUndefined)
-			m_SurfaceFormat = vk::Format::eB8G8R8A8Unorm;
-		else
-			m_SurfaceFormat = surfaceFormats[0].format;
-		// get surface color space
-		m_SurfaceColorSpace = surfaceFormats[0].colorSpace;
-
-		m_SurfaceFormatProperties = m_PhysicalDevice.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
-		m_SurfaceCapabilities = m_PhysicalDevice.getSurfaceCapabilitiesKHR(m_Surface.get());
-		m_SurfacePresentModes = m_PhysicalDevice.getSurfacePresentModesKHR(m_Surface.get());
-
-		if (!(m_SurfaceFormatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eColorAttachmentBlend))
-		{
-			std::runtime_error("Blend not supported by surface format.");
-		}
-		// get surface extent
-		if (m_SurfaceCapabilities.currentExtent.width == -1 ||
-			m_SurfaceCapabilities.currentExtent.height == -1)
-		{
-			m_SurfaceExtent = GetWindowSize();
-		}
-		else
-		{
-			m_SurfaceExtent = m_SurfaceCapabilities.currentExtent;
-		}
+		CreateSurface(std::make_optional<vk::Extent2D>());
 
 		createRenderPass();
 
@@ -1520,7 +1556,7 @@ struct VulkanApp
 		m_PipelineLayout = m_LogicalDevice->createPipelineLayoutUnique(pipelineLayoutInfo);
 
 		// init all the swapchain dependencies
-		createSwapchainWithDependencies();
+		createSwapchainWithDependencies(m_SurfaceExtent);
 
 		// create pipeline
 		createPipelineCreateInfo();

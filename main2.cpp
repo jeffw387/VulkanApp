@@ -64,15 +64,19 @@ int main()
 
 	std::vector<const char*> Layers = 
 	{
+	#ifndef NO_VALIDATION
 		"VK_LAYER_LUNARG_standard_validation",
 		//"VK_LAYER_LUNARG_api_dump",
+	#endif
 	};
 
 	std::vector<const char*> InstanceExtensions = 
 	{
 		VK_KHR_SURFACE_EXTENSION_NAME,
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+	#ifndef NO_VALIDATION
 		VK_EXT_DEBUG_REPORT_EXTENSION_NAME
+	#endif
 	};
 
     auto appInfo = vk::ApplicationInfo();

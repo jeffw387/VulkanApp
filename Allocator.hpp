@@ -1,8 +1,8 @@
 #include <vulkan/vulkan.hpp>
 #include <memory>
-#include <vector>
 #include <optional>
 #include <map>
+#include <list>
 
 namespace vka
 {
@@ -71,7 +71,7 @@ namespace vka
     private:
         MemoryBlock& AllocateNewBlock(const vk::MemoryAllocateInfo& allocateInfo);
 
-        std::vector<MemoryBlock> m_MemoryBlocks;
+        std::list<MemoryBlock> m_MemoryBlocks;
         vk::PhysicalDevice m_PhysicalDevice;
         vk::Device m_Device;
         vk::DeviceSize m_DefaultBlockSize;

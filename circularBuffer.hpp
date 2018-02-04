@@ -1,16 +1,13 @@
 #pragma once
 #include <array>
 
-auto modulo(int dividend, unsigned int divisor)
+int modulo(int dividend, unsigned int divisor)
 {
-    if (dividend < 0)
+    while (dividend < 0)
     {
-        return (dividend % divisor) + divisor;
+        dividend += divisor;
     }
-    else
-    {
-        return dividend % divisor;
-    }
+    return dividend % divisor;
 }
 
 template <typename T, unsigned N>
@@ -21,7 +18,8 @@ class CircularBuffer
 public:
     T& operator[] (int index)
     {
-        return storage[modulo(index, N)];
+        auto indexMod = modulo(index, N);
+        return storage[indexMod];
     }
 
     auto begin()

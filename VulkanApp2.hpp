@@ -17,6 +17,8 @@
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
 #include "Allocator.hpp"
+#include "profiler.hpp"
+#include "mymath.hpp"
 
 #undef max
 #include <iostream>
@@ -87,9 +89,9 @@ namespace vka
 	{
 		char const* WindowTitle;
 		int width; int height;
-		const vk::InstanceCreateInfo instanceCreateInfo;
-		const std::vector<const char*> deviceExtensions;
-		const ShaderData shaderData;
+		vk::InstanceCreateInfo instanceCreateInfo;
+		std::vector<const char*> deviceExtensions;
+		ShaderData shaderData;
 		std::function<void(VulkanApp*)> imageLoadCallback;
 	};
 
@@ -124,7 +126,8 @@ struct VulkanApp
 	struct Supports
 	{
 		vk::UniqueCommandPool m_CommandPool;
-		vk::UniqueCommandBuffer m_CommandBuffer;
+		vk::UniqueCommandBuffer m_CopyCommandBuffer;
+		vk::UniqueCommandBuffer m_RenderCommandBuffer;
 		vk::UniqueBuffer m_MatrixStagingBuffer;
 		UniqueAllocation m_MatrixStagingMemory;
 		vk::UniqueBuffer m_MatrixBuffer;
@@ -132,6 +135,7 @@ struct VulkanApp
 		size_t m_BufferCapacity = 0U;
 		vk::UniqueDescriptorPool m_VertexLayoutDescriptorPool;
 		vk::UniqueDescriptorSet m_VertexDescriptorSet;
+		vk::UniqueFence m_RenderBufferExecuted;
 		// create this fence in acquireImage() and wait for it before using buffers in BeginRender()
 		vk::UniqueFence m_ImagePresentCompleteFence;
 		// These semaphores are created at startup
@@ -151,6 +155,7 @@ struct VulkanApp
 	};
 	
 	static constexpr size_t BufferCount = 3U;
+	InitData m_InitData;
 	UpdateData m_UpdateData;
 	GLFWwindow* m_Window;
 	Camera2D m_Camera;
@@ -329,6 +334,7 @@ struct VulkanApp
 	}
 
 	void CopyToBuffer(
+		const vk::CommandBuffer commandBuffer,
 		const vk::Buffer source, 
 		const vk::Buffer destination, 
 		const vk::DeviceSize size, 
@@ -340,32 +346,32 @@ struct VulkanApp
 	)
 	{
 		// m_LogicalDevice->waitForFences({m_CopyCommandFence.get()}, vk::Bool32(true), std::numeric_limits<uint64_t>::max());
-		m_CopyCommandBuffer->begin(vk::CommandBufferBeginInfo(
+		commandBuffer.begin(vk::CommandBufferBeginInfo(
 			vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
-		m_CopyCommandBuffer->copyBuffer(source, destination, 
+		commandBuffer.copyBuffer(source, destination, 
 		{vk::BufferCopy(sourceOffset, destinationOffset, size)});
 
-		m_CopyCommandBuffer->end();
+		commandBuffer.end();
 
 		m_GraphicsQueue.submit( {vk::SubmitInfo(
 			static_cast<uint32_t>(waitSemaphores.size()),
 			waitSemaphores.data(),
 			nullptr,
 			1U,
-			&m_CopyCommandBuffer.get(),
+			&commandBuffer,
 			static_cast<uint32_t>(signalSemaphores.size()),
 			signalSemaphores.data()) }, fence.value_or(vk::Fence()));
 
-		// wait for buffer to finish execution
-		if (fence)
-		{
-		m_LogicalDevice->waitForFences(
-			{ fence.value() }, 
-			static_cast<vk::Bool32>(true), 
-			std::numeric_limits<uint64_t>::max());
-			m_LogicalDevice->resetFences({ fence.value() });
-		}
+		// // wait for buffer to finish execution
+		// if (fence)
+		// {
+		// m_LogicalDevice->waitForFences(
+		// 	{ fence.value() }, 
+		// 	static_cast<vk::Bool32>(true), 
+		// 	std::numeric_limits<uint64_t>::max());
+		// 	m_LogicalDevice->resetFences({ fence.value() });
+		// }
 	}
 
 
@@ -435,6 +441,11 @@ struct VulkanApp
 		m_UpdateData.copyOffset = 0;
 		m_UpdateData.vp = m_Camera.getMatrix();
 
+		m_LogicalDevice->waitForFences({ supports.m_RenderBufferExecuted.get() }, 
+		vk::Bool32(true),
+		std::numeric_limits<uint64_t>::max());
+		m_LogicalDevice->resetFences({ supports.m_RenderBufferExecuted.get() });
+
 		// TODO: benchmark whether staging buffer use is faster than alternatives
         auto descriptorBufferInfo = vk::DescriptorBufferInfo(
                 supports.m_MatrixBuffer.get(),
@@ -477,7 +488,7 @@ struct VulkanApp
 		auto clearValue = vk::ClearValue(vk::ClearColorValue(std::array<float, 4>{0.f, 0.f, 0.f, 0.f}));
 
 		// reset command buffer
-		supports.m_CommandBuffer->reset(vk::CommandBufferResetFlags());
+		supports.m_RenderCommandBuffer->reset(vk::CommandBufferResetFlags());
 
 		// Render pass info
 		auto renderPassInfo = vk::RenderPassBeginInfo(
@@ -488,24 +499,24 @@ struct VulkanApp
 			&clearValue);
 
 		// record the command buffer
-		supports.m_CommandBuffer->begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-		supports.m_CommandBuffer->setViewport(0U, { viewport });
-		supports.m_CommandBuffer->setScissor(0U, { scissorRect });
-		supports.m_CommandBuffer->beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
-		supports.m_CommandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, m_Pipeline.get());
+		supports.m_RenderCommandBuffer->begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+		supports.m_RenderCommandBuffer->setViewport(0U, { viewport });
+		supports.m_RenderCommandBuffer->setScissor(0U, { scissorRect });
+		supports.m_RenderCommandBuffer->beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
+		supports.m_RenderCommandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, m_Pipeline.get());
 		auto vertexBuffer = m_VertexBuffer.get();
-		supports.m_CommandBuffer->bindVertexBuffers(
+		supports.m_RenderCommandBuffer->bindVertexBuffers(
 			0U,
 			{ vertexBuffer }, 
 			{ 0U });
 		auto indexBuffer = m_IndexBuffer.get();
-		supports.m_CommandBuffer->bindIndexBuffer(
+		supports.m_RenderCommandBuffer->bindIndexBuffer(
 			indexBuffer, 
 			0U, 
 			vk::IndexType::eUint16);
 
 		// bind sampler and images uniforms
-		supports.m_CommandBuffer->bindDescriptorSets(
+		supports.m_RenderCommandBuffer->bindDescriptorSets(
 			vk::PipelineBindPoint::eGraphics,
 			m_PipelineLayout.get(),
 			1U,
@@ -531,7 +542,7 @@ struct VulkanApp
 		pushRange.b = sprite.color.b;
 		pushRange.a = sprite.color.a;
 
-		supports.m_CommandBuffer->pushConstants<FragmentPushConstants>(
+		supports.m_RenderCommandBuffer->pushConstants<FragmentPushConstants>(
 			m_PipelineLayout.get(),
 			vk::ShaderStageFlagBits::eFragment,
 			0U,
@@ -540,7 +551,7 @@ struct VulkanApp
 		uint32_t dynamicOffset = static_cast<uint32_t>(m_UpdateData.spriteIndex * m_MatrixBufferOffsetAlignment);
 
 		// bind dynamic matrix uniform
-		supports.m_CommandBuffer->bindDescriptorSets(
+		supports.m_RenderCommandBuffer->bindDescriptorSets(
 			vk::PipelineBindPoint::eGraphics,
 			m_PipelineLayout.get(),
 			0U,
@@ -549,7 +560,7 @@ struct VulkanApp
 
 		auto vertexOffset = sprite.textureIndex * IndicesPerQuad;
 		// draw the sprite
-		supports.m_CommandBuffer->
+		supports.m_RenderCommandBuffer->
 			drawIndexed(IndicesPerQuad, 1U, 0U, vertexOffset, 0U);
 		m_UpdateData.spriteIndex++;
 	}
@@ -569,6 +580,7 @@ struct VulkanApp
 		m_LogicalDevice->unmapMemory(supports.m_MatrixStagingMemory->memory);
 
 		CopyToBuffer(
+			supports.m_CopyCommandBuffer.get(),
 			supports.m_MatrixStagingBuffer.get(),
 			supports.m_MatrixBuffer.get(),
 			supports.m_MatrixMemory->size,
@@ -579,8 +591,8 @@ struct VulkanApp
 			{ supports.m_MatrixBufferStagingCompleteSemaphore.get() });
 
 		// Finish recording draw command buffer
-		supports.m_CommandBuffer->endRenderPass();
-		supports.m_CommandBuffer->end();
+		supports.m_RenderCommandBuffer->endRenderPass();
+		supports.m_RenderCommandBuffer->end();
 
 		// Submit draw command buffer
         auto stageFlags = vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput);
@@ -591,10 +603,10 @@ struct VulkanApp
 					&supports.m_MatrixBufferStagingCompleteSemaphore.get(),
 					&stageFlags,
 					1U,
-					&supports.m_CommandBuffer.get(),
+					&supports.m_RenderCommandBuffer.get(),
 					1U,
 					&supports.m_ImageRenderCompleteSemaphore.get())
-			}, vk::Fence());
+			}, supports.m_RenderBufferExecuted.get());
 
 		// Present image
 		auto result = m_GraphicsQueue.presentKHR(
@@ -618,9 +630,11 @@ struct VulkanApp
 
 	void Run(LoopCallbacks callbacks)
 	{
+		profiler::Describe<0>("Frame time");
 		while (!glfwWindowShouldClose(m_Window))
 		{
 			//loop
+			profiler::startTimer<0>();
 			glfwPollEvents();
 			auto spriteCount = callbacks.BeforeRenderCallback();
 			if (!BeginRender(spriteCount))
@@ -631,6 +645,12 @@ struct VulkanApp
 			callbacks.RenderCallback(this);
 			EndRender();
 			callbacks.AfterRenderCallback();
+			profiler::endTimer<0>();
+			auto frameDuration = profiler::getRollingAverage<0>(5);
+			auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
+			auto frameDurationCount = millisecondFrameDuration.count();
+			auto title = m_InitData.WindowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount));
+			glfwSetWindowTitle(m_Window, title.c_str());
 		}
 		m_LogicalDevice->waitIdle();
 	}
@@ -1137,16 +1157,24 @@ struct VulkanApp
 		
 		memcpy(vertexStagingData, m_Vertices.data(), vertexBufferSize);
 		m_LogicalDevice->unmapMemory(vertexStagingResult.allocation->memory);
-		CopyToBuffer(vertexStagingResult.buffer.get(),
+		CopyToBuffer(
+			m_CopyCommandBuffer.get(),
+			vertexStagingResult.buffer.get(),
 			vertexBufferResult.buffer.get(),
 			vertexBufferSize,
 			0U,
 			0U,
 			std::make_optional<vk::Fence>(m_CopyCommandFence.get()));
-			
+		
 		// transfer ownership to VulkanApp
 		m_VertexBuffer = std::move(vertexBufferResult.buffer);
 		m_VertexMemory = std::move(vertexBufferResult.allocation);
+
+		// wait for vertex buffer copy to finish
+		m_LogicalDevice->waitForFences({ m_CopyCommandFence.get() }, 
+			vk::Bool32(true), 
+			std::numeric_limits<uint64_t>::max());
+		m_LogicalDevice->resetFences({ m_CopyCommandFence.get() });
 	}
 
 	void CreateIndexBuffer()
@@ -1172,7 +1200,9 @@ struct VulkanApp
 		
 		memcpy(indexStagingData, IndexArray.data(), indexBufferSize);
 		m_LogicalDevice->unmapMemory(indexStagingResult.allocation->memory);	
-		CopyToBuffer(indexStagingResult.buffer.get(),
+		CopyToBuffer(
+			m_CopyCommandBuffer.get(),
+			indexStagingResult.buffer.get(),
 			indexResult.buffer.get(),
 			indexBufferSize,
 			0U,
@@ -1182,6 +1212,12 @@ struct VulkanApp
 		// transfer ownership to VulkanApp
 		m_IndexBuffer = std::move(indexResult.buffer);
 		m_IndexMemory = std::move(indexResult.allocation);
+
+				// wait for index buffer copy to finish
+		m_LogicalDevice->waitForFences({ m_CopyCommandFence.get() }, 
+			vk::Bool32(true), 
+			std::numeric_limits<uint64_t>::max());
+		m_LogicalDevice->resetFences({ m_CopyCommandFence.get() });
 	}
 
 	void createSwapChain()
@@ -1316,13 +1352,17 @@ struct VulkanApp
 				vk::CommandPoolCreateFlagBits::eResetCommandBuffer |
 				vk::CommandPoolCreateFlagBits::eTransient,
 				m_GraphicsQueueFamilyID));
-		support.m_CommandBuffer = std::move(m_LogicalDevice->allocateCommandBuffersUnique(
+		auto commandBuffers = m_LogicalDevice->allocateCommandBuffersUnique(
 			vk::CommandBufferAllocateInfo(
 				support.m_CommandPool.get(),
 				vk::CommandBufferLevel::ePrimary,
-				1U))[0]);
+				2U));
+		support.m_CopyCommandBuffer = std::move(commandBuffers[0]);
+		support.m_RenderCommandBuffer = std::move(commandBuffers[1]);
 		support.m_VertexLayoutDescriptorPool = createVertexDescriptorPool();
 		support.m_BufferCapacity = 0U;
+		support.m_RenderBufferExecuted = m_LogicalDevice->createFenceUnique(
+			vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
 		support.m_ImageRenderCompleteSemaphore = m_LogicalDevice->createSemaphoreUnique(
 			vk::SemaphoreCreateInfo(
 				vk::SemaphoreCreateFlags()));
@@ -1386,6 +1426,7 @@ struct VulkanApp
 
 	void init(InitData initData)
 	{
+		m_InitData = initData;
 		auto glfwInitError = glfwInit();
 		if (!glfwInitError)
 		{

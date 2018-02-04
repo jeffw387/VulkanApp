@@ -329,21 +329,25 @@ struct VulkanApp
 	}
 
 	void CopyToBuffer(
-		vk::Buffer source, 
-		vk::Buffer destination, 
-		vk::DeviceSize size, 
-		vk::DeviceSize sourceOffset, 
-		vk::DeviceSize destinationOffset,
-		std::vector<vk::Semaphore> waitSemaphores = {},
-		std::vector<vk::Semaphore> signalSemaphores = {}
+		const vk::Buffer source, 
+		const vk::Buffer destination, 
+		const vk::DeviceSize size, 
+		const vk::DeviceSize sourceOffset, 
+		const vk::DeviceSize destinationOffset,
+		const std::optional<vk::Fence> fence,
+		const std::vector<vk::Semaphore> waitSemaphores = {},
+		const std::vector<vk::Semaphore> signalSemaphores = {}
 	)
 	{
 		// m_LogicalDevice->waitForFences({m_CopyCommandFence.get()}, vk::Bool32(true), std::numeric_limits<uint64_t>::max());
 		m_CopyCommandBuffer->begin(vk::CommandBufferBeginInfo(
 			vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+
 		m_CopyCommandBuffer->copyBuffer(source, destination, 
 		{vk::BufferCopy(sourceOffset, destinationOffset, size)});
+
 		m_CopyCommandBuffer->end();
+
 		m_GraphicsQueue.submit( {vk::SubmitInfo(
 			static_cast<uint32_t>(waitSemaphores.size()),
 			waitSemaphores.data(),
@@ -351,13 +355,17 @@ struct VulkanApp
 			1U,
 			&m_CopyCommandBuffer.get(),
 			static_cast<uint32_t>(signalSemaphores.size()),
-			signalSemaphores.data()) }, m_CopyCommandFence.get());
+			signalSemaphores.data()) }, fence.value_or(vk::Fence()));
 
 		// wait for buffer to finish execution
+		if (fence)
+		{
 		m_LogicalDevice->waitForFences(
-			{m_CopyCommandFence.get()}, 
+			{ fence.value() }, 
 			static_cast<vk::Bool32>(true), 
 			std::numeric_limits<uint64_t>::max());
+			m_LogicalDevice->resetFences({ fence.value() });
+		}
 	}
 
 
@@ -566,10 +574,9 @@ struct VulkanApp
 			supports.m_MatrixMemory->size,
 			0U,
 			0U,
+			std::optional<vk::Fence>(),
 			{},
-		{
-			supports.m_MatrixBufferStagingCompleteSemaphore.get() 
-		});
+			{ supports.m_MatrixBufferStagingCompleteSemaphore.get() });
 
 		// Finish recording draw command buffer
 		supports.m_CommandBuffer->endRenderPass();
@@ -1134,7 +1141,9 @@ struct VulkanApp
 			vertexBufferResult.buffer.get(),
 			vertexBufferSize,
 			0U,
-			0U);
+			0U,
+			std::make_optional<vk::Fence>(m_CopyCommandFence.get()));
+			
 		// transfer ownership to VulkanApp
 		m_VertexBuffer = std::move(vertexBufferResult.buffer);
 		m_VertexMemory = std::move(vertexBufferResult.allocation);
@@ -1167,7 +1176,9 @@ struct VulkanApp
 			indexResult.buffer.get(),
 			indexBufferSize,
 			0U,
-			0U);
+			0U,
+			std::make_optional<vk::Fence>(m_CopyCommandFence.get()));
+			
 		// transfer ownership to VulkanApp
 		m_IndexBuffer = std::move(indexResult.buffer);
 		m_IndexMemory = std::move(indexResult.allocation);

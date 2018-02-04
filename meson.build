@@ -8,8 +8,6 @@ stb_proj = subproject('stb')
 stb = stb_proj.get_variable('stb_dep')
 btree_proj = subproject('btree')
 btree = btree_proj.get_variable('btree_dep')
-vma_proj = subproject('vma')
-vma = vma_proj.get_variable('vma_dep')
 vulkan_proj = subproject('vulkan')
 vulkan = vulkan_proj.get_variable('vulkan_dep')
 glm_proj = subproject('glm')
@@ -32,7 +30,7 @@ endif
 contentroot = ''.join(['/DCONTENTROOT=','"',meson.source_root(),'/"'])
 message(contentroot)
 message(buildtype)
-deps = [freetype, stb, glfw, btree, vma, vulkan, glm]
+deps = [freetype, stb, glfw, btree, vulkan, glm]
 executable('VulkanApp', 
     'main2.cpp',
     'VulkanFunctions.cpp',

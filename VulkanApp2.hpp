@@ -652,7 +652,7 @@ struct VulkanApp
 				auto frameDuration = profiler::getRollingAverage<0>(100);
 				auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
 				auto frameDurationCount = millisecondFrameDuration.count();
-				auto title = m_InitData.WindowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount));
+				auto title = m_InitData.WindowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount)) + std::string(" microseconds");
 				glfwSetWindowTitle(m_Window, title.c_str());
 			}
 			frameCount++;

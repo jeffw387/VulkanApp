@@ -631,6 +631,7 @@ struct VulkanApp
 	void Run(LoopCallbacks callbacks)
 	{
 		profiler::Describe<0>("Frame time");
+		size_t frameCount = 0;
 		while (!glfwWindowShouldClose(m_Window))
 		{
 			//loop
@@ -646,11 +647,15 @@ struct VulkanApp
 			EndRender();
 			callbacks.AfterRenderCallback();
 			profiler::endTimer<0>();
-			auto frameDuration = profiler::getRollingAverage<0>(5);
-			auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
-			auto frameDurationCount = millisecondFrameDuration.count();
-			auto title = m_InitData.WindowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount));
-			glfwSetWindowTitle(m_Window, title.c_str());
+			if (frameCount % 100 == 0)
+			{
+				auto frameDuration = profiler::getRollingAverage<0>(100);
+				auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
+				auto frameDurationCount = millisecondFrameDuration.count();
+				auto title = m_InitData.WindowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount));
+				glfwSetWindowTitle(m_Window, title.c_str());
+			}
+			frameCount++;
 		}
 		m_LogicalDevice->waitIdle();
 	}

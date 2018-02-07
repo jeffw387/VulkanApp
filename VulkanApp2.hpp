@@ -1321,12 +1321,6 @@ private:
 
 	void CreateVertexBuffer()
 	{
-		// std::array<Vertex, 8> debugVertices;
-		// for (auto i = 0U; i < 8; i++)
-		// {
-		// 	debugVertices[i].Position = {i, i};
-		// 	debugVertices[i].UV = {i, i};
-		// }
 		// create vertex buffers
 		auto vertSize = sizeof(Vertex);
 		auto vertexBufferSize = vertSize * m_Vertices.size();

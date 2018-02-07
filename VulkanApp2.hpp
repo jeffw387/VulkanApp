@@ -19,6 +19,7 @@
 #include "Allocator.hpp"
 #include "profiler.hpp"
 #include "mymath.hpp"
+#include "CircularQueue.hpp"
 
 #undef max
 #include <iostream>
@@ -158,6 +159,7 @@ struct VulkanApp
 	InitData m_InitData;
 	UpdateData m_UpdateData;
 	GLFWwindow* m_Window;
+	CircularQueue<RAWINPUT, 500> m_InputBuffer;
 	Camera2D m_Camera;
 	HMODULE m_VulkanLibrary;
 	vk::UniqueInstance m_Instance;
@@ -229,6 +231,453 @@ struct VulkanApp
 	std::array<vk::UniqueFramebuffer, BufferCount> m_Framebuffers;
 	vk::UniquePipeline m_Pipeline;
 
+	// TemporaryCommandStructure CreateTemporaryCommandBuffer()
+	// {
+	// 	TemporaryCommandStructure result;
+	// 	// get command pool and buffer
+	// 	result.pool = m_LogicalDevice->createCommandPoolUnique(
+	// 		vk::CommandPoolCreateInfo(
+	// 			vk::CommandPoolCreateFlagBits::eTransient,
+	// 			m_GraphicsQueueFamilyID));
+	// 	auto buffer = m_LogicalDevice->allocateCommandBuffers(
+	// 		vk::CommandBufferAllocateInfo(
+	// 			result.pool.get(),
+	// 			vk::CommandBufferLevel::ePrimary,
+	// 			1U))[0];
+	// 	auto bufferDeleter = vk::CommandBufferDeleter(m_LogicalDevice.get(), result.pool.get());
+	// 	result.buffer = vk::UniqueCommandBuffer(buffer, bufferDeleter);
+	// 	return result;
+	// }
+
+	void RenderSprite(const Sprite& sprite)
+	{
+		auto& supports = m_Supports[m_UpdateData.nextImage];
+		glm::mat4 mvp =  m_UpdateData.vp * sprite.transform;
+
+		memcpy((char*)m_UpdateData.mapped + m_UpdateData.copyOffset, &mvp, sizeof(glm::mat4));
+		m_UpdateData.copyOffset += m_MatrixBufferOffsetAlignment;
+
+		FragmentPushConstants pushRange;
+		pushRange.textureID = sprite.textureIndex;
+		pushRange.r = sprite.color.r;
+		pushRange.g = sprite.color.g;
+		pushRange.b = sprite.color.b;
+		pushRange.a = sprite.color.a;
+
+		supports.m_RenderCommandBuffer->pushConstants<FragmentPushConstants>(
+			m_PipelineLayout.get(),
+			vk::ShaderStageFlagBits::eFragment,
+			0U,
+			{ pushRange });
+
+		uint32_t dynamicOffset = static_cast<uint32_t>(m_UpdateData.spriteIndex * m_MatrixBufferOffsetAlignment);
+
+		// bind dynamic matrix uniform
+		supports.m_RenderCommandBuffer->bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,
+			m_PipelineLayout.get(),
+			0U,
+			{ supports.m_VertexDescriptorSet.get() },
+			{ dynamicOffset });
+
+		auto vertexOffset = sprite.textureIndex * IndicesPerQuad;
+		// draw the sprite
+		supports.m_RenderCommandBuffer->
+			drawIndexed(IndicesPerQuad, 1U, 0U, vertexOffset, 0U);
+		m_UpdateData.spriteIndex++;
+	}
+
+	void Run(LoopCallbacks callbacks)
+	{
+		profiler::Describe<0>("Frame time");
+		size_t frameCount = 0;
+		while (!glfwWindowShouldClose(m_Window))
+		{
+			//loop
+			profiler::startTimer<0>();
+			glfwPollEvents();
+			auto spriteCount = callbacks.BeforeRenderCallback();
+			if (!BeginRender(spriteCount))
+			{
+				// TODO: probably need to handle some specific errors here
+				continue;
+			}
+			callbacks.RenderCallback(this);
+			EndRender();
+			callbacks.AfterRenderCallback();
+			profiler::endTimer<0>();
+			if (frameCount % 100 == 0)
+			{
+				auto frameDuration = profiler::getRollingAverage<0>(100);
+				auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
+				auto frameDurationCount = millisecondFrameDuration.count();
+				auto title = m_InitData.WindowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount)) + std::string(" microseconds");
+				glfwSetWindowTitle(m_Window, title.c_str());
+			}
+			frameCount++;
+		}
+		m_LogicalDevice->waitIdle();
+	}
+
+	TextureIndex createTexture(const Bitmap & bitmap)
+	{
+		TextureIndex textureIndex = static_cast<uint32_t>(m_Textures.size());
+		// create vke::Image2D
+		auto& image2D = m_Images.emplace_back();
+		auto& imageView = m_ImageViews.emplace_back();
+		auto& imageAlloc = m_ImageAllocations.emplace_back();
+		auto& texture = m_Textures.emplace_back();
+
+		auto imageResult = CreateImageFromBitmap(bitmap);
+		image2D = std::move(imageResult.image);
+		imageAlloc = std::move(imageResult.allocation);
+
+		float left = static_cast<float>(bitmap.m_Left);
+		float top = static_cast<float>(bitmap.m_Top);
+		float width = static_cast<float>(bitmap.m_Width);
+		float height = static_cast<float>(bitmap.m_Height);
+		float right = left + width;
+		float bottom = top - height;
+
+		glm::vec2 LeftTopPos, LeftBottomPos, RightBottomPos, RightTopPos;
+		LeftTopPos = { left,		top };
+		LeftBottomPos = { left,		bottom };
+		RightBottomPos = { right,	bottom };
+		RightTopPos = { right,	top };
+
+		glm::vec2 LeftTopUV, LeftBottomUV, RightBottomUV, RightTopUV;
+		LeftTopUV = { 0.0f, 0.0f };
+		LeftBottomUV = { 0.0f, 1.0f };
+		RightBottomUV = { 1.0f, 1.0f };
+		RightTopUV = { 1.0f, 0.0f };
+
+		Vertex LeftTop, LeftBottom, RightBottom, RightTop;
+		LeftTop = { LeftTopPos,		LeftTopUV };
+		LeftBottom = { LeftBottomPos,	LeftBottomUV };
+		RightBottom = { RightBottomPos,	RightBottomUV };
+		RightTop = { RightTopPos,		RightTopUV };
+
+		// push back vertices
+		m_Vertices.push_back(LeftTop);
+		m_Vertices.push_back(LeftBottom);
+		m_Vertices.push_back(RightBottom);
+		m_Vertices.push_back(RightTop);
+
+		// auto verticesPerTexture = 4U;
+
+		// initialize the texture object
+		texture.index = textureIndex;
+		texture.width = bitmap.m_Width;
+		texture.height = bitmap.m_Height;
+		texture.size = bitmap.m_Size;
+
+		auto stagingBufferResult = CreateBuffer(texture.size,
+			vk::BufferUsageFlagBits::eTransferSrc,
+			vk::MemoryPropertyFlagBits::eHostCoherent |
+			vk::MemoryPropertyFlagBits::eHostVisible,
+			true);
+			
+		// copy from host to staging buffer
+		void* stagingBufferData = m_LogicalDevice->mapMemory(
+			stagingBufferResult.allocation->memory,
+			stagingBufferResult.allocation->offsetInDeviceMemory,
+			stagingBufferResult.allocation->size);
+		memcpy(stagingBufferData, bitmap.m_Data.data(), static_cast<size_t>(bitmap.m_Size));
+		m_LogicalDevice->unmapMemory(stagingBufferResult.allocation->memory);
+
+
+
+		// begin recording command buffer
+		m_CopyCommandBuffer->begin(vk::CommandBufferBeginInfo(
+			vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+
+		// transition image layout
+		auto memoryBarrier = vk::ImageMemoryBarrier(
+			vk::AccessFlags(),
+			vk::AccessFlagBits::eTransferWrite,
+			vk::ImageLayout::eUndefined,
+			vk::ImageLayout::eTransferDstOptimal,
+			m_GraphicsQueueFamilyID,
+			m_GraphicsQueueFamilyID,
+			image2D.get(),
+			vk::ImageSubresourceRange(
+				vk::ImageAspectFlagBits::eColor,
+				0U,
+				1U,
+				0U,
+				1U));
+		m_CopyCommandBuffer->pipelineBarrier(
+			vk::PipelineStageFlagBits::eTopOfPipe,
+			vk::PipelineStageFlagBits::eTransfer,
+			vk::DependencyFlags(),
+			{ },
+			{ },
+			{ memoryBarrier });
+
+		// copy from host to device (to image)
+		m_CopyCommandBuffer->copyBufferToImage(stagingBufferResult.buffer.get(), image2D.get(), vk::ImageLayout::eTransferDstOptimal,
+			{
+				vk::BufferImageCopy(0U, 0U, 0U,
+				vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0U, 0U, 1U),
+				vk::Offset3D(),
+				vk::Extent3D(bitmap.m_Width, bitmap.m_Height, 1U))
+			});
+
+		// transition image for shader access
+		auto memoryBarrier2 = vk::ImageMemoryBarrier(
+			vk::AccessFlagBits::eTransferWrite,
+			vk::AccessFlagBits::eShaderRead,
+			vk::ImageLayout::eTransferDstOptimal,
+			vk::ImageLayout::eShaderReadOnlyOptimal,
+			m_GraphicsQueueFamilyID,
+			m_GraphicsQueueFamilyID,
+			image2D.get(),
+			vk::ImageSubresourceRange(
+				vk::ImageAspectFlagBits::eColor,
+				0U,
+				1U,
+				0U,
+				1U));
+		m_CopyCommandBuffer->pipelineBarrier(
+			vk::PipelineStageFlagBits::eTransfer,
+			vk::PipelineStageFlagBits::eFragmentShader,
+			vk::DependencyFlags(),
+			{ },
+			{ },
+			{ memoryBarrier2 });
+
+		m_CopyCommandBuffer->end();
+
+		// create fence, submit command buffer
+		auto imageLoadFence = m_LogicalDevice->createFenceUnique(vk::FenceCreateInfo());
+		m_GraphicsQueue.submit(
+			vk::SubmitInfo(0U, nullptr, nullptr,
+				1U, &m_CopyCommandBuffer.get(),
+				0U, nullptr),
+			imageLoadFence.get());
+
+		// create image view
+		imageView = m_LogicalDevice->createImageViewUnique(
+			vk::ImageViewCreateInfo(
+				vk::ImageViewCreateFlags(),
+				image2D.get(),
+				vk::ImageViewType::e2D,
+				vk::Format::eR8G8B8A8Srgb,
+				vk::ComponentMapping(),
+				vk::ImageSubresourceRange(
+					vk::ImageAspectFlagBits::eColor,
+					0U,
+					1U,
+					0U,
+					1U)));
+
+		// wait for command buffer to be executed
+		m_LogicalDevice->waitForFences({ imageLoadFence.get() }, true, std::numeric_limits<uint64_t>::max());
+
+		auto fenceStatus = m_LogicalDevice->getFenceStatus(imageLoadFence.get());
+
+		return textureIndex;
+	}
+
+	void init(InitData initData)
+	{
+		m_InitData = initData;
+		auto glfwInitError = glfwInit();
+		if (!glfwInitError)
+		{
+			std::runtime_error("Error initializing GLFW.");
+			exit(glfwInitError);
+		}
+		m_Window = glfwCreateWindow(initData.width, initData.height, initData.WindowTitle, NULL, NULL);
+		if (m_Window == NULL)
+		{
+			std::runtime_error("Error creating GLFW window.");
+			exit(-1);
+		}
+		glfwSetWindowUserPointer(m_Window, this);
+		glfwSetWindowSizeCallback(m_Window, resizeFunc);
+		m_Camera = Camera2D();
+		m_Camera.setSize({static_cast<float>(initData.width), static_cast<float>(initData.height)});
+
+		// load vulkan dll, entry point, and instance/global function pointers
+		if (!LoadVulkanDLL())
+		{
+			std::runtime_error("Error loading vulkan DLL.");
+			exit(-1);
+		}
+		LoadVulkanEntryPoint();
+		LoadVulkanGlobalFunctions();
+		m_Instance = vk::createInstanceUnique(initData.instanceCreateInfo);
+		LoadVulkanInstanceFunctions();
+
+		// select physical device
+		auto devices = m_Instance->enumeratePhysicalDevices();
+		m_PhysicalDevice = devices[0];
+
+		m_UniformBufferOffsetAlignment = m_PhysicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
+		auto offsetsForMatrix = sizeof(glm::mat4) / m_UniformBufferOffsetAlignment;
+		if (offsetsForMatrix == 0)
+		{
+			offsetsForMatrix = 1;
+		}
+		m_MatrixBufferOffsetAlignment = offsetsForMatrix * m_UniformBufferOffsetAlignment;
+
+
+		// find graphics queue
+		auto gpuQueueProperties = m_PhysicalDevice.getQueueFamilyProperties();
+		auto graphicsQueueInfo = std::find_if(gpuQueueProperties.begin(), gpuQueueProperties.end(),
+			[&](vk::QueueFamilyProperties q)
+		{
+			return q.queueFlags & vk::QueueFlagBits::eGraphics;
+		});
+
+		// this gets the position of the queue, which is also its family ID
+		m_GraphicsQueueFamilyID = static_cast<uint32_t>(graphicsQueueInfo - gpuQueueProperties.begin());
+		// priority of 0 since we only have one queue
+		auto graphicsPriority = 0.f;
+		auto graphicsQueueCreateInfo = vk::DeviceQueueCreateInfo(vk::DeviceQueueCreateFlags(), m_GraphicsQueueFamilyID, 1U, &graphicsPriority);
+
+		// create Logical Device
+		auto gpuFeatures = m_PhysicalDevice.getFeatures();
+		m_LogicalDevice = m_PhysicalDevice.createDeviceUnique(
+			vk::DeviceCreateInfo(vk::DeviceCreateFlags(),
+				1,
+				&graphicsQueueCreateInfo,
+				0,
+				nullptr,
+				static_cast<uint32_t>(initData.deviceExtensions.size()),
+				initData.deviceExtensions.data(),
+				&gpuFeatures)
+		);
+		// Load device-dependent vulkan function pointers
+		LoadVulkanDeviceFunctions();
+
+		// get the queue from the logical device
+		m_GraphicsQueue = m_LogicalDevice->getQueue(m_GraphicsQueueFamilyID, 0);
+
+		// initialize debug reporting
+		if (vkCreateDebugReportCallbackEXT)
+		{
+			m_DebugBreakpointCallbackData = m_Instance->createDebugReportCallbackEXTUnique(
+				vk::DebugReportCallbackCreateInfoEXT(
+					vk::DebugReportFlagBitsEXT::ePerformanceWarning |
+					vk::DebugReportFlagBitsEXT::eError |
+					vk::DebugReportFlagBitsEXT::eDebug |
+					vk::DebugReportFlagBitsEXT::eInformation |
+					vk::DebugReportFlagBitsEXT::eWarning,
+					reinterpret_cast<PFN_vkDebugReportCallbackEXT>(&debugBreakCallback)
+				));
+		}
+
+		// create the allocator
+		m_Allocator = Allocator(m_PhysicalDevice, m_LogicalDevice.get());
+
+		// create copy command objects
+		auto copyPoolCreateInfo = vk::CommandPoolCreateInfo(
+			vk::CommandPoolCreateFlagBits::eResetCommandBuffer |
+			vk::CommandPoolCreateFlagBits::eTransient,
+			m_GraphicsQueueFamilyID);
+		m_CopyCommandPool = m_LogicalDevice->createCommandPoolUnique(copyPoolCreateInfo);
+		auto copyCmdBufferInfo = vk::CommandBufferAllocateInfo(
+			m_CopyCommandPool.get(),
+			vk::CommandBufferLevel::ePrimary,
+			1U);
+		
+		m_CopyCommandBuffer = std::move(
+			m_LogicalDevice->allocateCommandBuffersUnique(copyCmdBufferInfo)[0]);
+		m_CopyCommandFence = m_LogicalDevice->createFenceUnique(
+			vk::FenceCreateInfo(/*vk::FenceCreateFlagBits::eSignaled*/));
+
+		// allow client app to load images
+		initData.imageLoadCallback(this);
+		m_TextureCount = static_cast<uint32_t>(m_Images.size());
+
+		CreateVertexBuffer();
+
+		CreateIndexBuffer();
+
+		// create surface
+		CreateSurface(std::make_optional<vk::Extent2D>());
+
+		createRenderPass();
+
+		// create sampler
+		m_Sampler = m_LogicalDevice.get().createSamplerUnique(
+			vk::SamplerCreateInfo(
+				vk::SamplerCreateFlags(),
+				vk::Filter::eLinear,
+				vk::Filter::eLinear,
+				vk::SamplerMipmapMode::eLinear,
+				vk::SamplerAddressMode::eRepeat,
+				vk::SamplerAddressMode::eRepeat,
+				vk::SamplerAddressMode::eRepeat,
+				0.f,
+				1U,
+				16.f,
+				0U,
+				vk::CompareOp::eNever));
+
+		// create shader modules
+		m_VertexShader = createShaderModule(initData.shaderData.vertexShaderPath);
+		m_FragmentShader = createShaderModule(initData.shaderData.fragmentShaderPath);
+
+		// create descriptor set layouts
+		m_VertexDescriptorSetLayout = createVertexSetLayout(m_LogicalDevice.get());
+		m_FragmentDescriptorSetLayout = createFragmentSetLayout(m_LogicalDevice.get(), static_cast<uint32_t>(m_Textures.size()), m_Sampler.get());
+		m_DescriptorSetLayouts.push_back(m_VertexDescriptorSetLayout.get());
+		m_DescriptorSetLayouts.push_back(m_FragmentDescriptorSetLayout.get());
+
+		// setup push constant ranges
+		m_PushConstantRanges.emplace_back(vk::PushConstantRange(
+			vk::ShaderStageFlagBits::eFragment,
+			0U,
+			sizeof(FragmentPushConstants)));
+
+		// create fragment layout descriptor pool
+		m_FragmentLayoutDescriptorPool = createFragmentDescriptorPool(
+			m_LogicalDevice.get(),
+			m_TextureCount);
+
+		CreateAndUpdateFragmentDescriptorSet();
+
+		// default present mode: immediate
+		m_PresentMode = vk::PresentModeKHR::eImmediate;
+
+		// use mailbox present mode if supported
+		auto mailboxPresentMode = std::find(
+			m_SurfacePresentModes.begin(), 
+			m_SurfacePresentModes.end(), 
+			vk::PresentModeKHR::eMailbox);
+		if (mailboxPresentMode != m_SurfacePresentModes.end())
+		{
+			m_PresentMode = *mailboxPresentMode;
+		}
+
+		// create pipeline layout
+		auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo(
+			vk::PipelineLayoutCreateFlags(),
+			static_cast<uint32_t>(m_DescriptorSetLayouts.size()),
+			m_DescriptorSetLayouts.data(),
+			static_cast<uint32_t>(m_PushConstantRanges.size()),
+			m_PushConstantRanges.data());
+		m_PipelineLayout = m_LogicalDevice->createPipelineLayoutUnique(pipelineLayoutInfo);
+
+		// init all the swapchain dependencies
+		createSwapchainWithDependencies(m_SurfaceExtent);
+
+		// create pipeline
+		createPipelineCreateInfo();
+		m_Pipeline = m_LogicalDevice->createGraphicsPipelineUnique(vk::PipelineCache(), 
+			m_PipelineCreateInfo);
+
+		// init each supports struct
+		for (auto& support : m_Supports)
+		{
+			InitializeSupportStruct(support);
+		}
+	}
+
+private:
 	bool LoadVulkanDLL()
 	{
 		m_VulkanLibrary = LoadLibrary("vulkan-1.dll");
@@ -315,24 +764,6 @@ struct VulkanApp
 		return result;
 	}
 
-	TemporaryCommandStructure CreateTemporaryCommandBuffer()
-	{
-		TemporaryCommandStructure result;
-		// get command pool and buffer
-		result.pool = m_LogicalDevice->createCommandPoolUnique(
-			vk::CommandPoolCreateInfo(
-				vk::CommandPoolCreateFlagBits::eTransient,
-				m_GraphicsQueueFamilyID));
-		auto buffer = m_LogicalDevice->allocateCommandBuffers(
-			vk::CommandBufferAllocateInfo(
-				result.pool.get(),
-				vk::CommandBufferLevel::ePrimary,
-				1U))[0];
-		auto bufferDeleter = vk::CommandBufferDeleter(m_LogicalDevice.get(), result.pool.get());
-		result.buffer = vk::UniqueCommandBuffer(buffer, bufferDeleter);
-		return result;
-	}
-
 	void CopyToBuffer(
 		const vk::CommandBuffer commandBuffer,
 		const vk::Buffer source, 
@@ -362,18 +793,7 @@ struct VulkanApp
 			&commandBuffer,
 			static_cast<uint32_t>(signalSemaphores.size()),
 			signalSemaphores.data()) }, fence.value_or(vk::Fence()));
-
-		// // wait for buffer to finish execution
-		// if (fence)
-		// {
-		// m_LogicalDevice->waitForFences(
-		// 	{ fence.value() }, 
-		// 	static_cast<vk::Bool32>(true), 
-		// 	std::numeric_limits<uint64_t>::max());
-		// 	m_LogicalDevice->resetFences({ fence.value() });
-		// }
 	}
-
 
 	auto acquireImage()
 	{
@@ -527,52 +947,6 @@ struct VulkanApp
 		return true;
 	}
 
-	void RenderSprite(const Sprite& sprite)
-	{
-		auto& supports = m_Supports[m_UpdateData.nextImage];
-		glm::mat4 mvp =  m_UpdateData.vp * sprite.transform;
-
-		memcpy((char*)m_UpdateData.mapped + m_UpdateData.copyOffset, &mvp, sizeof(glm::mat4));
-		m_UpdateData.copyOffset += m_MatrixBufferOffsetAlignment;
-
-		FragmentPushConstants pushRange;
-		pushRange.textureID = sprite.textureIndex;
-		pushRange.r = sprite.color.r;
-		pushRange.g = sprite.color.g;
-		pushRange.b = sprite.color.b;
-		pushRange.a = sprite.color.a;
-
-		supports.m_RenderCommandBuffer->pushConstants<FragmentPushConstants>(
-			m_PipelineLayout.get(),
-			vk::ShaderStageFlagBits::eFragment,
-			0U,
-			{ pushRange });
-
-		uint32_t dynamicOffset = static_cast<uint32_t>(m_UpdateData.spriteIndex * m_MatrixBufferOffsetAlignment);
-
-		// bind dynamic matrix uniform
-		supports.m_RenderCommandBuffer->bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,
-			m_PipelineLayout.get(),
-			0U,
-			{ supports.m_VertexDescriptorSet.get() },
-			{ dynamicOffset });
-
-		auto vertexOffset = sprite.textureIndex * IndicesPerQuad;
-		// draw the sprite
-		supports.m_RenderCommandBuffer->
-			drawIndexed(IndicesPerQuad, 1U, 0U, vertexOffset, 0U);
-		m_UpdateData.spriteIndex++;
-	}
-
-	vk::Extent2D GetWindowSize()
-	{
-		int width = 0;
-		int height = 0;
-		glfwGetWindowSize(m_Window, &width, &height);
-		return vk::Extent2D(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
-	}
-
 	void EndRender()
 	{
 		auto& supports = m_Supports[m_UpdateData.nextImage];
@@ -628,36 +1002,12 @@ struct VulkanApp
 		}
 	}
 
-	void Run(LoopCallbacks callbacks)
+	vk::Extent2D GetWindowSize()
 	{
-		profiler::Describe<0>("Frame time");
-		size_t frameCount = 0;
-		while (!glfwWindowShouldClose(m_Window))
-		{
-			//loop
-			profiler::startTimer<0>();
-			glfwPollEvents();
-			auto spriteCount = callbacks.BeforeRenderCallback();
-			if (!BeginRender(spriteCount))
-			{
-				// TODO: probably need to handle some specific errors here
-				continue;
-			}
-			callbacks.RenderCallback(this);
-			EndRender();
-			callbacks.AfterRenderCallback();
-			profiler::endTimer<0>();
-			if (frameCount % 100 == 0)
-			{
-				auto frameDuration = profiler::getRollingAverage<0>(100);
-				auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
-				auto frameDurationCount = millisecondFrameDuration.count();
-				auto title = m_InitData.WindowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount)) + std::string(" microseconds");
-				glfwSetWindowTitle(m_Window, title.c_str());
-			}
-			frameCount++;
-		}
-		m_LogicalDevice->waitIdle();
+		int width = 0;
+		int height = 0;
+		glfwGetWindowSize(m_Window, &width, &height);
+		return vk::Extent2D(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	}
 
 	struct ImageCreateResult
@@ -693,167 +1043,6 @@ struct VulkanApp
 			result.allocation->offsetInDeviceMemory);
 		
 		return result;
-	}
-
-	TextureIndex createTexture(const Bitmap & bitmap)
-	{
-		TextureIndex textureIndex = static_cast<uint32_t>(m_Textures.size());
-		// create vke::Image2D
-		auto& image2D = m_Images.emplace_back();
-		auto& imageView = m_ImageViews.emplace_back();
-		auto& imageAlloc = m_ImageAllocations.emplace_back();
-		auto& texture = m_Textures.emplace_back();
-
-		auto imageResult = CreateImageFromBitmap(bitmap);
-		image2D = std::move(imageResult.image);
-		imageAlloc = std::move(imageResult.allocation);
-
-		float left = static_cast<float>(bitmap.m_Left);
-		float top = static_cast<float>(bitmap.m_Top);
-		float width = static_cast<float>(bitmap.m_Width);
-		float height = static_cast<float>(bitmap.m_Height);
-		float right = left + width;
-		float bottom = top - height;
-
-		glm::vec2 LeftTopPos, LeftBottomPos, RightBottomPos, RightTopPos;
-		LeftTopPos = { left,		top };
-		LeftBottomPos = { left,		bottom };
-		RightBottomPos = { right,	bottom };
-		RightTopPos = { right,	top };
-
-		glm::vec2 LeftTopUV, LeftBottomUV, RightBottomUV, RightTopUV;
-		LeftTopUV = { 0.0f, 0.0f };
-		LeftBottomUV = { 0.0f, 1.0f };
-		RightBottomUV = { 1.0f, 1.0f };
-		RightTopUV = { 1.0f, 0.0f };
-
-		Vertex LeftTop, LeftBottom, RightBottom, RightTop;
-		LeftTop = { LeftTopPos,		LeftTopUV };
-		LeftBottom = { LeftBottomPos,	LeftBottomUV };
-		RightBottom = { RightBottomPos,	RightBottomUV };
-		RightTop = { RightTopPos,		RightTopUV };
-
-		// push back vertices
-		m_Vertices.push_back(LeftTop);
-		m_Vertices.push_back(LeftBottom);
-		m_Vertices.push_back(RightBottom);
-		m_Vertices.push_back(RightTop);
-
-		// auto verticesPerTexture = 4U;
-
-		// initialize the texture object
-		texture.index = textureIndex;
-		texture.width = bitmap.m_Width;
-		texture.height = bitmap.m_Height;
-		texture.size = bitmap.m_Size;
-
-		auto stagingBufferResult = CreateBuffer(texture.size,
-			vk::BufferUsageFlagBits::eTransferSrc,
-			vk::MemoryPropertyFlagBits::eHostCoherent |
-			vk::MemoryPropertyFlagBits::eHostVisible,
-			true);
-			
-		// copy from host to staging buffer
-		void* stagingBufferData = m_LogicalDevice->mapMemory(
-			stagingBufferResult.allocation->memory,
-			stagingBufferResult.allocation->offsetInDeviceMemory,
-			stagingBufferResult.allocation->size);
-		memcpy(stagingBufferData, bitmap.m_Data.data(), static_cast<size_t>(bitmap.m_Size));
-		m_LogicalDevice->unmapMemory(stagingBufferResult.allocation->memory);
-
-		// get command pool and buffer
-		auto command = CreateTemporaryCommandBuffer();
-
-		// begin recording command buffer
-		command.buffer->begin(vk::CommandBufferBeginInfo(
-			vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-
-		// transition image layout
-		auto memoryBarrier = vk::ImageMemoryBarrier(
-			vk::AccessFlags(),
-			vk::AccessFlagBits::eTransferWrite,
-			vk::ImageLayout::eUndefined,
-			vk::ImageLayout::eTransferDstOptimal,
-			m_GraphicsQueueFamilyID,
-			m_GraphicsQueueFamilyID,
-			image2D.get(),
-			vk::ImageSubresourceRange(
-				vk::ImageAspectFlagBits::eColor,
-				0U,
-				1U,
-				0U,
-				1U));
-		command.buffer->pipelineBarrier(
-			vk::PipelineStageFlagBits::eTopOfPipe,
-			vk::PipelineStageFlagBits::eTransfer,
-			vk::DependencyFlags(),
-			{ },
-			{ },
-			{ memoryBarrier });
-
-		// copy from host to device (to image)
-		command.buffer->copyBufferToImage(stagingBufferResult.buffer.get(), image2D.get(), vk::ImageLayout::eTransferDstOptimal,
-			{
-				vk::BufferImageCopy(0U, 0U, 0U,
-				vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0U, 0U, 1U),
-				vk::Offset3D(),
-				vk::Extent3D(bitmap.m_Width, bitmap.m_Height, 1U))
-			});
-
-		// transition image for shader access
-		auto memoryBarrier2 = vk::ImageMemoryBarrier(
-			vk::AccessFlagBits::eTransferWrite,
-			vk::AccessFlagBits::eShaderRead,
-			vk::ImageLayout::eTransferDstOptimal,
-			vk::ImageLayout::eShaderReadOnlyOptimal,
-			m_GraphicsQueueFamilyID,
-			m_GraphicsQueueFamilyID,
-			image2D.get(),
-			vk::ImageSubresourceRange(
-				vk::ImageAspectFlagBits::eColor,
-				0U,
-				1U,
-				0U,
-				1U));
-		command.buffer->pipelineBarrier(
-			vk::PipelineStageFlagBits::eTransfer,
-			vk::PipelineStageFlagBits::eFragmentShader,
-			vk::DependencyFlags(),
-			{ },
-			{ },
-			{ memoryBarrier2 });
-
-		command.buffer->end();
-
-		// create fence, submit command buffer
-		auto imageLoadFence = m_LogicalDevice->createFenceUnique(vk::FenceCreateInfo());
-		m_GraphicsQueue.submit(
-			vk::SubmitInfo(0U, nullptr, nullptr,
-				1U, &command.buffer.get(),
-				0U, nullptr),
-			imageLoadFence.get());
-
-		// create image view
-		imageView = m_LogicalDevice->createImageViewUnique(
-			vk::ImageViewCreateInfo(
-				vk::ImageViewCreateFlags(),
-				image2D.get(),
-				vk::ImageViewType::e2D,
-				vk::Format::eR8G8B8A8Srgb,
-				vk::ComponentMapping(),
-				vk::ImageSubresourceRange(
-					vk::ImageAspectFlagBits::eColor,
-					0U,
-					1U,
-					0U,
-					1U)));
-
-		// wait for command buffer to be executed
-		m_LogicalDevice->waitForFences({ imageLoadFence.get() }, true, std::numeric_limits<uint64_t>::max());
-
-		auto fenceStatus = m_LogicalDevice->getFenceStatus(imageLoadFence.get());
-
-		return textureIndex;
 	}
 
 	vk::UniqueShaderModule createShaderModule(const std::string& path)
@@ -945,7 +1134,6 @@ struct VulkanApp
 				static_cast<uint32_t>(fragmentLayoutBindings.size()),
 				fragmentLayoutBindings.data()));
 	}
-
 
 	void createRenderPass()
 	{
@@ -1429,203 +1617,6 @@ struct VulkanApp
 		((VulkanApp*)ptr)->resizeWindow(vk::Extent2D(static_cast<uint32_t>(width), static_cast<uint32_t>(height)));
 	};
 
-	void init(InitData initData)
-	{
-		m_InitData = initData;
-		auto glfwInitError = glfwInit();
-		if (!glfwInitError)
-		{
-			std::runtime_error("Error initializing GLFW.");
-			exit(glfwInitError);
-		}
-		m_Window = glfwCreateWindow(initData.width, initData.height, initData.WindowTitle, NULL, NULL);
-		if (m_Window == NULL)
-		{
-			std::runtime_error("Error creating GLFW window.");
-			exit(-1);
-		}
-		glfwSetWindowUserPointer(m_Window, this);
-		glfwSetWindowSizeCallback(m_Window, resizeFunc);
-		m_Camera = Camera2D();
-		m_Camera.setSize({static_cast<float>(initData.width), static_cast<float>(initData.height)});
-
-		// load vulkan dll, entry point, and instance/global function pointers
-		if (!LoadVulkanDLL())
-		{
-			std::runtime_error("Error loading vulkan DLL.");
-			exit(-1);
-		}
-		LoadVulkanEntryPoint();
-		LoadVulkanGlobalFunctions();
-		m_Instance = vk::createInstanceUnique(initData.instanceCreateInfo);
-		LoadVulkanInstanceFunctions();
-
-		// select physical device
-		auto devices = m_Instance->enumeratePhysicalDevices();
-		m_PhysicalDevice = devices[0];
-
-		m_UniformBufferOffsetAlignment = m_PhysicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
-		auto offsetsForMatrix = sizeof(glm::mat4) / m_UniformBufferOffsetAlignment;
-		if (offsetsForMatrix == 0)
-		{
-			offsetsForMatrix = 1;
-		}
-		m_MatrixBufferOffsetAlignment = offsetsForMatrix * m_UniformBufferOffsetAlignment;
-
-
-		// find graphics queue
-		auto gpuQueueProperties = m_PhysicalDevice.getQueueFamilyProperties();
-		auto graphicsQueueInfo = std::find_if(gpuQueueProperties.begin(), gpuQueueProperties.end(),
-			[&](vk::QueueFamilyProperties q)
-		{
-			return q.queueFlags & vk::QueueFlagBits::eGraphics;
-		});
-
-		// this gets the position of the queue, which is also its family ID
-		m_GraphicsQueueFamilyID = static_cast<uint32_t>(graphicsQueueInfo - gpuQueueProperties.begin());
-		// priority of 0 since we only have one queue
-		auto graphicsPriority = 0.f;
-		auto graphicsQueueCreateInfo = vk::DeviceQueueCreateInfo(vk::DeviceQueueCreateFlags(), m_GraphicsQueueFamilyID, 1U, &graphicsPriority);
-
-		// create Logical Device
-		auto gpuFeatures = m_PhysicalDevice.getFeatures();
-		m_LogicalDevice = m_PhysicalDevice.createDeviceUnique(
-			vk::DeviceCreateInfo(vk::DeviceCreateFlags(),
-				1,
-				&graphicsQueueCreateInfo,
-				0,
-				nullptr,
-				static_cast<uint32_t>(initData.deviceExtensions.size()),
-				initData.deviceExtensions.data(),
-				&gpuFeatures)
-		);
-		// Load device-dependent vulkan function pointers
-		LoadVulkanDeviceFunctions();
-
-		// get the queue from the logical device
-		m_GraphicsQueue = m_LogicalDevice->getQueue(m_GraphicsQueueFamilyID, 0);
-
-		// initialize debug reporting
-		if (vkCreateDebugReportCallbackEXT)
-		{
-			m_DebugBreakpointCallbackData = m_Instance->createDebugReportCallbackEXTUnique(
-				vk::DebugReportCallbackCreateInfoEXT(
-					vk::DebugReportFlagBitsEXT::ePerformanceWarning |
-					vk::DebugReportFlagBitsEXT::eError |
-					vk::DebugReportFlagBitsEXT::eDebug |
-					vk::DebugReportFlagBitsEXT::eInformation |
-					vk::DebugReportFlagBitsEXT::eWarning,
-					reinterpret_cast<PFN_vkDebugReportCallbackEXT>(&debugBreakCallback)
-				));
-		}
-
-		// create the allocator
-		m_Allocator = Allocator(m_PhysicalDevice, m_LogicalDevice.get());
-
-		// create copy command objects
-		auto copyPoolCreateInfo = vk::CommandPoolCreateInfo(
-			vk::CommandPoolCreateFlagBits::eResetCommandBuffer |
-			vk::CommandPoolCreateFlagBits::eTransient,
-			m_GraphicsQueueFamilyID);
-		m_CopyCommandPool = m_LogicalDevice->createCommandPoolUnique(copyPoolCreateInfo);
-		auto copyCmdBufferInfo = vk::CommandBufferAllocateInfo(
-			m_CopyCommandPool.get(),
-			vk::CommandBufferLevel::ePrimary,
-			1U);
-		
-		m_CopyCommandBuffer = std::move(
-			m_LogicalDevice->allocateCommandBuffersUnique(copyCmdBufferInfo)[0]);
-		m_CopyCommandFence = m_LogicalDevice->createFenceUnique(
-			vk::FenceCreateInfo(/*vk::FenceCreateFlagBits::eSignaled*/));
-
-		// allow client app to load images
-		initData.imageLoadCallback(this);
-		m_TextureCount = static_cast<uint32_t>(m_Images.size());
-
-		CreateVertexBuffer();
-
-		CreateIndexBuffer();
-
-		// create surface
-		CreateSurface(std::make_optional<vk::Extent2D>());
-
-		createRenderPass();
-
-		// create sampler
-		m_Sampler = m_LogicalDevice.get().createSamplerUnique(
-			vk::SamplerCreateInfo(
-				vk::SamplerCreateFlags(),
-				vk::Filter::eLinear,
-				vk::Filter::eLinear,
-				vk::SamplerMipmapMode::eLinear,
-				vk::SamplerAddressMode::eRepeat,
-				vk::SamplerAddressMode::eRepeat,
-				vk::SamplerAddressMode::eRepeat,
-				0.f,
-				1U,
-				16.f,
-				0U,
-				vk::CompareOp::eNever));
-
-		// create shader modules
-		m_VertexShader = createShaderModule(initData.shaderData.vertexShaderPath);
-		m_FragmentShader = createShaderModule(initData.shaderData.fragmentShaderPath);
-
-		// create descriptor set layouts
-		m_VertexDescriptorSetLayout = createVertexSetLayout(m_LogicalDevice.get());
-		m_FragmentDescriptorSetLayout = createFragmentSetLayout(m_LogicalDevice.get(), static_cast<uint32_t>(m_Textures.size()), m_Sampler.get());
-		m_DescriptorSetLayouts.push_back(m_VertexDescriptorSetLayout.get());
-		m_DescriptorSetLayouts.push_back(m_FragmentDescriptorSetLayout.get());
-
-		// setup push constant ranges
-		m_PushConstantRanges.emplace_back(vk::PushConstantRange(
-			vk::ShaderStageFlagBits::eFragment,
-			0U,
-			sizeof(FragmentPushConstants)));
-
-		// create fragment layout descriptor pool
-		m_FragmentLayoutDescriptorPool = createFragmentDescriptorPool(
-			m_LogicalDevice.get(),
-			m_TextureCount);
-
-		CreateAndUpdateFragmentDescriptorSet();
-
-		// default present mode: immediate
-		m_PresentMode = vk::PresentModeKHR::eImmediate;
-
-		// use mailbox present mode if supported
-		auto mailboxPresentMode = std::find(
-			m_SurfacePresentModes.begin(), 
-			m_SurfacePresentModes.end(), 
-			vk::PresentModeKHR::eMailbox);
-		if (mailboxPresentMode != m_SurfacePresentModes.end())
-		{
-			m_PresentMode = *mailboxPresentMode;
-		}
-
-		// create pipeline layout
-		auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo(
-			vk::PipelineLayoutCreateFlags(),
-			static_cast<uint32_t>(m_DescriptorSetLayouts.size()),
-			m_DescriptorSetLayouts.data(),
-			static_cast<uint32_t>(m_PushConstantRanges.size()),
-			m_PushConstantRanges.data());
-		m_PipelineLayout = m_LogicalDevice->createPipelineLayoutUnique(pipelineLayoutInfo);
-
-		// init all the swapchain dependencies
-		createSwapchainWithDependencies(m_SurfaceExtent);
-
-		// create pipeline
-		createPipelineCreateInfo();
-		m_Pipeline = m_LogicalDevice->createGraphicsPipelineUnique(vk::PipelineCache(), 
-			m_PipelineCreateInfo);
-
-		// init each supports struct
-		for (auto& support : m_Supports)
-		{
-			InitializeSupportStruct(support);
-		}
-	}
 };
 
 class Text

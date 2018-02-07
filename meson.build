@@ -27,7 +27,7 @@ else
     set_variable('Validation', '')
 endif
 
-contentroot = ''.join(['/DCONTENTROOT=','"',meson.source_root(),'/"'])
+contentroot = '/DCONTENTROOT=' + '"' + meson.source_root() + '\"'
 message(contentroot)
 message(buildtype)
 deps = [freetype, stb, glfw, btree, vulkan, glm]
@@ -45,3 +45,24 @@ executable('VulkanApp',
     glfwLink,
     '/D_SCL_SECURE_NO_WARNINGS'],
     install : true)
+
+if (buildtype == 'debug')
+    set_variable('gtestlibname', 'gtestd')
+    set_variable('gtestdir', 'C:/googletest/debug/')
+elif (buildtype == 'release')
+    set_variable('gtestlibname', 'gtest')
+    set_variable('gtestdir', 'C:/googletest/release/')
+endif
+
+cc = meson.get_compiler('cpp')
+gtest_inc = include_directories('C:/Libraries/Source/googletest/googletest/include')
+gtest_dep = declare_dependency(
+    dependencies : cc.find_library(gtestlibname, dirs: gtestdir), 
+    include_directories : gtest_inc)
+
+circ_queue_test = executable('CircularQueueTest',
+    'test/CircularQueueTest.cpp',
+    cpp_args : ['/std:c++latest'],
+    dependencies : [gtest_dep])
+
+test('gtest circ_queue', circ_queue_test)

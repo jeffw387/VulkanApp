@@ -5,13 +5,24 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(Windows) Launch",
+            "name": "VulkanApp Debug",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/debug/meson-out/VulkanApp.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/debug/meson-out/",
+            "environment": [],
+            "externalConsole": true
+        },
+        {
+            "name": "CircularQueueTest Debug",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/meson-out/CircularQueueTest.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": true
         }

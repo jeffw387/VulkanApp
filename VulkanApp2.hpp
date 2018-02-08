@@ -26,6 +26,7 @@
 #include <map>
 #include <functional>
 #include <limits>
+#include <thread>
 
 namespace vka
 {
@@ -159,8 +160,10 @@ struct VulkanApp
 	InitData m_InitData;
 	UpdateData m_UpdateData;
 	GLFWwindow* m_Window;
+	bool m_ResizeNeeded = false;
 	CircularQueue<RAWINPUT, 500> m_InputBuffer;
 	Camera2D m_Camera;
+	bool m_GameLoop = false;
 	HMODULE m_VulkanLibrary;
 	vk::UniqueInstance m_Instance;
 	vk::PhysicalDevice m_PhysicalDevice;
@@ -183,6 +186,7 @@ struct VulkanApp
 	UniqueAllocation m_VertexMemory;
 	vk::UniqueBuffer m_IndexBuffer;
 	UniqueAllocation m_IndexMemory;
+	bool m_SurfaceNeedsRecreation = false;
 	vk::UniqueSurfaceKHR m_Surface;
 	vk::Extent2D m_SurfaceExtent;
 	vk::Format m_SurfaceFormat;
@@ -289,22 +293,43 @@ struct VulkanApp
 
 	void Run(LoopCallbacks callbacks)
 	{
-		profiler::Describe<0>("Frame time");
-		size_t frameCount = 0;
+		m_GameLoop = true;
+		std::thread gameLoop([&](){
+			while(m_GameLoop)
+			{
+				if (m_ResizeNeeded)
+				{
+					auto size = GetWindowSize();
+					resizeWindow(size);
+					m_ResizeNeeded = false;
+				}
+				auto spriteCount = callbacks.BeforeRenderCallback();
+				if (!BeginRender(spriteCount))
+				{
+					// TODO: probably need to handle some specific errors here
+					continue;
+				}
+				callbacks.RenderCallback(this);
+				EndRender();
+				callbacks.AfterRenderCallback();
+			}
+		});
+
 		while (!glfwWindowShouldClose(m_Window))
 		{
 			//loop
-			profiler::startTimer<0>();
-			glfwPollEvents();
-			auto spriteCount = callbacks.BeforeRenderCallback();
-			if (!BeginRender(spriteCount))
-			{
-				// TODO: probably need to handle some specific errors here
-				continue;
-			}
-			callbacks.RenderCallback(this);
-			EndRender();
-			callbacks.AfterRenderCallback();
+			glfwWaitEvents();
+		}
+		m_GameLoop = false;
+		gameLoop.join();
+		m_LogicalDevice->waitIdle();
+	}
+
+	void debugprofiler()
+	{
+		size_t frameCount = 0;
+		profiler::Describe<0>("Frame time");
+		profiler::startTimer<0>();
 			profiler::endTimer<0>();
 			if (frameCount % 100 == 0)
 			{
@@ -315,8 +340,6 @@ struct VulkanApp
 				glfwSetWindowTitle(m_Window, title.c_str());
 			}
 			frameCount++;
-		}
-		m_LogicalDevice->waitIdle();
 	}
 
 	TextureIndex createTexture(const Bitmap & bitmap)
@@ -1608,7 +1631,7 @@ private:
 	static void resizeFunc(GLFWwindow* window, int width, int height)
 	{
 		auto ptr = glfwGetWindowUserPointer(window);
-		((VulkanApp*)ptr)->resizeWindow(vk::Extent2D(static_cast<uint32_t>(width), static_cast<uint32_t>(height)));
+		((VulkanApp*)ptr)->m_ResizeNeeded = true;
 	};
 
 };

@@ -72,6 +72,7 @@
         "numeric": "cpp",
         "thread": "cpp",
         "unordered_set": "cpp",
-        "xlocbuf": "cpp"
+        "xlocbuf": "cpp",
+        "bitset": "cpp"
     }
 }

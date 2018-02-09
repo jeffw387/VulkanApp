@@ -3,7 +3,7 @@
 #include <array>
 #include <bitset>
 
-namespace quadtree
+namespace QuadTree
 {
     struct Point
     {
@@ -23,17 +23,17 @@ namespace quadtree
             left(left), right(right), top(top), bottom(bottom), width(right - left), height(bottom - top)
         {}
 
-        bool PointIsContained(const Point& point)
+        bool ContainsPoint(const Point& point)
         {
-            return PointIsContained(point.x, point.y);
+            return ContainsPoint(point.x, point.y);
         }
 
-        bool PointIsContained(const int64_t x, const int64_t y) const
+        bool ContainsPoint(const int64_t x, const int64_t y) const
         {
             return (x >= left) && (x <= right) && (y <= bottom) && (y >= top);
         }
 
-        bool RectIsContained(const Rect& rect) const
+        bool ContainsRect(const Rect& rect) const
         {
             return  (rect.left   >= this->left)  && 
                     (rect.right  <= this->right) && 
@@ -43,21 +43,16 @@ namespace quadtree
     };
 
     template <typename T, size_t MaxDepth = 6U, size_t MaxElementsPerLeaf = 16U>
-    class QuadTree
+    class Tree
     {
     public:
-        struct QuadElement
-        {
-            int64_t x, y;
-            T element;
-        };
-
         struct Quad
         {
-            std::array<QuadElement, MaxElementsPerLeaf> elements;
+            std::array<T, MaxElementsPerLeaf> elements;
+            std::array<Point, MaxElementsPerLeaf> elementPositions;
             std::bitset<MaxElementsPerLeaf> isElementValid;
             bool isLeaf = true;
-            Rect<int64_t> rect;
+            Rect rect;
             size_t depth = 0;
             std::array<std::unique_ptr<Quad>, 4> children;
 
@@ -67,26 +62,38 @@ namespace quadtree
             std::unique_ptr<Quad> TopRightChild()       { return children[3] };
         };
 
-        struct QuadTreeHandle
+        struct Handle
         {
         private:
             Quad* quadPtr = nullptr;
             size_t elementIndex = 0;
         };
 
-        QuadTreeHandle InsertPoint(T newElement, const int64_t x, const int64_t y)
+        Handle InsertPoint(const T& newElement, const Point& point)
         {
-            return InsertPointInQuad(root, newElement, Rect<int64_t>(x, x, y, y);
+            return InsertPointInQuad(root, point, newElement);
+        }
+
+        Handle InsertPoint(const T& newElement, const int64_t x, const int64_t y)
+        {
+            return InsertPointInQuad(root, Point(x, y), newElement);
+        }
+
+        const Quad& GetElementsInRegion(const Rect& rect)
+        {
+            return GetElementsInRegion(root, rect);
         }
 
     private:
         Quad root;
 
-        auto SetElementAtIndex(Quad& quad, const Rect<int64_t>& rect, const T& newElement, const size_t i)
+        auto SetElementAtIndex(Quad& quad, const Point& point, const T& newElement, const size_t i)
         {
-            QuadTreeHandle result;
-            quad.elements[i].rect = rect;
-            quad.elements[i].element = newElement;
+            quad.elementPositions[i] = point;
+            quad.elements[i] = newElement;
+            quad.isElementValid[i].set();
+
+            Handle result;
             result.quadPtr = &quad;
             result.elementIndex = i;
             return result;
@@ -104,8 +111,6 @@ namespace quadtree
             auto CenterRightEdge    = static_cast<int64_t>(std::ceil(newWidth));
             auto CenterTopEdge      = static_cast<int64_t>(std::floor(newHeight));
             auto CenterBottomEdge   = static_cast<int64_t>(std::ceil(newHeight));
-
-            quad.isLeaf = false;
 
             quad.children[0] = make_unique<Quad>();
             quad.children[0]->left = quad.rect.left;
@@ -135,13 +140,29 @@ namespace quadtree
             quad.children[3]->bottom = quad.rect.top + CenterTopEdge;
             quad.children[3]->depth = newDepth;
 
+            // move elements into children
+            for (auto i = 0U; i < MaxElementsPerLeaf; i++)
+            {
+                for (auto& child : quad.children)
+                {
+                    if (InsertPointInQuad(child, quad.elementPositions[i], quad.elements[i]).has_value())
+                    {
+                        break;
+                    }
+                }
+            }
+            quad.isElementValid.reset();
+            quad.isLeaf = false;
+
             return true;
         }
 
-        QuadTreeHandle InsertPointInQuad(Quad& quad, const Rect<int64_t>& rect, const T& newElement)
+        std::optional<Handle> InsertPointInQuad(Quad& quad, const Point& point, const T& newElement)
         {
-            QuadTreeHandle result;
-            if (quad.rect.PointIsContained(x, y))
+            std::optional<Handle> result;
+            if (!quad.isLeaf)
+                return result;
+            if (quad.rect.ContainsPoint(x, y))
             {
                 if (!quad.isElementValid.all())
                 {
@@ -149,7 +170,8 @@ namespace quadtree
                     {
                         if (!quad.isElementValid[i])
                         {
-                            return SetElementAtIndex(quad, rect, newElement, i);
+                            result = SetElementAtIndex(quad, point, newElement, i);
+                            return result;
                         }
                     }
                 }
@@ -157,14 +179,27 @@ namespace quadtree
                 {
                     for (auto& child : quad.children)
                     {
-                        if (InsertPointInQuad(child, newElement, x, y))
+                        result = InsertPointInQuad(child, point, newElement);
+                        if (result.has_value())
                         {
-                            return true;
+                            return result;
                         }
                     }
                 }
             }
             return result;
+        }
+
+        const Quad& GetElementsInRegion(const Quad& quad, const Rect& rect)
+        {
+            for (auto& child : quad.children)
+            {
+                if (child.rect.ContainsRect(rect))
+                {
+                    return GetElementsInRegion(child, rect);
+                }
+            }
+            return quad;
         }
     };
 }

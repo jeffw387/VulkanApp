@@ -66,3 +66,10 @@ circ_queue_test = executable('CircularQueueTest',
     dependencies : [gtest_dep])
 
 test('gtest circ_queue', circ_queue_test)
+
+quadtree_test = executable('QuadTreeTest',
+    'test/QuadTreeTest.cpp',
+    cpp_args : ['/std:c++latest'],
+    dependencies : [gtest_dep])
+
+test('gtest quadtree', quadtree_test)

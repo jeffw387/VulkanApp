@@ -1,5 +1,5 @@
 #include "gtest/gtest.h"
-#include "../CircularQueue.hpp"
+#include "CircularQueue.hpp"
 
 #include <iostream>
 

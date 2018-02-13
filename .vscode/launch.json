@@ -16,6 +16,17 @@
             "externalConsole": true
         },
         {
+            "name": "QuadTreeTest Debug",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/meson-out/QuadTreeTest.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true
+        },
+        {
             "name": "CircularQueueTest Debug",
             "type": "cppvsdbg",
             "request": "launch",

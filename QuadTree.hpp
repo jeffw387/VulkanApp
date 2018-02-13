@@ -2,21 +2,30 @@
 #include <memory>
 #include <array>
 #include <bitset>
+#include <optional>
+#include <forward_list>
 
 namespace QuadTree
 {
     struct Point
     {
         int64_t x, y;
-        Point noexcept = default;
+        Point() noexcept = default;
         Point(int64_t x, int64_t y) : x(x), y(y)
         {}
     };
 
+    bool operator==(const Point& a, const Point& b)
+    {
+        return (a.x == b.x) && (a.y == b.y);
+    }
+
     struct Rect
     {
-        int64_t left, right, top, bottom, width, height;
-        
+        int64_t left, right, top, bottom;
+    private: 
+        int64_t width, height;
+    public:
         Rect() noexcept = default;
 
         Rect(int64_t left, int64_t right, int64_t top, int64_t bottom) :
@@ -40,41 +49,69 @@ namespace QuadTree
                     (rect.top    >= this->top)   && 
                     (rect.bottom <= this->bottom);
         }
+
+        int64_t GetWidth()
+        {
+            return width;
+        }
+
+        int64_t GetHeight()
+        {
+            return height;
+        }
     };
 
-    template <typename T, size_t MaxDepth = 6U, size_t MaxElementsPerLeaf = 16U>
+    bool operator==(const Rect& a, const Rect& b)
+    {
+        return (a.left == b.left) &&
+            (a.right == b.right) &&
+            (a.top == b.top) &&
+            (a.bottom == b.bottom);
+    }
+
+    template <typename T>
     class Tree
     {
     public:
+        static constexpr size_t TotalElements = 1 + (2*2) + (4*4) + (8*8) + (16*16) + (32*32) + (64*64) + (128*128);
+
+        struct Object
+        {
+            Rect boundingBox;
+            Quad* parentQuad;
+        };
+
         struct Quad
         {
-            std::array<T, MaxElementsPerLeaf> elements;
-            std::array<Point, MaxElementsPerLeaf> elementPositions;
-            std::bitset<MaxElementsPerLeaf> isElementValid;
-            bool isLeaf = true;
-            Rect rect;
-            size_t depth = 0;
-            std::array<std::unique_ptr<Quad>, 4> children;
+        public:
+            Quad() noexcept = default;
+            Quad(const Rect& region) : rect(region)
+            {}
 
-            std::unique_ptr<Quad> TopLeftChild()        { return children[0] };
-            std::unique_ptr<Quad> BottomLeftChild()     { return children[1] };
-            std::unique_ptr<Quad> BottomRightChild()    { return children[2] };
-            std::unique_ptr<Quad> TopRightChild()       { return children[3] };
+        private:
+            std::forward_list<Object> objects;
+            Rect rect;
+            std::array<std::unique_ptr<Quad>, 4> children;
         };
 
         struct Handle
         {
+            friend class Tree;
         private:
             Quad* quadPtr = nullptr;
             size_t elementIndex = 0;
         };
 
-        Handle InsertPoint(const T& newElement, const Point& point)
+        Tree() noexcept = default;
+        Tree(const Rect& region) : root(region)
+        {}
+
+        std::optional<Handle> InsertPoint(const T& newElement, const Point& point)
         {
             return InsertPointInQuad(root, point, newElement);
         }
 
-        Handle InsertPoint(const T& newElement, const int64_t x, const int64_t y)
+        std::optional<Handle> InsertPoint(const T& newElement, const int64_t x, const int64_t y)
         {
             return InsertPointInQuad(root, Point(x, y), newElement);
         }
@@ -84,14 +121,20 @@ namespace QuadTree
             return GetElementsInRegion(root, rect);
         }
 
+        Rect GetRegion()
+        {
+            return root.rect;
+        }
+
     private:
-        Quad root;
+        std::unique_ptr<Quad> root;
+        std::array<T, TotalElements> elements;
 
         auto SetElementAtIndex(Quad& quad, const Point& point, const T& newElement, const size_t i)
         {
             quad.elementPositions[i] = point;
             quad.elements[i] = newElement;
-            quad.isElementValid[i].set();
+            quad.isElementValid.set(i);
 
             Handle result;
             result.quadPtr = &quad;
@@ -104,55 +147,59 @@ namespace QuadTree
             if (quad.depth == MaxDepth)
                 return false;
             auto newDepth = quad.depth + 1;
-            auto newWidth = static_cast<double>(quad.GetWidth()) / 2;
-            auto newHeight = static_cast<double>(quad.GetHeight()) / 2;
+            auto newWidth = static_cast<double>(quad.rect.GetWidth()) / 2;
+            auto newHeight = static_cast<double>(quad.rect.GetHeight()) / 2;
 
             auto CenterLeftEdge     = static_cast<int64_t>(std::floor(newWidth));
             auto CenterRightEdge    = static_cast<int64_t>(std::ceil(newWidth));
             auto CenterTopEdge      = static_cast<int64_t>(std::floor(newHeight));
             auto CenterBottomEdge   = static_cast<int64_t>(std::ceil(newHeight));
 
-            quad.children[0] = make_unique<Quad>();
-            quad.children[0]->left = quad.rect.left;
-            quad.children[0]->right = quad.rect.left + CenterLeftEdge;
-            quad.children[0]->top = quad.rect.top;
-            quad.children[0]->bottom = quad.rect.top + CenterTopEdge;
+            quad.children[0] = std::make_unique<Quad>();
             quad.children[0]->depth = newDepth;
-
-            quad.children[1] = make_unique<Quad>();
-            quad.children[1]->left = quad.rect.left;
-            quad.children[1]->right = quad.rect.left + CenterLeftEdge;
-            quad.children[1]->top = quad.rect.top + CenterBottomEdge;
-            quad.children[1]->bottom = quad.rect.bottom;
+            quad.children[0]->rect = 
+                Rect(quad.rect.left, 
+                    quad.rect.left + CenterLeftEdge,
+                    quad.rect.top,
+                    quad.rect.top + CenterTopEdge);
+            
+            quad.children[1] = std::make_unique<Quad>();
             quad.children[1]->depth = newDepth;
+            quad.children[1]->rect = 
+                Rect(quad.rect.left,
+                    quad.rect.left + CenterLeftEdge,
+                    quad.rect.top + CenterBottomEdge,
+                    quad.rect.bottom);
 
-            quad.children[2] = make_unique<Quad>();
-            quad.children[2]->left = quad.rect.left + CenterRightEdge;
-            quad.children[2]->right = quad.rect.right;
-            quad.children[2]->top = quad.rect.top + CenterBottomEdge;
-            quad.children[2]->bottom = quad.rect.bottom;
+            quad.children[2] = std::make_unique<Quad>();
             quad.children[2]->depth = newDepth;
+            quad.children[2]->rect = 
+                Rect(quad.rect.left + CenterRightEdge,
+                quad.rect.right,
+                quad.rect.top + CenterBottomEdge,
+                quad.rect.bottom);
 
-            quad.children[3] = make_unique<Quad>();
-            quad.children[3]->left = quad.rect.left + CenterRightEdge;
-            quad.children[3]->right = quad.rect.right;
-            quad.children[3]->top = quad.rect.top;
-            quad.children[3]->bottom = quad.rect.top + CenterTopEdge;
+            quad.children[3] = std::make_unique<Quad>();
             quad.children[3]->depth = newDepth;
+            quad.children[3]->rect =
+                Rect(quad.rect.left + CenterRightEdge,
+                quad.rect.right,
+                quad.rect.top,
+                quad.rect.top + CenterTopEdge);
 
             // move elements into children
             for (auto i = 0U; i < MaxElementsPerLeaf; i++)
             {
                 for (auto& child : quad.children)
                 {
-                    if (InsertPointInQuad(child, quad.elementPositions[i], quad.elements[i]).has_value())
+                    auto result = InsertPointInQuad(*child, quad.elementPositions[i], quad.elements[i]);
+                    if (result.has_value())
                     {
                         break;
                     }
                 }
             }
             quad.isElementValid.reset();
-            quad.isLeaf = false;
 
             return true;
         }
@@ -160,9 +207,7 @@ namespace QuadTree
         std::optional<Handle> InsertPointInQuad(Quad& quad, const Point& point, const T& newElement)
         {
             std::optional<Handle> result;
-            if (!quad.isLeaf)
-                return result;
-            if (quad.rect.ContainsPoint(x, y))
+            if (quad.rect.ContainsPoint(point))
             {
                 if (!quad.isElementValid.all())
                 {
@@ -175,15 +220,16 @@ namespace QuadTree
                         }
                     }
                 }
-                if (SubdivideQuad(quad))
+                else
                 {
-                    for (auto& child : quad.children)
+                    SubdivideQuad(quad);
+                }
+                for (auto& child : quad.children)
+                {
+                    result = InsertPointInQuad(*child, point, newElement);
+                    if (result.has_value())
                     {
-                        result = InsertPointInQuad(child, point, newElement);
-                        if (result.has_value())
-                        {
-                            return result;
-                        }
+                        return result;
                     }
                 }
             }
@@ -194,9 +240,9 @@ namespace QuadTree
         {
             for (auto& child : quad.children)
             {
-                if (child.rect.ContainsRect(rect))
+                if (child->rect.ContainsRect(rect))
                 {
-                    return GetElementsInRegion(child, rect);
+                    return GetElementsInRegion(*child, rect);
                 }
             }
             return quad;

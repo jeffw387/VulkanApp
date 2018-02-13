@@ -164,6 +164,8 @@ namespace QT
         }
 
         Tree() noexcept = default;
+
+        // radius must be positive
         Tree(const double& radius) : 
             radius(radius),
             inverseRadius(255.0/static_cast<double>(radius))
@@ -177,7 +179,11 @@ namespace QT
                     for (auto x = 0U; x < cellsPerAxis; ++x)
                     {
                         Node& node = nodes[GetIndexAt(depth, x, y)];
-                        node.SetRegion(Rect(x * radiusAtDepth, y * radiusAtDepth, radiusAtDepth));
+                        node.SetRegion(Rect(
+                                (2 * x * radiusAtDepth) - radius + radiusAtDepth, 
+                                (2 * y * radiusAtDepth) - radius + radiusAtDepth, 
+                                radiusAtDepth));
+                        // if we're not at the root, we have a parent node to find
                         if (depth)
                         {
                             auto parentX = x >> 1U;

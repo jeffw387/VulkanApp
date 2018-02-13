@@ -59,21 +59,21 @@ namespace QT
     class Tree
     {
     public:
-        static constexpr size_t TotalElements = 1 + (2*2) + (4*4) + (8*8) + (16*16) + (32*32) + (64*64) + (128*128);
+        static constexpr size_t TotalNodes = 1 + (2*2) + (4*4) + (8*8) + (16*16) + (32*32) + (64*64) + (128*128);
 
         struct Object
         {
             Rect boundingBox;
-            Quad* parentQuad;
+            Node* parentNode;
             Object* next;
             Object* previous;
         };
 
-        struct Quad
+        struct Node
         {
         public:
-            Quad() noexcept = default;
-            Quad(const Rect& region) : rect(region)
+            Node() noexcept = default;
+            Node(const Rect& region) : rect(region)
             {}
 
             Object* begin()
@@ -82,7 +82,7 @@ namespace QT
             }
         private:
             IntrusiveList<Object> objects;
-            std::array<Quad*>, 4> children;
+            std::array<Node*>, 4> children;
             Rect rect;
         };
 
@@ -91,7 +91,7 @@ namespace QT
         public:
             RegionIterator() noexcept = default;
 
-            RegionIterator(std::vector<Quad*>&& quadPtrsTemp) : 
+            RegionIterator(std::vector<Node*>&& quadPtrsTemp) : 
                 quadPtrs(std::move(quadPtrsTemp))
             {
                 if (quadPtrs.size() > 0)
@@ -127,7 +127,7 @@ namespace QT
             }
 
         private:
-            std::vector<Quad*> quadPtrs;
+            std::vector<Node*> quadPtrs;
             size_t currentQuad = 0U;
             Object* current = nullptr;
         };
@@ -137,8 +137,8 @@ namespace QT
         {}
 
     private:
-        Quad* root;
-        std::array<Quad, TotalElements> elements;
+        Node* root;
+        std::array<Node, TotalNodes> nodes;
 
     };
 }

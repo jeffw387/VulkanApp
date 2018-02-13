@@ -253,20 +253,24 @@ struct VulkanApp
 	// 	return result;
 	// }
 
-	void RenderSprite(const Sprite& sprite)
+	void RenderSprite(
+		uint32_t textureIndex,
+		glm::mat4 transform,
+		glm::vec4 color)
 	{
+		Sprite sprite;
 		auto& supports = m_Supports[m_UpdateData.nextImage];
-		glm::mat4 mvp =  m_UpdateData.vp * sprite.transform;
+		glm::mat4 mvp =  m_UpdateData.vp * transform;
 
 		memcpy((char*)m_UpdateData.mapped + m_UpdateData.copyOffset, &mvp, sizeof(glm::mat4));
 		m_UpdateData.copyOffset += m_MatrixBufferOffsetAlignment;
 
 		FragmentPushConstants pushRange;
-		pushRange.textureID = sprite.textureIndex;
-		pushRange.r = sprite.color.r;
-		pushRange.g = sprite.color.g;
-		pushRange.b = sprite.color.b;
-		pushRange.a = sprite.color.a;
+		pushRange.textureID = textureIndex;
+		pushRange.r = color.r;
+		pushRange.g = color.g;
+		pushRange.b = color.b;
+		pushRange.a = color.a;
 
 		supports.m_RenderCommandBuffer->pushConstants<FragmentPushConstants>(
 			m_PipelineLayout.get(),
@@ -284,7 +288,7 @@ struct VulkanApp
 			{ supports.m_VertexDescriptorSet.get() },
 			{ dynamicOffset });
 
-		auto vertexOffset = sprite.textureIndex * IndicesPerQuad;
+		auto vertexOffset = textureIndex * IndicesPerQuad;
 		// draw the sprite
 		supports.m_RenderCommandBuffer->
 			drawIndexed(IndicesPerQuad, 1U, 0U, vertexOffset, 0U);

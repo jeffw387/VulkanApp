@@ -128,7 +128,7 @@ int main()
 	{
 		for (const auto& [entity, sprite] : spriteComponents)
 		{
-			app->RenderSprite(sprite);
+			app->RenderSprite(sprite.textureIndex, sprite.transform, sprite.color);
 		}
 	};
 	callbacks.AfterRenderCallback = [&](){};

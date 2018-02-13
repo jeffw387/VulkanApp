@@ -10,14 +10,23 @@ struct TestNode
     TestNode(int x) : x(x) {}
 };
 
+struct TestNodeLight
+{
+    int x;
+};
+
 template <typename T>
-class IntrusiveForwardList
+class IntrusiveList
 {
 public:
     void push_front(T* element)
     {
-        element->next = root;
-        root->previous = element;
+        if (root != nullptr)
+        {
+            auto prevRoot = root;
+            prevRoot->previous = element;
+            element->next = prevRoot;
+        }
         root = element;
         ++count;
     }
@@ -47,5 +56,5 @@ public:
     const size_t& size() { return count; }
 private:
     T* root = nullptr;
-    size_t count;
+    size_t count = 0U;
 };

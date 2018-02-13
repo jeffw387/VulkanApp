@@ -73,3 +73,10 @@ quadtree_test = executable('QuadTreeTest',
     dependencies : [gtest_dep])
 
 test('gtest quadtree', quadtree_test)
+
+intrusive_list_test = executable('IntrusiveListTest',
+    'test/IntrusiveListTest.cpp',
+    cpp_args : ['/std:c++latest'],
+    dependencies : [gtest_dep])
+
+test('gtest intrusive_list', intrusive_list_test)

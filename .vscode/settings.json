@@ -73,6 +73,7 @@
         "thread": "cpp",
         "unordered_set": "cpp",
         "xlocbuf": "cpp",
-        "bitset": "cpp"
+        "bitset": "cpp",
+        "forward_list": "cpp"
     }
 }

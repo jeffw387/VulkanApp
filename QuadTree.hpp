@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <vector>
+#include <algorithm>
 #include "IntrusiveList.hpp"
 
 namespace QT
@@ -9,8 +10,12 @@ namespace QT
     {
         Rect() noexcept = default;
 
-        Rect(int64_t left, int64_t right, int64_t top, int64_t bottom) :
+        Rect(double left, double right, double top, double bottom) :
             left(left), right(right), top(top), bottom(bottom), width(right - left), height(bottom - top)
+        {}
+
+        Rect(double x, double y, double radius) :
+            Rect(x - radius, x + radius, y - radius, y + radius)
         {}
 
         bool ContainsPoint(const Point& point)
@@ -18,7 +23,7 @@ namespace QT
             return ContainsPoint(point.x, point.y);
         }
 
-        bool ContainsPoint(const int64_t x, const int64_t y) const
+        bool ContainsPoint(const double x, const double y) const
         {
             return (x >= left) && (x <= right) && (y <= bottom) && (y >= top);
         }
@@ -31,20 +36,20 @@ namespace QT
                     (rect.bottom <= this->bottom);
         }
 
-        int64_t GetWidth()
+        double GetWidth()
         {
             return width;
         }
 
-        int64_t GetHeight()
+        double GetHeight()
         {
             return height;
         }
 
-        int64_t left, right, top, bottom;
+        double left, right, top, bottom;
 
     private:
-        int64_t width, height;
+        double width, height;
     };
 
     bool operator==(const Rect& a, const Rect& b)
@@ -64,6 +69,7 @@ namespace QT
         struct Object
         {
             Rect boundingBox;
+            T data;
             Node* parentNode;
             Object* next;
             Object* previous;
@@ -80,9 +86,29 @@ namespace QT
             {
                 return objects.front();
             }
+
+            void InsertObject(Object* objectPtr)
+            {
+                objects.push_front(objectPtr);
+            }
+
+            void SetRegion(const Rect& region)
+            {
+                rect = region;
+            }
+
+            void SetRegion(Rect&& region)
+            {
+                rect = std::move(region);
+            }
+
+            const Rect& GetRegion()
+            {
+                return rect;
+            }
+            std::array<Node*>, 4> children;
         private:
             IntrusiveList<Object> objects;
-            std::array<Node*>, 4> children;
             Rect rect;
         };
 
@@ -132,12 +158,112 @@ namespace QT
             Object* current = nullptr;
         };
 
+        size_t GetIndexAt(const uint8_t depth, const uint8_t x, const uint8_t y)
+        {
+            return (depth * (x * (1U << treeDepth) + y));
+        }
+
         Tree() noexcept = default;
-        Tree(const Rect& region) : root(region)
-        {}
+        Tree(const double& radius) : 
+            radius(radius),
+            inverseRadius(255.0/static_cast<double>(radius))
+        {
+            auto radiusAtDepth = radius;
+            for (auto depth = 0U; depth < 7U; ++depth)
+            {
+                auto cellsPerAxis = 1U << depth;
+                for (auto y = 0U; y < cellsPerAxis; y++)
+                {
+                    for (auto x = 0U; x < cellsPerAxis; ++x)
+                    {
+                        Node& node = nodes[GetIndexAt(depth, x, y)];
+                        node.SetRegion(Rect(x * radiusAtDepth, y * radiusAtDepth, radiusAtDepth));
+                        if (depth)
+                        {
+                            auto parentX = x >> 1U;
+                            auto parentY = y >> 1U;
+                            Node parent& = nodes[GetIndexAt(depth - 1), parentX, parentY];
+                            uint8_t childX = x & 1U;
+                            uint8_t childY = y & 1U;
+                            parent.children[(y << 1U) + x] = &node;
+                        }
+                        else
+                        {
+                            root = &node;
+                        }
+                    }
+                }
+                radiusAtDepth *= 0.5;
+            }
+        }
+
+        static uint8_t HighestBit(const uint8_t& bits)
+        {
+            static constexpr uint8_t Bit7 = 1 << 7;
+            static constexpr uint8_t Bit6 = 1 << 6;
+            static constexpr uint8_t Bit5 = 1 << 5;
+            static constexpr uint8_t Bit4 = 1 << 4;
+            static constexpr uint8_t Bit3 = 1 << 3;
+            static constexpr uint8_t Bit2 = 1 << 2;
+            static constexpr uint8_t Bit1 = 1 << 1;
+            static constexpr uint8_t Bit0 = 1 << 0;
+
+            // iterate through bits from highest to lowest
+            if (bits & Bit7)
+                return static_cast<uint8_t>(0);
+            if (bits & Bit6)
+                return static_cast<uint8_t>(1);
+            if (bits & Bit5)                
+                return static_cast<uint8_t>(2);
+            if (bits & Bit4)
+                return static_cast<uint8_t>(3);
+            if (bits & Bit3)
+                return static_cast<uint8_t>(4);
+            if (bits & Bit2)
+                return static_cast<uint8_t>(5);
+            if (bits & Bit1)
+                return static_cast<uint8_t>(6);
+            return static_cast<uint8_t>(7);
+        }
+
+        size_t ChooseIndex(const Rect& rect)
+        {
+            if (!root->rect.ContainsRect(object->rect))
+            {
+                return 0;
+            }
+
+            // shift object rect coords into range [0, 255]
+            auto xMin = static_cast<uint8_t>(std::clamp(std::floor((rect.left   + radius) * inverseRadius), 0, 255));
+            auto yMin = static_cast<uint8_t>(std::clamp(std::floor((rect.top    + radius) * inverseRadius), 0, 255));
+            auto xMax = static_cast<uint8_t>(std::clamp(std::ceil( (rect.right  + radius) * inverseRadius), 0, 255));
+            auto yMax = static_cast<uint8_t>(std::clamp(std::ceil( (rect.bottom + radius) * inverseRadius), 0, 255));
+
+            auto xBits = xMin ^ xMax;
+            auto yBits = yMin ^ yMax;
+            
+            xBits = HighestBit(xBits);
+            yBits = HighestBit(yBits);
+
+            auto treeDepth = std::min(xBits, yBits);
+
+            xBits = xMin >> (8U - treeDepth);
+            yBits = yMin >> (8U - treeDepth);
+
+            size_t index = GetIndexAt(treeDepth, xBits, yBits);
+            return index;
+        }
+
+        void Insert(Object* objectPtr)
+        {
+            auto index = ChooseIndex(objectPtr->rect);
+            nodes[index].InsertObject(objectPtr);
+        }
 
     private:
         Node* root;
+        double radius = 0;
+        double inverseRadius = 0;
         std::array<Node, TotalNodes> nodes;
 
     };

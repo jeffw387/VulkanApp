@@ -1,6 +1,6 @@
 #pragma once
-#include <memory>
 #include <array>
+#include <vector>
 #include "IntrusiveList.hpp"
 
 namespace QT
@@ -65,6 +65,8 @@ namespace QT
         {
             Rect boundingBox;
             Quad* parentQuad;
+            Object* next;
+            Object* previous;
         };
 
         struct Quad
@@ -74,37 +76,69 @@ namespace QT
             Quad(const Rect& region) : rect(region)
             {}
 
+            Object* begin()
+            {
+                return objects.front();
+            }
         private:
-            std::forward_list<Object> objects;
+            IntrusiveList<Object> objects;
+            std::array<Quad*>, 4> children;
             Rect rect;
-            std::array<std::unique_ptr<Quad>, 4> children;
         };
 
-        struct Handle
+        class RegionIterator
         {
-            friend class Tree;
+        public:
+            RegionIterator() noexcept = default;
+
+            RegionIterator(std::vector<Quad*>&& quadPtrsTemp) : 
+                quadPtrs(std::move(quadPtrsTemp))
+            {
+                if (quadPtrs.size() > 0)
+                {
+                    current = quadPtrs[currentQuad]->begin();
+                }
+            }
+
+            Object& operator->()
+            {
+                return *current;
+            }
+
+            Object& operator*()
+            {
+                return *current;
+            }
+
+            RegionIterator& operator++()
+            {
+                if (current->next == nullptr)
+                {
+                    if (++currentQuad > quadPtrs.size())
+                    {
+                        current = nullptr;
+                        return *this;
+                    }
+                    current = quadPtrs[currentQuad].begin();
+                    return *this;
+                }
+                current = current->next;
+                return *this;
+            }
+
         private:
-            Quad* quadPtr = nullptr;
-            size_t elementIndex = 0;
+            std::vector<Quad*> quadPtrs;
+            size_t currentQuad = 0U;
+            Object* current = nullptr;
         };
 
         Tree() noexcept = default;
         Tree(const Rect& region) : root(region)
         {}
 
-        const Quad& GetElementsInRegion(const Rect& rect)
-        {
-            return GetElementsInRegion(root, rect);
-        }
-
-        Rect GetRegion()
-        {
-            return root.rect;
-        }
-
     private:
-        std::unique_ptr<Quad> root;
-        std::array<T, TotalElements> elements;
+        Quad* root;
+        std::array<Quad, TotalElements> elements;
 
     };
 }

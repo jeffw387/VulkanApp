@@ -589,7 +589,10 @@ struct VulkanApp
 		m_FragmentShader = createShaderModule(initData.shaderData.fragmentShaderPath);
 
 		// create descriptor set layouts
-		m_FragmentDescriptorSetLayout = createFragmentSetLayout(m_LogicalDevice.get(), static_cast<uint32_t>(m_Textures.size()), m_Sampler.get());
+		m_FragmentDescriptorSetLayout = createFragmentSetLayout(
+			m_LogicalDevice.get(), 
+			static_cast<uint32_t>(m_Textures.size()), 
+			m_Sampler.get());
 		m_DescriptorSetLayouts.push_back(m_FragmentDescriptorSetLayout.get());
 
 		// setup push constant ranges
@@ -914,6 +917,7 @@ private:
 		vk::UniqueImage image;
 		UniqueAllocation allocation;
 	};
+	
 	ImageCreateResult CreateImageFromBitmap(const Bitmap& bitmap)
 	{
 		ImageCreateResult result;

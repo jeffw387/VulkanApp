@@ -3,6 +3,18 @@
 #include <list>
 #include <array>
 
+struct TestNode
+{
+    TestNode* next = nullptr;
+    TestNode* previous = nullptr;
+    int x;
+};
+
+struct TestNodeLight
+{
+    int x;
+};
+
 class IntrusiveListFixture : public ::testing::Test
 {
 public:
@@ -44,7 +56,7 @@ public:
     }
 };
 
-TEST_F(IntrusiveListFixture, push_front_test)
+TEST_F(IntrusiveListFixture, push_front)
 {
     testList.push_front(&testNodes[0]);
     testList.push_front(&testNodes[1]);
@@ -54,7 +66,7 @@ TEST_F(IntrusiveListFixture, push_front_test)
     EXPECT_EQ(2, testList.size());
 }
 
-TEST_F(IntrusiveListFixture, pop_front_test)
+TEST_F(IntrusiveListFixture, pop_front)
 {
     testList.push_front(&testNodes[0]);
     testList.pop_front();
@@ -62,7 +74,26 @@ TEST_F(IntrusiveListFixture, pop_front_test)
     EXPECT_EQ(0, testList.size());
 }
 
-TEST_F(IntrusiveListFixture, iterate_test)
+// this is not intended behavior but I don't see an easy solution
+TEST_F(IntrusiveListFixture, add_duplicates)
+{
+    testList.push_front(&testNodes[0]);
+    testList.push_front(&testNodes[0]);
+    EXPECT_EQ(2U, testList.size());
+    testList.pop_front();
+    testList.pop_front();
+    EXPECT_EQ(0U, testList.size());
+}
+
+TEST_F(IntrusiveListFixture, erase_root)
+{
+    testList.push_front(&testNodes[0]);
+    EXPECT_EQ(1U, testList.size());
+    testList.erase(&testNodes[0]);
+
+}
+
+TEST_F(IntrusiveListFixture, iterate)
 {
     for (auto& node : testNodes)
     {

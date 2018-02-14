@@ -2,6 +2,7 @@
 #include <array>
 #include <vector>
 #include <algorithm>
+#include <memory>
 #include "IntrusiveList.hpp"
 
 namespace QT
@@ -11,6 +12,8 @@ namespace QT
         Rect() noexcept = default;
         Rect(Rect&&) noexcept = default;
         Rect& operator=(Rect&&) noexcept = default;
+        Rect(const Rect&) noexcept = default;
+        Rect& operator=(const Rect&) noexcept = default;
 
         Rect(double x, double y, double radius) :
             x(x), y(y), xRadius(radius), yRadius(radius)
@@ -56,12 +59,12 @@ namespace QT
             return y + yRadius;
         }
 
-        bool operator==(const Rect& rhs)
+        friend bool operator==(const Rect& lhs, const Rect& rhs)
         {
-            return  (this->x == rhs.x) &&
-                    (this->y == rhs.y) &&
-                    (this->xRadius == rhs.xRadius) &&
-                    (this->yRadius == rhs.yRadius);
+            return  (lhs.x == rhs.x) &&
+                    (lhs.y == rhs.y) &&
+                    (lhs.xRadius == rhs.xRadius) &&
+                    (lhs.yRadius == rhs.yRadius);
         }
     private:
         double x, y, xRadius, yRadius;
@@ -69,21 +72,20 @@ namespace QT
 
 
     template <typename T>
+    struct Object
+    {
+        T data;
+        Rect boundingBox;
+        Object* next;
+        Object* previous;
+        size_t nodeIndex;
+    };
+
+    template <typename ObjectType>
     class Tree
     {
     public:
         static constexpr size_t TotalNodes = 1 + (2*2) + (4*4) + (8*8) + (16*16) + (32*32) + (64*64) + (128*128);
-
-        struct Object
-        {
-            friend class Tree;
-            T data;
-            Rect boundingBox;
-            Object* next;
-            Object* previous;
-        private:
-            size_t nodeIndex;
-        };
 
         struct Node
         {
@@ -101,17 +103,17 @@ namespace QT
                 rect = std::move(region);
             }
 
-            Object* begin()
+            ObjectType* begin()
             {
                 return objects.front();
             }
 
-            void InsertObject(Object* objectPtr)
+            void InsertObject(ObjectType* objectPtr)
             {
                 objects.push_front(objectPtr);
             }
 
-            void RemoveObject(Object* objectPtr)
+            void RemoveObject(ObjectType* objectPtr)
             {
                 objects.erase(objectPtr);
             }
@@ -137,7 +139,7 @@ namespace QT
                 return objects.size();
             }
         private:
-            IntrusiveList<Object> objects;
+            IntrusiveList<ObjectType> objects;
             Rect rect;
         };
 
@@ -147,21 +149,21 @@ namespace QT
             friend class Tree;
             RegionIterator() noexcept = default;
 
-            RegionIterator(std::vector<Node*>&& quadPtrsTemp) : 
-                quadPtrs(std::move(quadPtrsTemp))
+            RegionIterator(std::vector<Node*>&& nodePtrsTemp) : 
+                nodePtrs(std::move(nodePtrsTemp))
             {
-                if (quadPtrs.size() > 0)
+                if (nodePtrs.size() > 0)
                 {
-                    current = quadPtrs[currentQuad]->begin();
+                    current = nodePtrs[currentNode]->begin();
                 }
             }
 
-            Object& operator->()
+            ObjectType& operator*()
             {
                 return *current;
             }
 
-            Object& operator*()
+            ObjectType& operator->()
             {
                 return *current;
             }
@@ -170,32 +172,42 @@ namespace QT
             {
                 if (current->next == nullptr)
                 {
-                    if (++currentQuad > quadPtrs.size())
+                    if (++currentNode >= nodePtrs.size())
                     {
                         current = nullptr;
                         return *this;
                     }
-                    current = quadPtrs[currentQuad].begin();
+                    current = nodePtrs[currentNode]->begin();
                     return *this;
                 }
                 current = current->next;
                 return *this;
             }
 
+            bool PastEnd()
+            {
+                return current == nullptr;
+            }
+
         private:
-            std::vector<Node*> quadPtrs;
-            size_t currentQuad = 0U;
-            Object* current = nullptr;
+            std::vector<Node*> nodePtrs;
+            size_t currentNode = 0U;
+            ObjectType* current = nullptr;
         };
+
+        Tree& operator=(const Tree& tree) = default;
+        Tree& operator=(Tree&& tree) = default;
 
         Tree() noexcept = default;
 
         // radius must be positive
         Tree(const double& radius) : 
             radius(radius),
-            inverseRadius(255.0/static_cast<double>(radius))
+            inverseRadius(255.0/(radius * 2))
         {
+            nodes.resize(TotalNodes);
             auto radiusAtDepth = radius;
+            auto nodeIndex = 0U;
             for (auto depth = 0U; depth < 7U; ++depth)
             {
                 auto cellsPerAxis = 1U << depth;
@@ -203,7 +215,7 @@ namespace QT
                 {
                     for (auto x = 0U; x < cellsPerAxis; ++x)
                     {
-                        Node& node = nodes[GetIndexAt(depth, x, y)];
+                        Node& node = nodes[nodeIndex];
                         node.SetRegion(Rect(
                                 (2 * x * radiusAtDepth) - radius + radiusAtDepth, 
                                 (2 * y * radiusAtDepth) - radius + radiusAtDepth, 
@@ -216,19 +228,20 @@ namespace QT
                             Node& parent = nodes[GetIndexAt(depth - 1, parentX, parentY)];
                             uint8_t childX = x & 1U;
                             uint8_t childY = y & 1U;
-                            parent.children[(y << 1U) + x] = &node;
+                            parent.children[(childY << 1U) + childX] = &node;
                         }
                         else
                         {
                             root = &node;
                         }
+                        ++nodeIndex;
                     }
                 }
                 radiusAtDepth *= 0.5;
             }
         }
 
-        void InsertOrUpdate(Object* objectPtr)
+        void InsertOrUpdate(ObjectType* objectPtr)
         {
             // find new position in quadtree
             // if it is unchanged from old, return
@@ -238,29 +251,35 @@ namespace QT
             nodes[newIndex].InsertObject(objectPtr);
         }
 
-        void Remove(Object* objectPtr)
+        void Remove(ObjectType* objectPtr)
         {
             nodes[objectPtr->nodeIndex].RemoveObject(objectPtr);
+        }
+
+        void RecurseTree(std::vector<Node*>& nodePtrs, Node* node)
+        {
+            if (node == nullptr)
+                    return;
+                if (node->size() > 0)
+                {
+                    nodePtrs.push_back(node);
+                }
+                for (Node* child : node->children)
+                {
+                    RecurseTree(nodePtrs, child);
+                }
+                return;
         }
 
         RegionIterator GetIteratorForRegion(const Rect& region)
         {
             auto regionIndex = ChooseIndex(region);
-            RegionIterator iter;
-            auto recurseTree = [&](Node* node)
-            {
-                if (node == nullptr)
-                    return;
-                if (node->size() > 0)
-                {
-                    iter.quadPtrs.push_back(node);
-                }
-                for (auto& child : node.children)
-                {
-                    recurseTree(child);
-                }
-                return;
-            };
+
+            std::vector<Node*> nodePtrsTemp;
+            RecurseTree(nodePtrsTemp, &nodes[regionIndex]);
+            
+            RegionIterator iter = RegionIterator(std::move(nodePtrsTemp));
+            return iter;
         }
 
     private:
@@ -301,10 +320,18 @@ namespace QT
             }
 
             // shift object rect coords into range [0, 255]
-            auto xMin = static_cast<uint8_t>(std::clamp(std::floor((rect.GetLeft()   + radius) * inverseRadius), 0.0, 255.0));
-            auto yMin = static_cast<uint8_t>(std::clamp(std::floor((rect.GetTop()    + radius) * inverseRadius), 0.0, 255.0));
-            auto xMax = static_cast<uint8_t>(std::clamp(std::ceil( (rect.GetRight()  + radius) * inverseRadius), 0.0, 255.0));
-            auto yMax = static_cast<uint8_t>(std::clamp(std::ceil( (rect.GetBottom() + radius) * inverseRadius), 0.0, 255.0));
+            auto left = rect.GetLeft();
+            auto right = rect.GetRight();
+            auto top = rect.GetTop();
+            auto bottom = rect.GetBottom();
+            auto leftScaled = (left + radius) * inverseRadius;
+            auto rightScaled = (right + radius) * inverseRadius;
+            auto topScaled = (top + radius) * inverseRadius;
+            auto bottomScaled = (bottom + radius) * inverseRadius;
+            auto xMin = static_cast<uint8_t>(std::clamp(std::floor(leftScaled),  0.0, 255.0));
+            auto xMax = static_cast<uint8_t>(std::clamp(std::ceil(rightScaled),  0.0, 255.0));
+            auto yMin = static_cast<uint8_t>(std::clamp(std::floor(topScaled),   0.0, 255.0));
+            auto yMax = static_cast<uint8_t>(std::clamp(std::ceil(bottomScaled), 0.0, 255.0));
 
             auto xBits = xMin ^ xMax;
             auto yBits = yMin ^ yMax;
@@ -323,12 +350,19 @@ namespace QT
 
         size_t GetIndexAt(const uint8_t depth, const uint8_t x, const uint8_t y)
         {
-            return (depth * (x * (1U << depth) + y));
+            auto nodeIndex = 0U;
+            for (auto currentDepth = 0U; currentDepth < depth; ++currentDepth)
+            {
+                nodeIndex += (1U << currentDepth) * (1U << currentDepth);
+            }
+            auto sideLength = 1U << depth;
+            nodeIndex += (sideLength * y) + x;
+            return nodeIndex;
         }
 
-        Node* root;
+        Node* root = nullptr;
         double radius = 0.0;
         double inverseRadius = 0.0;
-        std::array<Node, TotalNodes> nodes;
+        std::vector<Node> nodes;
     };
 }

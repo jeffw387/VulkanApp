@@ -2,32 +2,62 @@
 #include "gtest/gtest.h"
 #include <vector>
 #include <array>
-#include <iterator>
 #include <algorithm>
-
+#include <memory>
 
 struct Vec3Test
 {
     float x, y, z;
 };
 
+using Obj = QT::Object<Vec3Test>;
+using TreeType = QT::Tree<Obj>;
 class QuadTreeFixture : public ::testing::Test
 {
 public:
-    QT::Tree<Vec3Test> testTree;
-    std::array<QT::Tree<Vec3Test>::Object, 1000> objectArray;
+    TreeType testTree;
+    std::vector<Obj> objVector;
 
-    virtual void SetUp()
+    QuadTreeFixture()
     {
         auto radius = 1000.0;
-        testTree = QT::Tree<Vec3Test>(radius);
+        testTree = TreeType(radius);
+        objVector.resize(1000);
     }
 
 };
 
-TEST_F(QuadTreeFixture, insert_test)
+TEST_F(QuadTreeFixture, insert)
 {
-    testTree.InsertOrUpdate(&objectArray[0]);
+    auto testRect =  QT::Rect(0.0, 0.0, 100.0);
+    objVector[0].boundingBox = testRect;
+    testTree.InsertOrUpdate(&objVector[0]);
+    auto iter = testTree.GetIteratorForRegion(objVector[0].boundingBox);
+    auto foundRect = (*iter).boundingBox;
+    EXPECT_EQ(testRect, foundRect);
+    auto counter = 0U;
+    while (!iter.PastEnd())
+    {
+        ++counter;
+        ++iter;
+    }
+    EXPECT_EQ(1U, counter);
+}
+
+TEST_F(QuadTreeFixture, insert_duplicates)
+{
+    objVector[0].boundingBox = QT::Rect(0.0, 0.0, 100.0);
+    testTree.InsertOrUpdate(&objVector[0]);
+    testTree.InsertOrUpdate(&objVector[0]);
+    testTree.InsertOrUpdate(&objVector[0]);
+    auto iter = testTree.GetIteratorForRegion(objVector[0].boundingBox);
+    auto counter = 0U;
+    while (!iter.PastEnd())
+    {
+        ++counter;
+        ++iter;
+    }
+    EXPECT_EQ(1U, counter);
 }
 
 int main(int argc, char **argv) 

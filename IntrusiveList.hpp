@@ -1,20 +1,5 @@
 #pragma once
 
-struct TestNode
-{
-    TestNode* next = nullptr;
-    TestNode* previous = nullptr;
-    int x;
-
-    TestNode() noexcept = default;
-    TestNode(int x) : x(x) {}
-};
-
-struct TestNodeLight
-{
-    int x;
-};
-
 template <typename T>
 class IntrusiveList
 {
@@ -49,6 +34,8 @@ public:
             element->previous->next = element->next;
         if (element->next != nullptr)
             element->next->previous = element->previous;
+        if (root == element)
+            root = nullptr;
         if (count > 0)
             --count;
     }

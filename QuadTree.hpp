@@ -158,14 +158,14 @@ namespace QT
                 }
             }
 
-            ObjectType& operator*()
+            auto operator*()
             {
                 return *current;
             }
 
-            ObjectType& operator->()
+            auto operator->()
             {
-                return *current;
+                return current;
             }
 
             RegionIterator& operator++()

@@ -4,6 +4,11 @@
 layout(push_constant) uniform pushBlock
 {
     mat4 transform;
+    uint textureID;
+    float r;
+    float g;
+    float b;
+    float a;
 } pushConstants;
 
 layout(location = 0) in vec2 inPosition;

@@ -12,6 +12,8 @@ vulkan_proj = subproject('vulkan')
 vulkan = vulkan_proj.get_variable('vulkan_dep')
 glm_proj = subproject('glm')
 glm = glm_proj.get_variable('glm_dep')
+gtest_proj = subproject('googletest')
+gtest = gtest_proj.get_variable('gtest_dep')
 
 libtype = get_option('default_library')
 if  libtype == 'static'
@@ -46,37 +48,23 @@ executable('VulkanApp',
     '/D_SCL_SECURE_NO_WARNINGS'],
     install : true)
 
-if (buildtype == 'debug')
-    set_variable('gtestlibname', 'gtestd')
-    set_variable('gtestdir', 'C:/googletest/debug/')
-elif (buildtype == 'release')
-    set_variable('gtestlibname', 'gtest')
-    set_variable('gtestdir', 'C:/googletest/release/')
-endif
-
-cc = meson.get_compiler('cpp')
-gtest_inc = include_directories('C:/Libraries/Source/googletest/googletest/include')
-gtest_dep = declare_dependency(
-    dependencies : cc.find_library(gtestlibname, dirs: gtestdir), 
-    include_directories : gtest_inc)
-
 circ_queue_test = executable('CircularQueueTest',
     'test/CircularQueueTest.cpp',
     cpp_args : ['/std:c++latest'],
-    dependencies : [gtest_dep])
+    dependencies : [gtest])
 
 test('gtest circ_queue', circ_queue_test)
 
 quadtree_test = executable('QuadTreeTest',
     'test/QuadTreeTest.cpp',
     cpp_args : ['/std:c++latest'],
-    dependencies : [gtest_dep])
+    dependencies : [gtest])
 
 test('gtest quadtree', quadtree_test)
 
 intrusive_list_test = executable('IntrusiveListTest',
     'test/IntrusiveListTest.cpp',
     cpp_args : ['/std:c++latest'],
-    dependencies : [gtest_dep])
+    dependencies : [gtest])
 
 test('gtest intrusive_list', intrusive_list_test)

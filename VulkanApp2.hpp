@@ -81,12 +81,6 @@ namespace vka
 		std::function<void()> AfterRenderCallback;
 	};
 
-	struct TemporaryCommandStructure
-	{
-		vk::UniqueCommandPool pool;
-		vk::UniqueCommandBuffer buffer;
-	};
-
 	struct InitData
 	{
 		char const* WindowTitle;
@@ -234,24 +228,6 @@ struct VulkanApp
 	std::array<vk::UniqueImageView, BufferCount> m_SwapViews;
 	std::array<vk::UniqueFramebuffer, BufferCount> m_Framebuffers;
 	vk::UniquePipeline m_Pipeline;
-
-	// TemporaryCommandStructure CreateTemporaryCommandBuffer()
-	// {
-	// 	TemporaryCommandStructure result;
-	// 	// get command pool and buffer
-	// 	result.pool = m_LogicalDevice->createCommandPoolUnique(
-	// 		vk::CommandPoolCreateInfo(
-	// 			vk::CommandPoolCreateFlagBits::eTransient,
-	// 			m_GraphicsQueueFamilyID));
-	// 	auto buffer = m_LogicalDevice->allocateCommandBuffers(
-	// 		vk::CommandBufferAllocateInfo(
-	// 			result.pool.get(),
-	// 			vk::CommandBufferLevel::ePrimary,
-	// 			1U))[0];
-	// 	auto bufferDeleter = vk::CommandBufferDeleter(m_LogicalDevice.get(), result.pool.get());
-	// 	result.buffer = vk::UniqueCommandBuffer(buffer, bufferDeleter);
-	// 	return result;
-	// }
 
 	void RenderSprite(
 		uint32_t textureIndex,

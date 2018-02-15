@@ -272,3 +272,4 @@ Hello Triangle/main2.exe
 *.ipdb
 *.ruleset
 *.iobj
+.vscode/

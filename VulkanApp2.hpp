@@ -27,6 +27,7 @@
 #include <functional>
 #include <limits>
 #include <thread>
+#include <variant>
 
 namespace vka
 {
@@ -80,6 +81,52 @@ namespace vka
 		std::function<void(VulkanApp*)> RenderCallback;
 		std::function<void()> AfterRenderCallback;
 	};
+
+	struct KeyMessage
+	{
+		int key;
+		int scancode;
+		int action;
+		int mods;
+	};
+
+	struct CharMessage
+	{
+		unsigned int codepoint;
+	};
+
+	struct CursorPosMessage
+	{
+		double xpos;
+		double ypos;
+	};
+
+	struct MouseButtonMessage
+	{
+		int button;
+		int action;
+		int mods;
+	};
+
+	void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+	{
+
+	}
+
+	void CharacterCallback(GLFWwindow* window, unsigned int codepoint)
+	{
+
+	}
+
+	static void CursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
+	{
+
+	}
+
+	static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+	{
+
+	}
 
 	struct InitData
 	{
@@ -155,7 +202,11 @@ struct VulkanApp
 	UpdateData m_UpdateData;
 	GLFWwindow* m_Window;
 	bool m_ResizeNeeded = false;
-	CircularQueue<RAWINPUT, 500> m_InputBuffer;
+	CircularQueue<std::variant<
+		KeyMessage, 
+		CharMessage, 
+		CursorPosMessage, 
+		MouseButtonMessage>, 500> m_InputBuffer;
 	Camera2D m_Camera;
 	bool m_GameLoop = false;
 	HMODULE m_VulkanLibrary;

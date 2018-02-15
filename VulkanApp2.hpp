@@ -82,6 +82,7 @@ namespace vka
 		std::function<void()> AfterRenderCallback;
 	};
 
+<<<<<<< HEAD
 	struct KeyMessage
 	{
 		int key;
@@ -128,6 +129,8 @@ namespace vka
 
 	}
 
+=======
+>>>>>>> master
 	struct InitData
 	{
 		char const* WindowTitle;
@@ -438,8 +441,6 @@ struct VulkanApp
 			stagingBufferResult.allocation->size);
 		memcpy(stagingBufferData, bitmap.m_Data.data(), static_cast<size_t>(bitmap.m_Size));
 		m_LogicalDevice->unmapMemory(stagingBufferResult.allocation->memory);
-
-
 
 		// begin recording command buffer
 		m_CopyCommandBuffer->begin(vk::CommandBufferBeginInfo(
@@ -1069,6 +1070,7 @@ private:
 		vk::UniqueImage image;
 		UniqueAllocation allocation;
 	};
+	
 	ImageCreateResult CreateImageFromBitmap(const Bitmap& bitmap)
 	{
 		ImageCreateResult result;

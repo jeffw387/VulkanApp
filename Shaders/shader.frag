@@ -3,12 +3,11 @@
 
 layout(constant_id = 0) const int TextureCount = 1;
 
-layout(set = 0, binding = 0) uniform sampler samp;
-layout(set = 0, binding = 1) uniform texture2D tex[TextureCount];
+layout(set = 1, binding = 0) uniform sampler samp;
+layout(set = 1, binding = 1) uniform texture2D tex[TextureCount];
 
 layout(push_constant) uniform pushBlock
 {
-    mat4 transform;
     uint textureID;
     float r;
     float g;

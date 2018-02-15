@@ -1,15 +1,10 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(push_constant) uniform pushBlock
+layout(set = 0, binding = 0) uniform VertexUniforms
 {
     mat4 transform;
-    uint textureID;
-    float r;
-    float g;
-    float b;
-    float a;
-} pushConstants;
+} uniforms;
 
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inTexCoord;
@@ -22,6 +17,6 @@ out gl_PerVertex
 
 void main()
 {
-    gl_Position = pushConstants.transform * vec4(inPosition, 0.0, 1.0);
+    gl_Position = uniforms.transform * vec4(inPosition, 0.0, 1.0);
     fragTexCoord = inTexCoord;
 }

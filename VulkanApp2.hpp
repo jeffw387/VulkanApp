@@ -27,6 +27,7 @@
 #include <functional>
 #include <limits>
 #include <thread>
+#include <variant>
 
 namespace vka
 {
@@ -68,9 +69,8 @@ namespace vka
 		0, 1, 2, 2, 3, 0
 	};
 
-	struct PushConstants
+	struct FragmentPushConstants
 	{
-		glm::mat4 transform;
 		glm::uint32 textureID;
 		glm::float32 r, g, b, a;
 	};
@@ -81,6 +81,52 @@ namespace vka
 		std::function<void(VulkanApp*)> RenderCallback;
 		std::function<void()> AfterRenderCallback;
 	};
+
+	struct KeyMessage
+	{
+		int key;
+		int scancode;
+		int action;
+		int mods;
+	};
+
+	struct CharMessage
+	{
+		unsigned int codepoint;
+	};
+
+	struct CursorPosMessage
+	{
+		double xpos;
+		double ypos;
+	};
+
+	struct MouseButtonMessage
+	{
+		int button;
+		int action;
+		int mods;
+	};
+
+	void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+	{
+
+	}
+
+	void CharacterCallback(GLFWwindow* window, unsigned int codepoint)
+	{
+
+	}
+
+	static void CursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
+	{
+
+	}
+
+	static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+	{
+
+	}
 
 	struct InitData
 	{
@@ -125,10 +171,19 @@ struct VulkanApp
 		vk::UniqueCommandPool m_CommandPool;
 		vk::UniqueCommandBuffer m_CopyCommandBuffer;
 		vk::UniqueCommandBuffer m_RenderCommandBuffer;
+		vk::UniqueBuffer m_MatrixStagingBuffer;
+		UniqueAllocation m_MatrixStagingMemory;
+		vk::UniqueBuffer m_MatrixBuffer;
+		UniqueAllocation m_MatrixMemory;
+		size_t m_BufferCapacity = 0U;
+		vk::UniqueDescriptorPool m_VertexLayoutDescriptorPool;
+		vk::UniqueDescriptorSet m_VertexDescriptorSet;
 		vk::UniqueFence m_RenderBufferExecuted;
 		// create this fence in acquireImage() and wait for it before using buffers in BeginRender()
 		vk::UniqueFence m_ImagePresentCompleteFence;
-		// This semaphore is created at startup
+		// These semaphores are created at startup
+		// this semaphore is checked before rendering begins (at submission of draw command buffer)
+		vk::UniqueSemaphore m_MatrixBufferStagingCompleteSemaphore;
 		// this semaphore is checked at image presentation time
 		vk::UniqueSemaphore m_ImageRenderCompleteSemaphore;
 	};
@@ -137,8 +192,9 @@ struct VulkanApp
 	{
 		uint32_t nextImage;
 		glm::mat4 vp;
-		std::vector<PushConstants> pushConstants;
-		size_t spriteIndex;
+		vk::DeviceSize copyOffset;
+		void* mapped;
+		uint32_t spriteIndex;
 	};
 	
 	static constexpr size_t BufferCount = 3U;
@@ -146,12 +202,18 @@ struct VulkanApp
 	UpdateData m_UpdateData;
 	GLFWwindow* m_Window;
 	bool m_ResizeNeeded = false;
-	CircularQueue<RAWINPUT, 500> m_InputBuffer;
+	CircularQueue<std::variant<
+		KeyMessage, 
+		CharMessage, 
+		CursorPosMessage, 
+		MouseButtonMessage>, 500> m_InputBuffer;
 	Camera2D m_Camera;
 	bool m_GameLoop = false;
 	HMODULE m_VulkanLibrary;
 	vk::UniqueInstance m_Instance;
 	vk::PhysicalDevice m_PhysicalDevice;
+	vk::DeviceSize m_UniformBufferOffsetAlignment;
+	vk::DeviceSize m_MatrixBufferOffsetAlignment;
 	uint32_t m_GraphicsQueueFamilyID;
 	vk::UniqueDevice m_LogicalDevice;
 	vk::Queue m_GraphicsQueue;
@@ -181,6 +243,7 @@ struct VulkanApp
 	vk::UniqueSampler m_Sampler;
 	vk::UniqueShaderModule m_VertexShader;
 	vk::UniqueShaderModule m_FragmentShader;
+	vk::UniqueDescriptorSetLayout m_VertexDescriptorSetLayout;
 	vk::UniqueDescriptorSetLayout m_FragmentDescriptorSetLayout;
 	std::vector<vk::DescriptorSetLayout> m_DescriptorSetLayouts;
 	std::vector<vk::PushConstantRange> m_PushConstantRanges;
@@ -222,28 +285,41 @@ struct VulkanApp
 		glm::mat4 transform,
 		glm::vec4 color)
 	{
+		Sprite sprite;
 		auto& supports = m_Supports[m_UpdateData.nextImage];
 		glm::mat4 mvp =  m_UpdateData.vp * transform;
 
-		PushConstants& pushRange = m_UpdateData.pushConstants[m_UpdateData.spriteIndex];
-		pushRange.transform = mvp;
+		memcpy((char*)m_UpdateData.mapped + m_UpdateData.copyOffset, &mvp, sizeof(glm::mat4));
+		m_UpdateData.copyOffset += m_MatrixBufferOffsetAlignment;
+
+		FragmentPushConstants pushRange;
 		pushRange.textureID = textureIndex;
 		pushRange.r = color.r;
 		pushRange.g = color.g;
 		pushRange.b = color.b;
 		pushRange.a = color.a;
 
-		supports.m_RenderCommandBuffer->pushConstants<PushConstants>(
+		supports.m_RenderCommandBuffer->pushConstants<FragmentPushConstants>(
 			m_PipelineLayout.get(),
-			vk::ShaderStageFlagBits::eAllGraphics,
+			vk::ShaderStageFlagBits::eFragment,
 			0U,
-			{ m_UpdateData.pushConstants[m_UpdateData.spriteIndex] });
+			{ pushRange });
+
+		uint32_t dynamicOffset = static_cast<uint32_t>(m_UpdateData.spriteIndex * m_MatrixBufferOffsetAlignment);
+
+		// bind dynamic matrix uniform
+		supports.m_RenderCommandBuffer->bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,
+			m_PipelineLayout.get(),
+			0U,
+			{ supports.m_VertexDescriptorSet.get() },
+			{ dynamicOffset });
 
 		auto vertexOffset = textureIndex * IndicesPerQuad;
 		// draw the sprite
 		supports.m_RenderCommandBuffer->
 			drawIndexed(IndicesPerQuad, 1U, 0U, vertexOffset, 0U);
-		++(m_UpdateData.spriteIndex);
+		m_UpdateData.spriteIndex++;
 	}
 
 	void Run(LoopCallbacks callbacks)
@@ -362,6 +438,8 @@ struct VulkanApp
 			stagingBufferResult.allocation->size);
 		memcpy(stagingBufferData, bitmap.m_Data.data(), static_cast<size_t>(bitmap.m_Size));
 		m_LogicalDevice->unmapMemory(stagingBufferResult.allocation->memory);
+
+
 
 		// begin recording command buffer
 		m_CopyCommandBuffer->begin(vk::CommandBufferBeginInfo(
@@ -490,6 +568,15 @@ struct VulkanApp
 		auto devices = m_Instance->enumeratePhysicalDevices();
 		m_PhysicalDevice = devices[0];
 
+		m_UniformBufferOffsetAlignment = m_PhysicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
+		auto offsetsForMatrix = sizeof(glm::mat4) / m_UniformBufferOffsetAlignment;
+		if (offsetsForMatrix == 0)
+		{
+			offsetsForMatrix = 1;
+		}
+		m_MatrixBufferOffsetAlignment = offsetsForMatrix * m_UniformBufferOffsetAlignment;
+
+
 		// find graphics queue
 		auto gpuQueueProperties = m_PhysicalDevice.getQueueFamilyProperties();
 		auto graphicsQueueInfo = std::find_if(gpuQueueProperties.begin(), gpuQueueProperties.end(),
@@ -589,17 +676,16 @@ struct VulkanApp
 		m_FragmentShader = createShaderModule(initData.shaderData.fragmentShaderPath);
 
 		// create descriptor set layouts
-		m_FragmentDescriptorSetLayout = createFragmentSetLayout(
-			m_LogicalDevice.get(), 
-			static_cast<uint32_t>(m_Textures.size()), 
-			m_Sampler.get());
+		m_VertexDescriptorSetLayout = createVertexSetLayout(m_LogicalDevice.get());
+		m_FragmentDescriptorSetLayout = createFragmentSetLayout(m_LogicalDevice.get(), static_cast<uint32_t>(m_Textures.size()), m_Sampler.get());
+		m_DescriptorSetLayouts.push_back(m_VertexDescriptorSetLayout.get());
 		m_DescriptorSetLayouts.push_back(m_FragmentDescriptorSetLayout.get());
 
 		// setup push constant ranges
 		m_PushConstantRanges.emplace_back(vk::PushConstantRange(
-			vk::ShaderStageFlagBits::eAllGraphics,
+			vk::ShaderStageFlagBits::eFragment,
 			0U,
-			sizeof(PushConstants)));
+			sizeof(FragmentPushConstants)));
 
 		// create fragment layout descriptor pool
 		m_FragmentLayoutDescriptorPool = createFragmentDescriptorPool(
@@ -784,8 +870,6 @@ private:
 			return false;
 		}
 		m_UpdateData.nextImage = nextImage.value;
-		m_UpdateData.pushConstants.resize(spriteCount);
-		m_UpdateData.spriteIndex = 0;
 
 		auto& supports = m_Supports[nextImage.value];
 
@@ -795,12 +879,66 @@ private:
 			static_cast<vk::Bool32>(true), 
 			std::numeric_limits<uint64_t>::max());
 
+		const size_t minimumCount = 1;
+		size_t instanceCount = std::max(minimumCount, spriteCount);
+		// (re)create matrix buffer if it is smaller than required
+		if (instanceCount > supports.m_BufferCapacity)
+		{
+			supports.m_BufferCapacity = instanceCount * 2;
+
+			auto newBufferSize = supports.m_BufferCapacity * m_MatrixBufferOffsetAlignment;
+
+			// create staging buffer
+			auto stagingBufferResult = CreateBuffer(newBufferSize,
+				vk::BufferUsageFlagBits::eTransferSrc,
+				vk::MemoryPropertyFlagBits::eHostCoherent |
+				vk::MemoryPropertyFlagBits::eHostVisible,
+				true);
+				
+			supports.m_MatrixStagingBuffer = std::move(stagingBufferResult.buffer);
+			supports.m_MatrixStagingMemory = std::move(stagingBufferResult.allocation);
+
+			// create matrix buffer
+			auto matrixBufferResult = CreateBuffer(newBufferSize,
+				vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer,
+				vk::MemoryPropertyFlagBits::eDeviceLocal,
+				true);
+			supports.m_MatrixBuffer = std::move(matrixBufferResult.buffer);
+			supports.m_MatrixMemory = std::move(matrixBufferResult.allocation);
+		}
+
+		m_UpdateData.mapped = m_LogicalDevice->mapMemory(
+			supports.m_MatrixStagingMemory->memory, 
+			supports.m_MatrixStagingMemory->offsetInDeviceMemory,
+			supports.m_MatrixStagingMemory->size);
+
+		m_UpdateData.copyOffset = 0;
 		m_UpdateData.vp = m_Camera.getMatrix();
 
 		m_LogicalDevice->waitForFences({ supports.m_RenderBufferExecuted.get() }, 
 		vk::Bool32(true),
 		std::numeric_limits<uint64_t>::max());
 		m_LogicalDevice->resetFences({ supports.m_RenderBufferExecuted.get() });
+
+		// TODO: benchmark whether staging buffer use is faster than alternatives
+        auto descriptorBufferInfo = vk::DescriptorBufferInfo(
+                supports.m_MatrixBuffer.get(),
+                0U,
+                m_MatrixBufferOffsetAlignment);
+		m_LogicalDevice->updateDescriptorSets(
+			{ 
+				vk::WriteDescriptorSet(
+					supports.m_VertexDescriptorSet.get(),
+					0U,
+					0U,
+					1U,
+					vk::DescriptorType::eUniformBufferDynamic,
+					nullptr,
+					&descriptorBufferInfo,
+					nullptr) 
+			},
+			{ }
+		);
 
 		/////////////////////////////////////////////////////////////
 		// set up data that is constant between all command buffers
@@ -855,16 +993,30 @@ private:
 		supports.m_RenderCommandBuffer->bindDescriptorSets(
 			vk::PipelineBindPoint::eGraphics,
 			m_PipelineLayout.get(),
-			0U,
+			1U,
 			{ m_FragmentDescriptorSet.get() },
 			{});
 
+		m_UpdateData.spriteIndex = 0;
 		return true;
 	}
 
 	void EndRender()
 	{
 		auto& supports = m_Supports[m_UpdateData.nextImage];
+		// copy matrices from staging buffer to gpu buffer
+		m_LogicalDevice->unmapMemory(supports.m_MatrixStagingMemory->memory);
+
+		CopyToBuffer(
+			supports.m_CopyCommandBuffer.get(),
+			supports.m_MatrixStagingBuffer.get(),
+			supports.m_MatrixBuffer.get(),
+			supports.m_MatrixMemory->size,
+			0U,
+			0U,
+			std::optional<vk::Fence>(),
+			{},
+			{ supports.m_MatrixBufferStagingCompleteSemaphore.get() });
 
 		// Finish recording draw command buffer
 		supports.m_RenderCommandBuffer->endRenderPass();
@@ -875,8 +1027,8 @@ private:
 		m_GraphicsQueue.submit(
 			{
 				vk::SubmitInfo(
-					0U,
-					nullptr,
+					1U,
+					&supports.m_MatrixBufferStagingCompleteSemaphore.get(),
 					&stageFlags,
 					1U,
 					&supports.m_RenderCommandBuffer.get(),
@@ -917,7 +1069,6 @@ private:
 		vk::UniqueImage image;
 		UniqueAllocation allocation;
 	};
-	
 	ImageCreateResult CreateImageFromBitmap(const Bitmap& bitmap)
 	{
 		ImageCreateResult result;
@@ -959,6 +1110,21 @@ private:
 		return m_LogicalDevice->createShaderModuleUnique(shaderInfo);
 	}
 
+	vk::UniqueDescriptorPool createVertexDescriptorPool()
+	{
+		auto poolSizes = std::vector<vk::DescriptorPoolSize>
+		{
+			vk::DescriptorPoolSize(vk::DescriptorType::eUniformBufferDynamic, 1U)
+		};
+
+		return m_LogicalDevice->createDescriptorPoolUnique(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet),
+				BufferCount,
+				static_cast<uint32_t>(poolSizes.size()),
+				poolSizes.data()));
+	}
+
 	vk::UniqueDescriptorPool createFragmentDescriptorPool(const vk::Device& logicalDevice, uint32_t textureCount)
 	{
 		auto poolSizes = std::vector<vk::DescriptorPoolSize>
@@ -973,6 +1139,25 @@ private:
 				1U,
 				static_cast<uint32_t>(poolSizes.size()),
 				poolSizes.data()));
+	}
+
+	vk::UniqueDescriptorSetLayout createVertexSetLayout(const vk::Device& logicalDevice)
+	{
+		auto vertexLayoutBindings = std::vector<vk::DescriptorSetLayoutBinding>
+		{
+			// Vertex: matrix uniform buffer (dynamic)
+			vk::DescriptorSetLayoutBinding(
+				0U,
+				vk::DescriptorType::eUniformBufferDynamic,
+				1U,
+				vk::ShaderStageFlagBits::eVertex)
+		};
+
+		return logicalDevice.createDescriptorSetLayoutUnique(
+			vk::DescriptorSetLayoutCreateInfo(
+				vk::DescriptorSetLayoutCreateFlags(),
+				static_cast<uint32_t>(vertexLayoutBindings.size()),
+				vertexLayoutBindings.data()));
 	}
 
 	vk::UniqueDescriptorSetLayout createFragmentSetLayout(
@@ -1415,11 +1600,24 @@ private:
 				2U));
 		support.m_CopyCommandBuffer = std::move(commandBuffers[0]);
 		support.m_RenderCommandBuffer = std::move(commandBuffers[1]);
+		support.m_VertexLayoutDescriptorPool = createVertexDescriptorPool();
+		support.m_BufferCapacity = 0U;
 		support.m_RenderBufferExecuted = m_LogicalDevice->createFenceUnique(
 			vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
 		support.m_ImageRenderCompleteSemaphore = m_LogicalDevice->createSemaphoreUnique(
 			vk::SemaphoreCreateInfo(
 				vk::SemaphoreCreateFlags()));
+		support.m_MatrixBufferStagingCompleteSemaphore = m_LogicalDevice->createSemaphoreUnique(
+			vk::SemaphoreCreateInfo(
+				vk::SemaphoreCreateFlags()));
+		support.m_VertexLayoutDescriptorPool = createVertexDescriptorPool();
+		support.m_VertexDescriptorSet = vk::UniqueDescriptorSet(m_LogicalDevice->allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				support.m_VertexLayoutDescriptorPool.get(),
+				1U,
+				&m_VertexDescriptorSetLayout.get()))[0],
+			vk::DescriptorSetDeleter(m_LogicalDevice.get(),
+				support.m_VertexLayoutDescriptorPool.get()));
 	}
 
 	void CreateSurface(std::optional<vk::Extent2D> extent)

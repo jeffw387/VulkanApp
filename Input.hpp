@@ -1,12 +1,32 @@
 #pragma once
-#include <functional>
 
 namespace Input
 {
+    enum class KeyStates
+    {
+        Pressed,
+        Released
+    };
+
+    enum class ButtonStates
+    {
+        Pressed,
+        Released
+    };
+
+    enum class Axes
+    {
+        LeftX,
+        LeftY,
+        RightX,
+        RightY
+    };
+
     // an abstract notion of something that must be fired only once when given a particular input
+    using ActionFunc = void(*)();
     struct Action
     {
-        std::function<void()> func;
+        ActionFunc func = nullptr;
     };
 
     // an abstract notion of something that becomes true or false based on input
@@ -16,9 +36,10 @@ namespace Input
     };
 
     // an abstract notion of a nonbinary state based on nonbinary input
+    using RangeTranslator = float(*)(float);
     struct Range
     {
-        std::function<float(float)> translator;
+        RangeTranslator translator;
         float value;
     };
 }

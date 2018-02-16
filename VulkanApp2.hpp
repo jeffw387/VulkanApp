@@ -29,11 +29,21 @@
 #include <thread>
 #include <variant>
 #include <chrono>
+#include <ratio>
 
 namespace vka
 {
 	using SpriteCount = size_t;
 	using ImageIndex = uint32_t;
+	constexpr auto MillisecondsPerSecond = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::seconds(1));
+	constexpr auto UpdateDuration = MillisecondsPerSecond / 50;
+	using VertexIndex = uint16_t;
+	using InputTime = std::chrono::milliseconds;
+	using Clock = std::chrono::steady_clock;
+
+	// store input time in milliseconds
+	// consume x milliseconds of input at a time
+	// x = milliseconds per update
 	struct VulkanApp;
 	struct ShaderData
 	{
@@ -63,9 +73,8 @@ namespace vka
 		}
 	};
 
-	using Index = uint16_t;
-	constexpr Index IndicesPerQuad = 6U;
-	constexpr std::array<Index, IndicesPerQuad> IndexArray = 
+	constexpr VertexIndex IndicesPerQuad = 6U;
+	constexpr std::array<VertexIndex, IndicesPerQuad> IndexArray = 
 	{
 		0, 1, 2, 2, 3, 0
 	};
@@ -82,9 +91,6 @@ namespace vka
 		std::function<void(VulkanApp*)> RenderCallback;
 		std::function<void()> AfterRenderCallback;
 	};
-
-	using InputTime = std::chrono::high_resolution_clock::duration;
-	using Clock = std::chrono::high_resolution_clock;
 
 	struct KeyMessage
 	{
@@ -258,7 +264,7 @@ namespace vka
 		UpdateData m_UpdateData;
 		GLFWwindow* m_Window;
 		bool m_ResizeNeeded = false;
-		std::chrono::time_point<std::chrono::high_resolution_clock> m_StartupTimePoint;
+		Clock::time_point m_StartupTimePoint;
 		CircularQueue<InputMessage, 500> m_InputBuffer;
 		Camera2D m_Camera;
 		bool m_GameLoop = false;
@@ -492,8 +498,6 @@ namespace vka
 			memcpy(stagingBufferData, bitmap.m_Data.data(), static_cast<size_t>(bitmap.m_Size));
 			m_LogicalDevice->unmapMemory(stagingBufferResult.allocation->memory);
 
-
-
 			// begin recording command buffer
 			m_CopyCommandBuffer->begin(vk::CommandBufferBeginInfo(
 				vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
@@ -601,7 +605,7 @@ namespace vka
 				std::runtime_error("Error creating GLFW window.");
 				exit(-1);
 			}
-			m_StartupTimePoint = std::chrono::high_resolution_clock::now();
+			m_StartupTimePoint = Clock::now();
 			glfwSetWindowUserPointer(m_Window, this);
 			glfwSetWindowSizeCallback(m_Window, ResizeCallback);
 			glfwSetKeyCallback(m_Window, KeyCallback);
@@ -1480,7 +1484,7 @@ namespace vka
 		void CreateIndexBuffer()
 		{
 			//create index buffers
-			auto indexBufferSize = sizeof(Index) * IndicesPerQuad;
+			auto indexBufferSize = sizeof(VertexIndex) * IndicesPerQuad;
 			auto indexStagingResult = CreateBuffer(indexBufferSize,
 				vk::BufferUsageFlagBits::eTransferSrc,
 				vk::MemoryPropertyFlagBits::eHostVisible |
@@ -1729,7 +1733,7 @@ namespace vka
 	static void PushBackInput(GLFWwindow* window, InputMessage&& msg)
 	{
 		auto& app = *GetUserPointer(window);
-		msg.time = Clock::now() - app.m_StartupTimePoint;
+		msg.time = std::chrono::duration_cast<InputTime>(Clock::now() - app.m_StartupTimePoint);
 		app.m_InputBuffer.pushLast(std::move(msg));
 	}
 

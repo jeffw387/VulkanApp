@@ -41,6 +41,7 @@ namespace vka
 	using InputTime = std::chrono::milliseconds;
 	using Clock = std::chrono::steady_clock;
 
+	// at start of loop, get time since last loop start
 	// store input time in milliseconds
 	// consume x milliseconds of input at a time
 	// x = milliseconds per update

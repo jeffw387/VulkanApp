@@ -1,0 +1,1 @@
+meson build/release --layout=flat --buildtype=release

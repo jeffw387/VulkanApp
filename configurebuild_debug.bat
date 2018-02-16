@@ -1,0 +1,1 @@
+meson build/debug --layout=flat --buildtype=debug

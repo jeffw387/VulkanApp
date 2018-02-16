@@ -1,0 +1,1 @@
+meson build/debugoptimized --layout=flat --buildtype=debugoptimized

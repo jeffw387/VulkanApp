@@ -2,13 +2,7 @@
 
 namespace Input
 {
-    enum class KeyStates
-    {
-        Pressed,
-        Released
-    };
-
-    enum class ButtonStates
+    enum class BooleanInputEvents
     {
         Pressed,
         Released
@@ -26,12 +20,25 @@ namespace Input
     using ActionFunc = void(*)();
     struct Action
     {
+        BooleanInputEvents triggerEvent = BooleanInputEvents::Pressed;
         ActionFunc func = nullptr;
+        void operator()()
+        {
+            func();
+        }
     };
 
-    // an abstract notion of something that becomes true or false based on input
-    struct State
+    // boolean that toggles between true and false on a toggle event
+    struct ToggleState
     {
+        BooleanInputEvents toggleEvent = BooleanInputEvents::Pressed;
+        bool active = false;
+    };
+
+    // boolean that becomes true on one event, and becomes false on another event
+    struct MaintainState
+    {
+        BooleanInputEvents trueEvent = BooleanInputEvents::Pressed;
         bool active = false;
     };
 

@@ -20,6 +20,7 @@
 #include "profiler.hpp"
 #include "mymath.hpp"
 #include "CircularQueue.hpp"
+#include "Input.hpp"
 
 #undef max
 #include <iostream>
@@ -38,7 +39,7 @@ namespace vka
 	constexpr auto MillisecondsPerSecond = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::seconds(1));
 	constexpr auto UpdateDuration = MillisecondsPerSecond / 50;
 	using VertexIndex = uint16_t;
-	using InputTime = std::chrono::milliseconds;
+	using TimePoint_ms = std::chrono::milliseconds;
 	using Clock = std::chrono::steady_clock;
 
 	// at start of loop, get time since last loop start
@@ -86,11 +87,12 @@ namespace vka
 		glm::float32 r, g, b, a;
 	};
 
+	using UpdateFuncPtr = SpriteCount(*)(void*, TimePoint_ms timePoint);
+	using RenderFuncPtr = void(*)(void*);
 	struct LoopCallbacks
 	{
-		std::function<SpriteCount()> BeforeRenderCallback;
-		std::function<void(VulkanApp*)> RenderCallback;
-		std::function<void()> AfterRenderCallback;
+		UpdateFuncPtr UpdateCallback;
+		RenderFuncPtr RenderCallback;
 	};
 
 	struct KeyMessage
@@ -152,7 +154,7 @@ namespace vka
 
 	struct InputMessage
 	{
-		InputTime time;
+		TimePoint_ms time;
 		InputMsgVariant variant;
 	};
 
@@ -199,6 +201,7 @@ namespace vka
 		std::vector<const char*> deviceExtensions;
 		ShaderData shaderData;
 		std::function<void(VulkanApp*)> imageLoadCallback;
+		void* userPtr;
 	};
 
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugBreakCallback(
@@ -267,6 +270,10 @@ namespace vka
 		bool m_ResizeNeeded = false;
 		Clock::time_point m_StartupTimePoint;
 		CircularQueue<InputMessage, 500> m_InputBuffer;
+		// TODO: possibly convert action map to vector
+		std::map<int, Input::Action> m_ActionMap;
+		std::map<int, Input::MaintainState> m_MaintainStateMap;
+		std::map<int, Input::ToggleState> m_ToggleStateMap;
 		Camera2D m_Camera;
 		bool m_GameLoop = false;
 		HMODULE m_VulkanLibrary;
@@ -388,21 +395,21 @@ namespace vka
 			std::thread gameLoop([&](){
 				while(m_GameLoop)
 				{
+					
 					if (m_ResizeNeeded)
 					{
 						auto size = GetWindowSize();
 						resizeWindow(size);
 						m_ResizeNeeded = false;
 					}
-					auto spriteCount = callbacks.BeforeRenderCallback();
+					auto spriteCount = callbacks.UpdateCallback(m_InitData.userPtr);
 					if (!BeginRender(spriteCount))
 					{
 						// TODO: probably need to handle some specific errors here
 						continue;
 					}
-					callbacks.RenderCallback(this);
+					callbacks.RenderCallback(m_InitData.userPtr);
 					EndRender();
-					callbacks.AfterRenderCallback();
 				}
 			});
 
@@ -1734,7 +1741,7 @@ namespace vka
 	static void PushBackInput(GLFWwindow* window, InputMessage&& msg)
 	{
 		auto& app = *GetUserPointer(window);
-		msg.time = std::chrono::duration_cast<InputTime>(Clock::now() - app.m_StartupTimePoint);
+		msg.time = std::chrono::duration_cast<TimePoint_ms>(Clock::now() - app.m_StartupTimePoint);
 		app.m_InputBuffer.pushLast(std::move(msg));
 	}
 

@@ -36,16 +36,21 @@ namespace vka
 {
 	using SpriteCount = size_t;
 	using ImageIndex = uint32_t;
-	constexpr auto MillisecondsPerSecond = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::seconds(1));
-	constexpr auto UpdateDuration = MillisecondsPerSecond / 50;
 	using VertexIndex = uint16_t;
-	using TimePoint_ms = std::chrono::milliseconds;
 	using Clock = std::chrono::steady_clock;
+	using milliseconds = std::chrono::milliseconds;
+	using TimePoint_ms = std::chrono::time_point<Clock, milliseconds>;
+	constexpr auto MillisecondsPerSecond = 
+		std::chrono::duration_cast<milliseconds>(std::chrono::seconds(1));
+	constexpr auto UpdateDuration = MillisecondsPerSecond / 50;
 
-	// at start of loop, get time since last loop start
-	// store input time in milliseconds
-	// consume x milliseconds of input at a time
-	// x = milliseconds per update
+	static TimePoint_ms NowMilliseconds()
+	{
+		auto now = Clock::now();
+		auto now_ms = std::chrono::time_point_cast<milliseconds>(now);
+		return now_ms;
+	}
+
 	struct VulkanApp;
 	struct ShaderData
 	{
@@ -268,7 +273,8 @@ namespace vka
 		UpdateData m_UpdateData;
 		GLFWwindow* m_Window;
 		bool m_ResizeNeeded = false;
-		Clock::time_point m_StartupTimePoint;
+		TimePoint_ms m_StartupTimePoint;
+		TimePoint_ms m_CurrentSimulationTime;
 		CircularQueue<InputMessage, 500> m_InputBuffer;
 		// TODO: possibly convert action map to vector
 		std::map<int, Input::Action> m_ActionMap;
@@ -392,17 +398,27 @@ namespace vka
 		void Run(LoopCallbacks callbacks)
 		{
 			m_GameLoop = true;
+			m_StartupTimePoint = NowMilliseconds();
+			m_CurrentSimulationTime = m_StartupTimePoint;
 			std::thread gameLoop([&](){
 				while(m_GameLoop)
 				{
-					
+					auto currentTime = NowMilliseconds();
 					if (m_ResizeNeeded)
 					{
 						auto size = GetWindowSize();
 						resizeWindow(size);
 						m_ResizeNeeded = false;
 					}
-					auto spriteCount = callbacks.UpdateCallback(m_InitData.userPtr);
+					// Update simulation to be in sync with actual time
+					SpriteCount spriteCount;
+					while (currentTime - m_CurrentSimulationTime > UpdateDuration)
+					{
+						m_CurrentSimulationTime += UpdateDuration;
+
+						spriteCount = callbacks.UpdateCallback(m_InitData.userPtr, m_CurrentSimulationTime);
+					}
+					// render a frame
 					if (!BeginRender(spriteCount))
 					{
 						// TODO: probably need to handle some specific errors here
@@ -613,7 +629,6 @@ namespace vka
 				std::runtime_error("Error creating GLFW window.");
 				exit(-1);
 			}
-			m_StartupTimePoint = Clock::now();
 			glfwSetWindowUserPointer(m_Window, this);
 			glfwSetWindowSizeCallback(m_Window, ResizeCallback);
 			glfwSetKeyCallback(m_Window, KeyCallback);
@@ -1741,7 +1756,7 @@ namespace vka
 	static void PushBackInput(GLFWwindow* window, InputMessage&& msg)
 	{
 		auto& app = *GetUserPointer(window);
-		msg.time = std::chrono::duration_cast<TimePoint_ms>(Clock::now() - app.m_StartupTimePoint);
+		msg.time = NowMilliseconds();
 		app.m_InputBuffer.pushLast(std::move(msg));
 	}
 

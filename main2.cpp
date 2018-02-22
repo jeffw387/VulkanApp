@@ -132,18 +132,18 @@ public:
 		}
 
 		vka::LoopCallbacks callbacks;
-		callbacks.UpdateCallback = [](void* userPtr, TimePoint_ms timePoint) -> vka::SpriteCount
+		callbacks.UpdateCallback = [](void* userPtr, vka::TimePoint_ms timePoint) -> vka::SpriteCount
 		{
-			ClientApp& client = *((ClientApp)userPtr);
-			client.app->m_InputBuffer.popFirstIf([timePoint](InputMessage msg){ return msg.time < timePoint; })
+			ClientApp& client = *(ClientApp*)userPtr;
+			client.app.m_InputBuffer.popFirstIf([timePoint](vka::InputMessage msg){ return msg.time < timePoint; });
 			return client.spriteComponents.size();
 		};
 		callbacks.RenderCallback = [](void* userPtr)
 		{
-			ClientApp& client = *((ClientApp)userPtr);
+			ClientApp& client = *(ClientApp*)userPtr;
 			for (const auto& [entity, sprite] : client.spriteComponents)
 			{
-				client.app->RenderSprite(sprite.textureIndex, sprite.transform, sprite.color);
+				client.app.RenderSprite(sprite.textureIndex, sprite.transform, sprite.color);
 			}
 		};
 		app.Run(callbacks);
@@ -152,3 +152,8 @@ public:
 	}
 };
 
+int main()
+{
+	ClientApp clientApp;
+	return clientApp.run();
+}

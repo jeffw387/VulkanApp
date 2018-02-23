@@ -281,6 +281,9 @@ namespace vka
 		std::map<int, Input::MaintainState> m_MaintainStateMap;
 		std::map<int, Input::ToggleState> m_ToggleStateMap;
 		Camera2D m_Camera;
+		std::mutex m_ResizeMutex;
+		std::condition_variable m_ResizeCondition;
+		LoopCallbacks m_LoopCallbacks;
 		bool m_GameLoop = false;
 		HMODULE m_VulkanLibrary;
 		vk::UniqueInstance m_Instance;
@@ -395,43 +398,57 @@ namespace vka
 			m_UpdateData.spriteIndex++;
 		}
 
+		void GameThread()
+		{
+			while(m_GameLoop)
+			{
+				auto currentTime = NowMilliseconds();
+				std::unique_lock<std::mutex> resizeLock(m_ResizeMutex);
+				m_ResizeCondition.wait(resizeLock, [this](){ return !m_ResizeNeeded; });
+				resizeLock.unlock();
+				// Update simulation to be in sync with actual time
+				SpriteCount spriteCount = 0;
+				while (currentTime - m_CurrentSimulationTime > UpdateDuration)
+				{
+					m_CurrentSimulationTime += UpdateDuration;
+
+					spriteCount = m_LoopCallbacks.UpdateCallback(m_InitData.userPtr, m_CurrentSimulationTime);
+				}
+				if (!spriteCount)
+				{
+					continue;
+				}
+				// render a frame
+				if (!BeginRender(spriteCount))
+				{
+					// TODO: probably need to handle some specific errors here
+					continue;
+				}
+				m_LoopCallbacks.RenderCallback(m_InitData.userPtr);
+				EndRender();
+			}
+		}
+
 		void Run(LoopCallbacks callbacks)
 		{
+			m_LoopCallbacks = callbacks;
 			m_GameLoop = true;
 			m_StartupTimePoint = NowMilliseconds();
 			m_CurrentSimulationTime = m_StartupTimePoint;
-			std::thread gameLoop([&](){
-				while(m_GameLoop)
-				{
-					auto currentTime = NowMilliseconds();
-					if (m_ResizeNeeded)
-					{
-						auto size = GetWindowSize();
-						resizeWindow(size);
-						m_ResizeNeeded = false;
-					}
-					// Update simulation to be in sync with actual time
-					SpriteCount spriteCount;
-					while (currentTime - m_CurrentSimulationTime > UpdateDuration)
-					{
-						m_CurrentSimulationTime += UpdateDuration;
 
-						spriteCount = callbacks.UpdateCallback(m_InitData.userPtr, m_CurrentSimulationTime);
-					}
-					// render a frame
-					if (!BeginRender(spriteCount))
-					{
-						// TODO: probably need to handle some specific errors here
-						continue;
-					}
-					callbacks.RenderCallback(m_InitData.userPtr);
-					EndRender();
-				}
-			});
+			std::thread gameLoop(&VulkanApp::GameThread, this);
 
+			// Event loop
 			while (!glfwWindowShouldClose(m_Window))
 			{
-				//loop
+				// join threads if resize needed, then restart game thread
+				while (m_ResizeNeeded)
+				{
+					auto size = GetWindowSize();
+					resizeWindow(size);
+					m_ResizeNeeded = false;
+					m_ResizeCondition.notify_all();
+				}
 				glfwWaitEvents();
 			}
 			m_GameLoop = false;
@@ -623,6 +640,7 @@ namespace vka
 				std::runtime_error("Error initializing GLFW.");
 				exit(glfwInitError);
 			}
+			glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
 			m_Window = glfwCreateWindow(initData.width, initData.height, initData.WindowTitle, NULL, NULL);
 			if (m_Window == NULL)
 			{
@@ -1122,24 +1140,15 @@ namespace vka
 						&supports.m_ImageRenderCompleteSemaphore.get())
 				}, supports.m_RenderBufferExecuted.get());
 
+			std::scoped_lock<std::mutex> resizeLock(m_ResizeMutex);
 			// Present image
-			auto result = m_GraphicsQueue.presentKHR(
-				vk::PresentInfoKHR(
+			auto presentInfo = vk::PresentInfoKHR(
 					1U,
 					&supports.m_ImageRenderCompleteSemaphore.get(),
 					1U,
 					&m_Swapchain.get(),
-					&m_UpdateData.nextImage));
-
-			if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR)
-			{
-				m_SurfaceExtent = GetWindowSize();
-				createSwapchainWithDependencies(m_SurfaceExtent);
-			}
-			else if (result != vk::Result::eSuccess)
-			{
-				throw std::runtime_error("failed to present swap chain image!");
-			}
+					&m_UpdateData.nextImage);
+			auto presentResult = vkQueuePresentKHR(m_GraphicsQueue.operator VkQueue(), &presentInfo.operator const VkPresentInfoKHR &());
 		}
 
 		vk::Extent2D GetWindowSize()
@@ -1619,6 +1628,7 @@ namespace vka
 
 		void resizeWindow(vk::Extent2D size)
 		{
+			std::scoped_lock<std::mutex> resizeLock(m_ResizeMutex);
 			m_Camera.setSize(glm::vec2(static_cast<float>(size.width), static_cast<float>(size.height)));
 			createSwapchainWithDependencies(size);
 		}
@@ -1747,8 +1757,7 @@ namespace vka
 		// Window resize callback
 		static void ResizeCallback(GLFWwindow* window, int width, int height)
 		{
-			auto ptr = glfwGetWindowUserPointer(window);
-			((VulkanApp*)ptr)->m_ResizeNeeded = true;
+			GetUserPointer(window)->m_ResizeNeeded = true;
 		};
 
 	};

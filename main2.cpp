@@ -5,8 +5,10 @@
 #include <iostream>
 #include <map>
 
-#include "stx/btree_map.h"
-#include "ECS.hpp"
+// #include "stx/btree_map.h"
+// #include "ECS.hpp"
+#include "ECSComponents.hpp"
+#include "entt.hpp"
 
 #ifndef CONTENTROOT
 #define CONTENTROOT
@@ -58,9 +60,6 @@ void LoadTextures(vka::VulkanApp* app)
 
 class ClientApp
 {
-	ECS::Manager entityManager;
-	using SpriteMap = stx::btree_map<Entity, Sprite>;
-	SpriteMap spriteComponents;
 	std::vector<const char*> Layers;
 	std::vector<const char*> InstanceExtensions;
 	vk::ApplicationInfo appInfo;
@@ -70,6 +69,7 @@ class ClientApp
 	std::function<void(vka::VulkanApp*)> imageLoadCallback;
 	vka::InitData initData;
 	vka::VulkanApp app;
+	entt::DefaultRegistry enttRegistry;
 
 public:
 	int run()
@@ -109,8 +109,8 @@ public:
 		initData = 
 		{
 			"Vulkan App",
-			500,
-			500,
+			900,
+			900,
 			instanceCreateInfo,
 			deviceExtensions,
 			shaderData,
@@ -118,33 +118,76 @@ public:
 			this
 		};
 		app.init(initData);
+		enttRegistry.prepare<cmp::TextureID, cmp::PositionMatrix, cmp::Color>();
+		enttRegistry.prepare<cmp::Position, cmp::PositionMatrix, cmp::Velocity>();
 		
 		TextureIndex starTexture = static_cast<TextureIndex>(Image::ImageIDToTextureID[Image::Star]);
 		for (auto i = 0.f; i < 3.f; i++)
 		{
-			auto entity = entityManager.CreateEntity();
-			auto& sprite = spriteComponents[entity];
-			sprite.textureIndex = starTexture;
-			sprite.color = glm::vec4(1.f);
-			auto position = glm::vec3(i*2, i*2, -1.f);
-			auto transform = glm::translate(glm::mat4(1.f), position);
-			sprite.transform = transform;
+			auto entity = enttRegistry.create(
+				cmp::TextureID(starTexture), 
+				cmp::Position(glm::vec3(i*2.f, i*2.f, 0.f)),
+				cmp::PositionMatrix(),
+				cmp::Velocity(glm::vec2()),
+				cmp::Color(glm::vec4(1.f)),
+				cmp::RectSize());
 		}
 
-		vka::LoopCallbacks callbacks;
-		callbacks.UpdateCallback = [](void* userPtr, vka::TimePoint_ms timePoint) -> vka::SpriteCount
+		struct InputVisitor
 		{
-			ClientApp& client = *(ClientApp*)userPtr;
-			client.app.m_InputBuffer.popFirstIf([timePoint](vka::InputMessage msg){ return msg.time < timePoint; });
-			return client.spriteComponents.size();
-		};
-		callbacks.RenderCallback = [](void* userPtr)
-		{
-			ClientApp& client = *(ClientApp*)userPtr;
-			for (const auto& [entity, sprite] : client.spriteComponents)
+			vka::VulkanApp* app;
+
+			InputVisitor(vka::VulkanApp* app) : app(app) {}
+
+			operator()(vka::KeyMessage msg)
 			{
-				client.app.RenderSprite(sprite.textureIndex, sprite.transform, sprite.color);
+				auto bindingIterator = app->m_MaintainStateMap.find(msg.scancode);
+				(*bindingIterator).second
 			}
+
+			operator()(vka::CharMessage msg)
+			{}
+
+			operator()(vka::MouseButtonMessage msg)
+			{}
+
+			operator()(vka::CursorPosMessage msg)
+			{}
+			
+		};
+
+		vka::LoopCallbacks callbacks;
+		callbacks.UpdateCallback = [this](vka::TimePoint_ms timePoint) -> vka::SpriteCount
+		{
+			bool inputToProcess = true;
+			while (inputToProcess)
+			{
+				auto msgOpt = app.m_InputBuffer.popFirstIf([timePoint](vka::InputMessage msg){ return msg.time < timePoint; });
+				if (msgOpt.has_value())
+				{
+					switch (msgOpt.value().variant.index)
+				}
+			}
+			
+			auto physicsView = enttRegistry.persistent<cmp::Position, cmp::Velocity, cmp::PositionMatrix>();
+
+			physicsView.each([](auto entity, auto& position, auto& velocity, auto& transform){
+
+			});
+			auto renderView = enttRegistry.persistent<cmp::TextureID, cmp::PositionMatrix, cmp::Color>();
+			return view.size();
+		};
+		callbacks.RenderCallback = [this]()
+		{
+			auto view = enttRegistry.persistent<cmp::TextureID, cmp::PositionMatrix, cmp::Color>();
+			view.each([this](auto entity, const auto& textureIndex, const auto& transform, const auto& color)
+			{
+				if (!transform.matrix.has_value())
+				{
+					continue;
+				}
+				app.RenderSprite(textureIndex.index, transform.matrix, color.rgba);
+			});
 		};
 		app.Run(callbacks);
 

@@ -92,8 +92,8 @@ namespace vka
 		glm::float32 r, g, b, a;
 	};
 
-	using UpdateFuncPtr = SpriteCount(*)(void*, TimePoint_ms timePoint);
-	using RenderFuncPtr = void(*)(void*);
+	using UpdateFuncPtr = std::function<SpriteCount(TimePoint_ms)>;
+	using RenderFuncPtr = std::function<void()>;
 	struct LoopCallbacks
 	{
 		UpdateFuncPtr UpdateCallback;
@@ -412,7 +412,7 @@ namespace vka
 				{
 					m_CurrentSimulationTime += UpdateDuration;
 
-					spriteCount = m_LoopCallbacks.UpdateCallback(m_InitData.userPtr, m_CurrentSimulationTime);
+					spriteCount = m_LoopCallbacks.UpdateCallback(m_CurrentSimulationTime);
 				}
 				if (!spriteCount)
 				{
@@ -424,7 +424,7 @@ namespace vka
 					// TODO: probably need to handle some specific errors here
 					continue;
 				}
-				m_LoopCallbacks.RenderCallback(m_InitData.userPtr);
+				m_LoopCallbacks.RenderCallback();
 				EndRender();
 			}
 		}

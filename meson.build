@@ -12,6 +12,8 @@ vulkan_proj = subproject('vulkan')
 vulkan = vulkan_proj.get_variable('vulkan_dep')
 glm_proj = subproject('glm')
 glm = glm_proj.get_variable('glm_dep')
+entt_proj = subproject('entt')
+entt = entt_proj.get_variable('entt_dep')
 gtest_proj = subproject('googletest')
 gtest = gtest_proj.get_variable('gtest_dep')
 
@@ -32,7 +34,7 @@ endif
 contentroot = '/DCONTENTROOT=' + '"' + meson.source_root() + '\"'
 message(contentroot)
 message(buildtype)
-deps = [freetype, stb, glfw, btree, vulkan, glm]
+deps = [freetype, stb, glfw, btree, vulkan, glm, entt]
 executable('VulkanApp', 
     'main2.cpp',
     'VulkanFunctions.cpp',

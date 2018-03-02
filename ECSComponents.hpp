@@ -1,6 +1,8 @@
 #pragma once
 #include "Texture2D.hpp"
 #include "glm/glm.hpp"
+#include "TimeHelper.hpp"
+#include "Input.hpp"
 #include <optional>
 
 namespace cmp
@@ -52,5 +54,14 @@ namespace cmp
 
         Velocity() noexcept = default;
         Velocity(glm::vec2 velocity) : velocity(std::move(velocity)) {}
+    };
+
+    struct PlayerControl
+    {
+        std::chrono::milliseconds up;
+        std::chrono::milliseconds down;
+        std::chrono::milliseconds right;
+        std::chrono::milliseconds left;
+        std::chrono::milliseconds fire;
     };
 }

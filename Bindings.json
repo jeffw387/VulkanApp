@@ -1,0 +1,10 @@
+{
+    "Left" : 0,
+    "Right" : 1,
+    "Up" : 2,
+    "Down" : 3,
+    "Fire" : 4,
+    "Exit" : 5,
+    "Menu" : 6,
+    "Pause" : 7
+}

@@ -1,5 +1,7 @@
 project('VulkanApp', 'cpp')
 
+run_command('python', '-m', 'cogapp', '-r', 'Input.hpp')
+
 freetype_proj = subproject('freetype')
 freetype = freetype_proj.get_variable('freetype_dep')
 glfw_proj = subproject('glfw')
@@ -14,6 +16,8 @@ glm_proj = subproject('glm')
 glm = glm_proj.get_variable('glm_dep')
 entt_proj = subproject('entt')
 entt = entt_proj.get_variable('entt_dep')
+json_proj = subproject('json')
+json = json_proj.get_variable('json_dep')
 gtest_proj = subproject('googletest')
 gtest = gtest_proj.get_variable('gtest_dep')
 
@@ -34,7 +38,7 @@ endif
 contentroot = '/DCONTENTROOT=' + '"' + meson.source_root() + '\"'
 message(contentroot)
 message(buildtype)
-deps = [freetype, stb, glfw, btree, vulkan, glm, entt]
+deps = [freetype, stb, glfw, btree, vulkan, glm, entt, json]
 executable('VulkanApp', 
     'main2.cpp',
     'VulkanFunctions.cpp',

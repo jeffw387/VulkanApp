@@ -1,3 +1,6 @@
+#undef min
+#undef max
+
 #define VMA_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #include "VulkanApp2.hpp"
@@ -9,6 +12,8 @@
 // #include "ECS.hpp"
 #include "ECSComponents.hpp"
 #include "entt.hpp"
+#undef min
+#undef max
 
 #ifndef CONTENTROOT
 #define CONTENTROOT
@@ -20,13 +25,15 @@ namespace Image
 	{
 		Star,
 		Test1,
+		DungeonSheet,
 		COUNT
 	};
 
 	std::array<std::string, static_cast<size_t>(Image::COUNT)> Paths =
 	{
 		CONTENTROOT "Content/Textures/star.png",
-		CONTENTROOT "Content/Textures/texture.jpg"
+		CONTENTROOT "Content/Textures/texture.jpg",
+		CONTENTROOT "Content/Textures/dungeon_sheet.png"
 	};
 
 	std::map<size_t, size_t> ImageIDToTextureID;
@@ -56,6 +63,7 @@ void LoadTextures(vka::VulkanApp* app)
 	// Load Textures Here
 	Image::LoadHelper(app, Image::Star);
 	Image::LoadHelper(app, Image::Test1);
+	Image::LoadHelper(app, Image::DungeonSheet);
 }
 
 class ClientApp
@@ -135,59 +143,70 @@ public:
 
 		struct InputVisitor
 		{
-			vka::VulkanApp* app;
+			ClientApp* app;
 
-			InputVisitor(vka::VulkanApp* app) : app(app) {}
+			explicit InputVisitor(ClientApp* app) : app(app) {}
 
-			operator()(vka::KeyMessage msg)
+			void operator()(Input::KeyMessage msg)
 			{
-				auto bindingIterator = app->m_MaintainStateMap.find(msg.scancode);
-				(*bindingIterator).second
 			}
 
-			operator()(vka::CharMessage msg)
-			{}
+			void operator()(Input::CharMessage msg)
+			{
 
-			operator()(vka::MouseButtonMessage msg)
-			{}
+			}
 
-			operator()(vka::CursorPosMessage msg)
-			{}
+			void operator()(Input::MouseButtonMessage msg)
+			{
+
+			}
+
+			void operator()(Input::CursorPosMessage msg)
+			{
+
+			}
 			
 		};
 
 		vka::LoopCallbacks callbacks;
-		callbacks.UpdateCallback = [this](vka::TimePoint_ms timePoint) -> vka::SpriteCount
+		callbacks.UpdateCallback = [this](TimePoint_ms timePoint) -> vka::SpriteCount
 		{
 			bool inputToProcess = true;
 			while (inputToProcess)
 			{
-				auto msgOpt = app.m_InputBuffer.popFirstIf([timePoint](vka::InputMessage msg){ return msg.time < timePoint; });
-				if (msgOpt.has_value())
+				auto messageOptional = app.m_InputBuffer.popFirstIf([timePoint](Input::InputMessage msg){ return msg.time < timePoint; });
+				auto visitor = InputVisitor(this);
+				if (messageOptional.has_value())
 				{
-					switch (msgOpt.value().variant.index)
+					Input::InputMsgVariant& variant = messageOptional.value().variant;
+					std::visit(visitor, variant);
 				}
 			}
 			
 			auto physicsView = enttRegistry.persistent<cmp::Position, cmp::Velocity, cmp::PositionMatrix>();
 
-			physicsView.each([](auto entity, auto& position, auto& velocity, auto& transform){
-
-			});
+			for (auto entity : physicsView)
+			{
+				auto position = physicsView.get<cmp::Position>(entity);
+				auto velocity = physicsView.get<cmp::Velocity>(entity);
+				auto transform = physicsView.get<cmp::PositionMatrix>(entity);
+			}
 			auto renderView = enttRegistry.persistent<cmp::TextureID, cmp::PositionMatrix, cmp::Color>();
-			return view.size();
+			return renderView.size();
 		};
 		callbacks.RenderCallback = [this]()
 		{
 			auto view = enttRegistry.persistent<cmp::TextureID, cmp::PositionMatrix, cmp::Color>();
-			view.each([this](auto entity, const auto& textureIndex, const auto& transform, const auto& color)
+			for (auto entity : view)
 			{
-				if (!transform.matrix.has_value())
+				auto textureID = view.get<cmp::TextureID>(entity);
+				auto transform = view.get<cmp::PositionMatrix>(entity);
+				auto color = view.get<cmp::Color>(entity);
+				if (transform.matrix.has_value())
 				{
-					continue;
+					app.RenderSprite(textureID.index, transform.matrix.value(), color.rgba);
 				}
-				app.RenderSprite(textureIndex.index, transform.matrix, color.rgba);
-			});
+			}
 		};
 		app.Run(callbacks);
 

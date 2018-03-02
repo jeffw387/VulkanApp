@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <type_traits>
 #include "sparse_set.hpp"
+#undef min
+#undef max
 
 
 namespace entt {

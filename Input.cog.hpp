@@ -79,55 +79,5 @@ for index, bind in enumerate(bindNames):
         cog.outl(",")
 cog.outl(">;")
 ]]]*/
-struct StartUpEvent { TimePoint_ms time; };
-struct EndUpEvent { TimePoint_ms time; };
-struct UpBinding {};
-
-struct StartDownEvent { TimePoint_ms time; };
-struct EndDownEvent { TimePoint_ms time; };
-struct DownBinding {};
-
-struct StartLeftEvent { TimePoint_ms time; };
-struct EndLeftEvent { TimePoint_ms time; };
-struct LeftBinding {};
-
-struct StartRightEvent { TimePoint_ms time; };
-struct EndRightEvent { TimePoint_ms time; };
-struct RightBinding {};
-
-struct StartFireEvent { TimePoint_ms time; };
-struct EndFireEvent { TimePoint_ms time; };
-struct FireBinding {};
-
-struct StartMenuEvent { TimePoint_ms time; };
-struct EndMenuEvent { TimePoint_ms time; };
-struct MenuBinding {};
-
-struct StartPauseEvent { TimePoint_ms time; };
-struct EndPauseEvent { TimePoint_ms time; };
-struct PauseBinding {};
-
-struct StartExitEvent { TimePoint_ms time; };
-struct EndExitEvent { TimePoint_ms time; };
-struct ExitBinding {};
-
-
-using PlayerEventVariant = std::variant<
-    StartUpEvent,
-    EndUpEvent,
-    StartDownEvent,
-    EndDownEvent,
-    StartLeftEvent,
-    EndLeftEvent,
-    StartRightEvent,
-    EndRightEvent,
-    StartFireEvent,
-    EndFireEvent,
-    StartMenuEvent,
-    EndMenuEvent,
-    StartPauseEvent,
-    EndPauseEvent,
-    StartExitEvent,
-    EndExitEvent>;
 //[[[end]]]
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#undef max
+#undef min
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "glm/glm.hpp"
@@ -20,9 +22,10 @@
 #include "profiler.hpp"
 #include "mymath.hpp"
 #include "CircularQueue.hpp"
+#include "TimeHelper.hpp"
 #include "Input.hpp"
+#include "nlohmann/json.hpp"
 
-#undef max
 #include <iostream>
 #include <map>
 #include <functional>
@@ -32,25 +35,16 @@
 #include <chrono>
 #include <ratio>
 
+#undef max
+#undef min
+
 namespace vka
 {
 	using SpriteCount = size_t;
 	using ImageIndex = uint32_t;
 	using VertexIndex = uint16_t;
-	using Clock = std::chrono::steady_clock;
-	using milliseconds = std::chrono::milliseconds;
-	using TimePoint_ms = std::chrono::time_point<Clock, milliseconds>;
-	constexpr auto MillisecondsPerSecond = 
-		std::chrono::duration_cast<milliseconds>(std::chrono::seconds(1));
-	constexpr auto UpdateDuration = MillisecondsPerSecond / 50;
-
-	static TimePoint_ms NowMilliseconds()
-	{
-		auto now = Clock::now();
-		auto now_ms = std::chrono::time_point_cast<milliseconds>(now);
-		return now_ms;
-	}
-
+	using json = nlohmann::json;
+	
 	struct VulkanApp;
 	struct ShaderData
 	{
@@ -100,101 +94,51 @@ namespace vka
 		RenderFuncPtr RenderCallback;
 	};
 
-	struct KeyMessage
-	{
-		int key = 0;
-		int scancode = 0;
-		int action = 0;
-		int mods = 0;
-
-		KeyMessage() noexcept = default;
-		KeyMessage(int&& key, int&& scancode, int&& action, int&& mods) noexcept : 
-			key(std::move(key)), 
-			scancode(std::move(scancode)), 
-			action(std::move(action)), 
-			mods(std::move(mods))
-		{}
-	};
-
-	struct CharMessage
-	{
-		unsigned int codepoint = 0;
-
-		CharMessage() noexcept = default;
-		CharMessage(int&& codepoint) :
-			codepoint(std::move(codepoint))
-		{}
-	};
-
-	struct CursorPosMessage
-	{
-		double xpos = 0.0;
-		double ypos = 0.0;
-
-		CursorPosMessage() noexcept = default;
-		CursorPosMessage(double&& xpos, double&& ypos) : 
-			xpos(std::move(xpos)), ypos(std::move(ypos))
-		{}
-	};
-
-	struct MouseButtonMessage
-	{
-		int button = 0;
-		int action = 0;
-		int mods = 0;
-
-		MouseButtonMessage() noexcept = default;
-		MouseButtonMessage(int&& button, int&& action, int&& mods) : 
-			button(std::move(button)),
-			action(std::move(action)),
-			mods(std::move(mods))
-		{}
-	};
-
-	using InputMsgVariant = std::variant<
-		KeyMessage, 
-		CharMessage, 
-		CursorPosMessage, 
-		MouseButtonMessage>;
-
-	struct InputMessage
-	{
-		TimePoint_ms time;
-		InputMsgVariant variant;
-	};
-
 	static VulkanApp* GetUserPointer(GLFWwindow* window)
 	{
 		return (VulkanApp*)glfwGetWindowUserPointer(window);
 	}
 
-	static void PushBackInput(GLFWwindow* window, InputMessage&& msg);
+	static void PushBackInput(GLFWwindow* window, Input::InputMessage&& msg);
 
 	static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 	{
-		InputMessage msg;
-		msg.variant = KeyMessage(std::move(key), std::move(scancode), std::move(action), std::move(mods));
+		if (action == GLFW_REPEAT)
+			return;
+		Input::InputMessage msg;
+		Input::KeyMessage keyMsg;
+		keyMsg.scancode = scancode;
+		keyMsg.action = action;
+		msg.variant = keyMsg;
 		PushBackInput(window, std::move(msg));
 	}
 
 	static void CharacterCallback(GLFWwindow* window, unsigned int codepoint)
 	{
-		InputMessage msg;
-		msg.variant = CharMessage(std::move(codepoint));
+		Input::InputMessage msg;
+		Input::CharMessage charMsg;
+		charMsg.codepoint = codepoint;
+		msg.variant = charMsg;
 		PushBackInput(window, std::move(msg));
 	}
 
 	static void CursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
 	{
-		InputMessage msg;
-		msg.variant = CursorPosMessage(std::move(xpos), std::move(ypos));
+		Input::InputMessage msg;
+		Input::CursorPosMessage cursorPosMsg;
+		cursorPosMsg.xpos = xpos;
+		cursorPosMsg.ypos = ypos;
+		msg.variant = cursorPosMsg;
 		PushBackInput(window, std::move(msg));
 	}
 
 	static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 	{
-		InputMessage msg;
-		msg.variant = MouseButtonMessage(std::move(button), std::move(action), std::move(mods));
+		Input::InputMessage msg;
+		Input::MouseButtonMessage mouseButtonMsg;
+		mouseButtonMsg.button = button;
+		mouseButtonMsg.action = action;
+		msg.variant = mouseButtonMsg;
 		PushBackInput(window, std::move(msg));
 	}
 
@@ -275,11 +219,9 @@ namespace vka
 		bool m_ResizeNeeded = false;
 		TimePoint_ms m_StartupTimePoint;
 		TimePoint_ms m_CurrentSimulationTime;
-		CircularQueue<InputMessage, 500> m_InputBuffer;
+		CircularQueue<Input::InputMessage, 500> m_InputBuffer;
 		// TODO: possibly convert action map to vector
-		std::map<int, Input::Action> m_ActionMap;
-		std::map<int, Input::MaintainState> m_MaintainStateMap;
-		std::map<int, Input::ToggleState> m_ToggleStateMap;
+		std::map<Input::InputMsgVariant, Input::PlayerEventVariant> m_PlayerEventBindings;
 		Camera2D m_Camera;
 		std::mutex m_ResizeMutex;
 		std::condition_variable m_ResizeCondition;
@@ -473,9 +415,180 @@ namespace vka
 				frameCount++;
 		}
 
-		TextureIndex createTexture(const Bitmap & bitmap)
+		auto readSpriteSheet(const std::string& path)
 		{
-			TextureIndex textureIndex = static_cast<uint32_t>(m_Textures.size());
+			std::ifstream i(path);
+			json j;
+			i >> j;
+
+			return j["frames"];
+		}
+
+		TextureIndex createSpriteMapTexture(const Bitmap& bitmap, const std::string& path)
+		{
+			auto& frames = readSpriteSheet(path);
+			TextureIndex textureIndex = static_cast<TextureIndex>(m_Textures.size());
+			auto& image2D = m_Images.emplace_back();
+			auto& imageView = m_ImageViews.emplace_back();
+			auto& imageAlloc = m_ImageAllocations.emplace_back();
+
+			// initialize the texture object
+			auto& texture = m_Textures.emplace_back();
+			texture.index = textureIndex;
+			texture.width = bitmap.m_Width;
+			texture.height = bitmap.m_Height;
+			texture.size = bitmap.m_Size;
+
+			auto imageResult = CreateImageFromBitmap(bitmap);
+			image2D = std::move(imageResult.image);
+			imageAlloc = std::move(imageResult.allocation);
+
+						auto stagingBufferResult = CreateBuffer(texture.size,
+				vk::BufferUsageFlagBits::eTransferSrc,
+				vk::MemoryPropertyFlagBits::eHostCoherent |
+				vk::MemoryPropertyFlagBits::eHostVisible,
+				true);
+				
+			// copy from host to staging buffer
+			void* stagingBufferData = m_LogicalDevice->mapMemory(
+				stagingBufferResult.allocation->memory,
+				stagingBufferResult.allocation->offsetInDeviceMemory,
+				stagingBufferResult.allocation->size);
+			memcpy(stagingBufferData, bitmap.m_Data.data(), static_cast<size_t>(bitmap.m_Size));
+			m_LogicalDevice->unmapMemory(stagingBufferResult.allocation->memory);
+
+			// begin recording command buffer
+			m_CopyCommandBuffer->begin(vk::CommandBufferBeginInfo(
+				vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+
+			// transition image layout
+			auto memoryBarrier = vk::ImageMemoryBarrier(
+				vk::AccessFlags(),
+				vk::AccessFlagBits::eTransferWrite,
+				vk::ImageLayout::eUndefined,
+				vk::ImageLayout::eTransferDstOptimal,
+				m_GraphicsQueueFamilyID,
+				m_GraphicsQueueFamilyID,
+				image2D.get(),
+				vk::ImageSubresourceRange(
+					vk::ImageAspectFlagBits::eColor,
+					0U,
+					1U,
+					0U,
+					1U));
+			m_CopyCommandBuffer->pipelineBarrier(
+				vk::PipelineStageFlagBits::eTopOfPipe,
+				vk::PipelineStageFlagBits::eTransfer,
+				vk::DependencyFlags(),
+				{ },
+				{ },
+				{ memoryBarrier });
+
+			// copy from host to device (to image)
+			m_CopyCommandBuffer->copyBufferToImage(stagingBufferResult.buffer.get(), image2D.get(), vk::ImageLayout::eTransferDstOptimal,
+				{
+					vk::BufferImageCopy(0U, 0U, 0U,
+					vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0U, 0U, 1U),
+					vk::Offset3D(),
+					vk::Extent3D(bitmap.m_Width, bitmap.m_Height, 1U))
+				});
+
+			// transition image for shader access
+			auto memoryBarrier2 = vk::ImageMemoryBarrier(
+				vk::AccessFlagBits::eTransferWrite,
+				vk::AccessFlagBits::eShaderRead,
+				vk::ImageLayout::eTransferDstOptimal,
+				vk::ImageLayout::eShaderReadOnlyOptimal,
+				m_GraphicsQueueFamilyID,
+				m_GraphicsQueueFamilyID,
+				image2D.get(),
+				vk::ImageSubresourceRange(
+					vk::ImageAspectFlagBits::eColor,
+					0U,
+					1U,
+					0U,
+					1U));
+			m_CopyCommandBuffer->pipelineBarrier(
+				vk::PipelineStageFlagBits::eTransfer,
+				vk::PipelineStageFlagBits::eFragmentShader,
+				vk::DependencyFlags(),
+				{ },
+				{ },
+				{ memoryBarrier2 });
+
+			m_CopyCommandBuffer->end();
+
+			// create fence, submit command buffer
+			auto imageLoadFence = m_LogicalDevice->createFenceUnique(vk::FenceCreateInfo());
+			m_GraphicsQueue.submit(
+				vk::SubmitInfo(0U, nullptr, nullptr,
+					1U, &m_CopyCommandBuffer.get(),
+					0U, nullptr),
+				imageLoadFence.get());
+
+			// create image view
+			imageView = m_LogicalDevice->createImageViewUnique(
+				vk::ImageViewCreateInfo(
+					vk::ImageViewCreateFlags(),
+					image2D.get(),
+					vk::ImageViewType::e2D,
+					vk::Format::eR8G8B8A8Srgb,
+					vk::ComponentMapping(),
+					vk::ImageSubresourceRange(
+						vk::ImageAspectFlagBits::eColor,
+						0U,
+						1U,
+						0U,
+						1U)));
+
+			for (auto& frame : frames)
+			{
+				float left   = 	frame["frame"]["x"];
+				float top 	 = 	frame["frame"]["y"];
+				float width = frame["frame"]["w"];
+				float height = frame["frame"]["h"];
+				float right  = 	left + width;
+				float bottom = 	top + height;
+
+				glm::vec2 LeftTopPos, LeftBottomPos, RightBottomPos, RightTopPos;
+				LeftTopPos     = { left,		top };
+				LeftBottomPos  = { left,		bottom };
+				RightBottomPos = { right,		bottom };
+				RightTopPos    = { right,		top };
+
+				float leftUV = left / width;
+				float rightUV = right / width;
+				float topUV = top / height;
+				float bottomUV = bottom / height;
+
+				glm::vec2 LeftTopUV, LeftBottomUV, RightBottomUV, RightTopUV;
+				LeftTopUV     = { leftUV, topUV };
+				LeftBottomUV  = { leftUV, bottomUV };
+				RightBottomUV = { rightUV, bottomUV };
+				RightTopUV    = { rightUV, topUV };
+
+				Vertex LeftTop, LeftBottom, RightBottom, RightTop;
+				LeftTop 	= { LeftTopPos,		LeftTopUV 		};
+				LeftBottom  = { LeftBottomPos,	LeftBottomUV 	};
+				RightBottom = { RightBottomPos,	RightBottomUV 	};
+				RightTop 	= { RightTopPos,	RightTopUV 		};
+
+				// push back vertices
+				m_Vertices.push_back(LeftTop);
+				m_Vertices.push_back(LeftBottom);
+				m_Vertices.push_back(RightBottom);
+				m_Vertices.push_back(RightTop);
+			}
+
+			// wait for command buffer to be executed
+			m_LogicalDevice->waitForFences({ imageLoadFence.get() }, true, std::numeric_limits<uint64_t>::max());
+
+			auto fenceStatus = m_LogicalDevice->getFenceStatus(imageLoadFence.get());
+		}
+
+		TextureIndex createTexture(const Bitmap& bitmap)
+		{
+			TextureIndex textureIndex = static_cast<TextureIndex>(m_Textures.size());
 			// create vke::Image2D
 			auto& image2D = m_Images.emplace_back();
 			auto& imageView = m_ImageViews.emplace_back();
@@ -486,10 +599,10 @@ namespace vka
 			image2D = std::move(imageResult.image);
 			imageAlloc = std::move(imageResult.allocation);
 
-			float left = static_cast<float>(bitmap.m_Left);
-			float top = static_cast<float>(bitmap.m_Top);
-			float width = static_cast<float>(bitmap.m_Width);
-			float height = static_cast<float>(bitmap.m_Height);
+			float left = 	static_cast<float>(bitmap.m_Left);
+			float top = 	static_cast<float>(bitmap.m_Top);
+			float width = 	static_cast<float>(bitmap.m_Width);
+			float height = 	static_cast<float>(bitmap.m_Height);
 			float right = left + width;
 			float bottom = top - height;
 
@@ -506,10 +619,10 @@ namespace vka
 			RightTopUV = { 1.0f, 0.0f };
 
 			Vertex LeftTop, LeftBottom, RightBottom, RightTop;
-			LeftTop = { LeftTopPos,		LeftTopUV };
-			LeftBottom = { LeftBottomPos,	LeftBottomUV };
-			RightBottom = { RightBottomPos,	RightBottomUV };
-			RightTop = { RightTopPos,		RightTopUV };
+			LeftTop 	= { LeftTopPos,		LeftTopUV 		};
+			LeftBottom  = { LeftBottomPos,	LeftBottomUV 	};
+			RightBottom = { RightBottomPos,	RightBottomUV 	};
+			RightTop 	= { RightTopPos,	RightTopUV 		};
 
 			// push back vertices
 			m_Vertices.push_back(LeftTop);
@@ -1762,7 +1875,7 @@ namespace vka
 
 	};
 
-	static void PushBackInput(GLFWwindow* window, InputMessage&& msg)
+	static void PushBackInput(GLFWwindow* window, Input::InputMessage&& msg)
 	{
 		auto& app = *GetUserPointer(window);
 		msg.time = NowMilliseconds();

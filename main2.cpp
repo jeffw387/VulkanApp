@@ -8,8 +8,6 @@
 #include <iostream>
 #include <map>
 
-// #include "stx/btree_map.h"
-// #include "ECS.hpp"
 #include "ECSComponents.hpp"
 #include "entt.hpp"
 #undef min
@@ -21,37 +19,16 @@
 
 namespace Image
 {
-	enum 
-	{
-		Star,
-		Test1,
-		DungeonSheet,
-		COUNT
-	};
-
 	std::array<std::string, static_cast<size_t>(Image::COUNT)> Paths =
 	{
 		CONTENTROOT "Content/Textures/star.png",
 		CONTENTROOT "Content/Textures/texture.jpg",
 		CONTENTROOT "Content/Textures/dungeon_sheet.png"
 	};
-
-	std::map<size_t, size_t> ImageIDToTextureID;
-
-	void LoadHelper(vka::VulkanApp* app, size_t imageID)
-	{
-		ImageIDToTextureID[imageID] = app->createTexture(loadImageFromFile(Paths[imageID]));
-	}
 }
 
 namespace Font
 {
-enum
-{
-	AeroviasBrasil,
-	COUNT
-};
-
 std::array<const char*, static_cast<size_t>(Font::COUNT)> Paths = 
 {
 	CONTENTROOT "Content/Fonts/AeroviasBrasilNF.ttf"
@@ -122,14 +99,13 @@ public:
 			instanceCreateInfo,
 			deviceExtensions,
 			shaderData,
-			imageLoadCallback,
-			this
+			imageLoadCallback
 		};
 		app.init(initData);
 		enttRegistry.prepare<cmp::TextureID, cmp::PositionMatrix, cmp::Color>();
 		enttRegistry.prepare<cmp::Position, cmp::PositionMatrix, cmp::Velocity>();
 		
-		TextureIndex starTexture = static_cast<TextureIndex>(Image::ImageIDToTextureID[Image::Star]);
+		ImageIndex starTexture = static_cast<ImageIndex>(Image::ImageIDToTextureID[Image::Star]);
 		for (auto i = 0.f; i < 3.f; i++)
 		{
 			auto entity = enttRegistry.create(

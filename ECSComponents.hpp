@@ -9,10 +9,10 @@ namespace cmp
 {
     struct TextureID
     {
-        TextureIndex index;
+        ImageIndex index;
 
         TextureID() noexcept = default;
-        TextureID(TextureIndex index) : index(std::move(index)) {}
+        TextureID(ImageIndex index) : index(std::move(index)) {}
     };
 
     struct Position

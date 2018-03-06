@@ -10,7 +10,11 @@
 #include "vulkan/vulkan.hpp"
 #include "GLFW/glfw3.h"
 #include "fileIO.h"
-#include "Texture2D.hpp"
+#include "SurfaceState.hpp"
+#include "ShaderState.hpp"
+#include "PipelineState.hpp"
+#include "RenderState.hpp"
+#include "Image2D.hpp"
 #include "Bitmap.hpp"
 #include "Sprite.hpp"
 #include "Camera.hpp"
@@ -25,6 +29,7 @@
 #include "TimeHelper.hpp"
 #include "Input.hpp"
 #include "nlohmann/json.hpp"
+#include "Vertex.hpp"
 
 #include <iostream>
 #include <map>
@@ -41,38 +46,10 @@
 namespace vka
 {
 	using SpriteCount = size_t;
-	using ImageIndex = uint32_t;
 	using VertexIndex = uint16_t;
 	using json = nlohmann::json;
 	
 	struct VulkanApp;
-	struct ShaderData
-	{
-		const char* vertexShaderPath;
-		const char* fragmentShaderPath;
-	};
-
-	struct Vertex
-	{
-		glm::vec2 Position;
-		glm::vec2 UV;
-		static std::vector<vk::VertexInputBindingDescription> vertexBindingDescriptions()
-		{
-			auto bindingDescriptions = std::vector<vk::VertexInputBindingDescription>
-			{ 
-				vk::VertexInputBindingDescription(0U, sizeof(Vertex), vk::VertexInputRate::eVertex) 
-			};
-			return bindingDescriptions;
-		}
-
-		static std::vector<vk::VertexInputAttributeDescription> vertexAttributeDescriptions()
-		{
-			// Binding both attributes to one buffer, interleaving Position and UV
-			auto attrib0 = vk::VertexInputAttributeDescription(0U, 0U, vk::Format::eR32G32Sfloat, offsetof(Vertex, Position));
-			auto attrib1 = vk::VertexInputAttributeDescription(1U, 0U, vk::Format::eR32G32Sfloat, offsetof(Vertex, UV));
-			return std::vector<vk::VertexInputAttributeDescription>{ attrib0, attrib1 };
-		}
-	};
 
 	constexpr VertexIndex IndicesPerQuad = 6U;
 	constexpr std::array<VertexIndex, IndicesPerQuad> IndexArray = 
@@ -96,7 +73,7 @@ namespace vka
 
 	static VulkanApp* GetUserPointer(GLFWwindow* window)
 	{
-		return (VulkanApp*)glfwGetWindowUserPointer(window);
+		return reinterpret_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
 	}
 
 	static void PushBackInput(GLFWwindow* window, Input::InputMessage&& msg);
@@ -150,7 +127,6 @@ namespace vka
 		std::vector<const char*> deviceExtensions;
 		ShaderData shaderData;
 		std::function<void(VulkanApp*)> imageLoadCallback;
-		void* userPtr;
 	};
 
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugBreakCallback(
@@ -202,101 +178,42 @@ namespace vka
 			// this semaphore is checked at image presentation time
 			vk::UniqueSemaphore m_ImageRenderCompleteSemaphore;
 		};
-
-		struct UpdateData
-		{
-			uint32_t nextImage;
-			glm::mat4 vp;
-			vk::DeviceSize copyOffset;
-			void* mapped;
-			uint32_t spriteIndex;
-		};
 		
 		static constexpr size_t BufferCount = 3U;
 		InitData m_InitData;
-		UpdateData m_UpdateData;
+		LoopCallbacks m_LoopCallbacks;
 		GLFWwindow* m_Window;
-		bool m_ResizeNeeded = false;
 		TimePoint_ms m_StartupTimePoint;
 		TimePoint_ms m_CurrentSimulationTime;
 		CircularQueue<Input::InputMessage, 500> m_InputBuffer;
 		// TODO: possibly convert action map to vector
 		std::map<Input::InputMsgVariant, Input::PlayerEventVariant> m_PlayerEventBindings;
-		Camera2D m_Camera;
-		std::mutex m_ResizeMutex;
-		std::condition_variable m_ResizeCondition;
-		LoopCallbacks m_LoopCallbacks;
+
 		bool m_GameLoop = false;
 		HMODULE m_VulkanLibrary;
 		vk::UniqueInstance m_Instance;
-		vk::PhysicalDevice m_PhysicalDevice;
-		vk::DeviceSize m_UniformBufferOffsetAlignment;
-		vk::DeviceSize m_MatrixBufferOffsetAlignment;
-		uint32_t m_GraphicsQueueFamilyID;
-		vk::UniqueDevice m_LogicalDevice;
-		vk::Queue m_GraphicsQueue;
-		vk::UniqueDebugReportCallbackEXT m_DebugBreakpointCallbackData;
-		Allocator m_Allocator;
+		DeviceState m_DeviceState;
 		vk::UniqueCommandPool m_CopyCommandPool;
 		vk::UniqueCommandBuffer m_CopyCommandBuffer;
 		vk::UniqueFence m_CopyCommandFence;
-		std::vector<vk::UniqueImage> m_Images;
-		std::vector<UniqueAllocation> m_ImageAllocations;
-		std::vector<vk::UniqueImageView> m_ImageViews;
-		std::vector<Texture2D> m_Textures;
+		entt::ResourceCache<Image2D> m_Images;
+		std::map<SpriteIndex, Sprite> m_Sprites;
 		std::vector<Vertex> m_Vertices;
-		vk::UniqueBuffer m_VertexBuffer;
-		UniqueAllocation m_VertexMemory;
-		vk::UniqueBuffer m_IndexBuffer;
-		UniqueAllocation m_IndexMemory;
-		bool m_SurfaceNeedsRecreation = false;
-		vk::UniqueSurfaceKHR m_Surface;
-		vk::Extent2D m_SurfaceExtent;
-		vk::Format m_SurfaceFormat;
-		vk::FormatProperties m_SurfaceFormatProperties;
-		vk::SurfaceCapabilitiesKHR m_SurfaceCapabilities;
-		std::vector<vk::PresentModeKHR> m_SurfacePresentModes;
-		vk::ColorSpaceKHR m_SurfaceColorSpace;
+		AllocatedBuffer m_VertexBuffer;
+		AllocatedBuffer m_IndexBuffer;
 		vk::UniqueRenderPass m_RenderPass;
 		vk::UniqueSampler m_Sampler;
-		vk::UniqueShaderModule m_VertexShader;
-		vk::UniqueShaderModule m_FragmentShader;
-		vk::UniqueDescriptorSetLayout m_VertexDescriptorSetLayout;
-		vk::UniqueDescriptorSetLayout m_FragmentDescriptorSetLayout;
-		std::vector<vk::DescriptorSetLayout> m_DescriptorSetLayouts;
-		std::vector<vk::PushConstantRange> m_PushConstantRanges;
-		vk::UniqueDescriptorPool m_FragmentLayoutDescriptorPool;
-		vk::UniqueDescriptorSet m_FragmentDescriptorSet;
-		vk::PresentModeKHR m_PresentMode;
-		uint32_t m_TextureCount = 0U;
-		vk::UniquePipelineLayout m_PipelineLayout;
-		std::vector<vk::SpecializationMapEntry> m_VertexSpecializations;
-		std::vector<vk::SpecializationMapEntry> m_FragmentSpecializations;
-		vk::SpecializationInfo m_VertexSpecializationInfo;
-		vk::SpecializationInfo m_FragmentSpecializationInfo;
-		vk::PipelineShaderStageCreateInfo m_VertexShaderStageInfo;
-		vk::PipelineShaderStageCreateInfo m_FragmentShaderStageInfo;
-		std::vector<vk::PipelineShaderStageCreateInfo> m_PipelineShaderStageInfo;
-		std::vector<vk::VertexInputBindingDescription> m_VertexBindings;
-		std::vector<vk::VertexInputAttributeDescription> m_VertexAttributes;
-		vk::PipelineVertexInputStateCreateInfo m_PipelineVertexInputInfo;
-		vk::PipelineInputAssemblyStateCreateInfo m_PipelineInputAssemblyInfo;
-		vk::PipelineTessellationStateCreateInfo m_PipelineTesselationStateInfo;
-		vk::PipelineViewportStateCreateInfo m_PipelineViewportInfo;
-		vk::PipelineRasterizationStateCreateInfo m_PipelineRasterizationInfo;
-		vk::PipelineMultisampleStateCreateInfo m_PipelineMultisampleInfo;
-		vk::PipelineDepthStencilStateCreateInfo m_PipelineDepthStencilInfo;
-		vk::PipelineColorBlendAttachmentState m_PipelineColorBlendAttachmentState;
-		vk::PipelineColorBlendStateCreateInfo m_PipelineBlendStateInfo;
-		std::vector<vk::DynamicState> m_DynamicStates;
-		vk::PipelineDynamicStateCreateInfo m_PipelineDynamicStateInfo;
-		vk::GraphicsPipelineCreateInfo m_PipelineCreateInfo;
-		std::array<Supports, 3> m_Supports;
+
+		SurfaceState m_SurfaceState;
+		ShaderState m_ShaderState;
+		PipelineState m_PipelineState;
+		std::array<Supports, BufferCount> m_Supports;
 		vk::UniqueSwapchainKHR m_Swapchain;
 		std::vector<vk::Image> m_SwapImages;
 		std::array<vk::UniqueImageView, BufferCount> m_SwapViews;
 		std::array<vk::UniqueFramebuffer, BufferCount> m_Framebuffers;
 		vk::UniquePipeline m_Pipeline;
+		RenderState m_RenderState;
 
 		void RenderSprite(
 			uint32_t textureIndex,
@@ -304,11 +221,11 @@ namespace vka
 			glm::vec4 color)
 		{
 			Sprite sprite;
-			auto& supports = m_Supports[m_UpdateData.nextImage];
-			glm::mat4 mvp =  m_UpdateData.vp * transform;
+			auto& supports = m_Supports[m_RenderState.nextImage];
+			glm::mat4 mvp =  m_RenderState.vp * transform;
 
-			memcpy((char*)m_UpdateData.mapped + m_UpdateData.copyOffset, &mvp, sizeof(glm::mat4));
-			m_UpdateData.copyOffset += m_MatrixBufferOffsetAlignment;
+			memcpy((char*)m_RenderState.mapped + m_RenderState.copyOffset, &mvp, sizeof(glm::mat4));
+			m_RenderState.copyOffset += m_MatrixBufferOffsetAlignment;
 
 			FragmentPushConstants pushRange;
 			pushRange.textureID = textureIndex;
@@ -323,7 +240,7 @@ namespace vka
 				0U,
 				{ pushRange });
 
-			uint32_t dynamicOffset = static_cast<uint32_t>(m_UpdateData.spriteIndex * m_MatrixBufferOffsetAlignment);
+			uint32_t dynamicOffset = static_cast<uint32_t>(m_RenderState.spriteIndex * m_MatrixBufferOffsetAlignment);
 
 			// bind dynamic matrix uniform
 			supports.m_RenderCommandBuffer->bindDescriptorSets(
@@ -337,7 +254,7 @@ namespace vka
 			// draw the sprite
 			supports.m_RenderCommandBuffer->
 				drawIndexed(IndicesPerQuad, 1U, 0U, vertexOffset, 0U);
-			m_UpdateData.spriteIndex++;
+			m_RenderState.spriteIndex++;
 		}
 
 		void GameThread()
@@ -345,8 +262,8 @@ namespace vka
 			while(m_GameLoop)
 			{
 				auto currentTime = NowMilliseconds();
-				std::unique_lock<std::mutex> resizeLock(m_ResizeMutex);
-				m_ResizeCondition.wait(resizeLock, [this](){ return !m_ResizeNeeded; });
+				std::unique_lock<std::mutex> resizeLock(m_RecreateSurfaceMutex);
+				m_RecreateSurfaceCondition.wait(resizeLock, [this](){ return !m_ResizeNeeded; });
 				resizeLock.unlock();
 				// Update simulation to be in sync with actual time
 				SpriteCount spriteCount = 0;
@@ -389,7 +306,7 @@ namespace vka
 					auto size = GetWindowSize();
 					resizeWindow(size);
 					m_ResizeNeeded = false;
-					m_ResizeCondition.notify_all();
+					m_RecreateSurfaceCondition.notify_all();
 				}
 				glfwWaitEvents();
 			}
@@ -424,26 +341,24 @@ namespace vka
 			return j["frames"];
 		}
 
-		TextureIndex createSpriteMapTexture(const Bitmap& bitmap, const std::string& path)
+		Texture2D createImage2D(const Bitmap& bitmap)
 		{
-			auto& frames = readSpriteSheet(path);
-			TextureIndex textureIndex = static_cast<TextureIndex>(m_Textures.size());
+			ImageIndex textureIndex = static_cast<ImageIndex>(m_Images.size());
 			auto& image2D = m_Images.emplace_back();
 			auto& imageView = m_ImageViews.emplace_back();
 			auto& imageAlloc = m_ImageAllocations.emplace_back();
 
-			// initialize the texture object
-			auto& texture = m_Textures.emplace_back();
-			texture.index = textureIndex;
-			texture.width = bitmap.m_Width;
-			texture.height = bitmap.m_Height;
-			texture.size = bitmap.m_Size;
+			auto& image2D = m_Images.emplace_back();
+			image2D.index = textureIndex;
+			image2D.width = bitmap.m_Width;
+			image2D.height = bitmap.m_Height;
+			image2D.size = bitmap.m_Size;
 
 			auto imageResult = CreateImageFromBitmap(bitmap);
 			image2D = std::move(imageResult.image);
 			imageAlloc = std::move(imageResult.allocation);
 
-						auto stagingBufferResult = CreateBuffer(texture.size,
+			auto stagingBufferResult = CreateBuffer(image2D.size,
 				vk::BufferUsageFlagBits::eTransferSrc,
 				vk::MemoryPropertyFlagBits::eHostCoherent |
 				vk::MemoryPropertyFlagBits::eHostVisible,
@@ -540,7 +455,17 @@ namespace vka
 						1U,
 						0U,
 						1U)));
+					
+			// wait for command buffer to be executed
+			m_LogicalDevice->waitForFences({ imageLoadFence.get() }, true, std::numeric_limits<uint64_t>::max());
 
+			auto fenceStatus = m_LogicalDevice->getFenceStatus(imageLoadFence.get());
+		}
+
+		SpriteSheet createSpriteMapTexture(const Bitmap& bitmap, const std::string& path)
+		{
+			auto& frames = readSpriteSheet(path);
+						
 			for (auto& frame : frames)
 			{
 				float left   = 	frame["frame"]["x"];
@@ -580,20 +505,22 @@ namespace vka
 				m_Vertices.push_back(RightTop);
 			}
 
-			// wait for command buffer to be executed
-			m_LogicalDevice->waitForFences({ imageLoadFence.get() }, true, std::numeric_limits<uint64_t>::max());
+			// initialize the image2D object
+			auto image2D = createImage2D(bitmap);
+			auto sheet = SpriteSheet();
 
-			auto fenceStatus = m_LogicalDevice->getFenceStatus(imageLoadFence.get());
+			sheet.textureIndex = image2D.index;
+			return sheet;
 		}
 
-		TextureIndex createTexture(const Bitmap& bitmap)
+		ImageIndex createImage2D(const Bitmap& bitmap)
 		{
-			TextureIndex textureIndex = static_cast<TextureIndex>(m_Textures.size());
+			ImageIndex textureIndex = static_cast<ImageIndex>(m_Images.size());
 			// create vke::Image2D
 			auto& image2D = m_Images.emplace_back();
 			auto& imageView = m_ImageViews.emplace_back();
 			auto& imageAlloc = m_ImageAllocations.emplace_back();
-			auto& texture = m_Textures.emplace_back();
+			auto& image2D = m_Images.emplace_back();
 
 			auto imageResult = CreateImageFromBitmap(bitmap);
 			image2D = std::move(imageResult.image);
@@ -632,13 +559,13 @@ namespace vka
 
 			// auto verticesPerTexture = 4U;
 
-			// initialize the texture object
-			texture.index = textureIndex;
-			texture.width = bitmap.m_Width;
-			texture.height = bitmap.m_Height;
-			texture.size = bitmap.m_Size;
+			// initialize the image2D object
+			image2D.index = textureIndex;
+			image2D.width = bitmap.m_Width;
+			image2D.height = bitmap.m_Height;
+			image2D.size = bitmap.m_Size;
 
-			auto stagingBufferResult = CreateBuffer(texture.size,
+			auto stagingBufferResult = CreateBuffer(image2D.size,
 				vk::BufferUsageFlagBits::eTransferSrc,
 				vk::MemoryPropertyFlagBits::eHostCoherent |
 				vk::MemoryPropertyFlagBits::eHostVisible,
@@ -893,7 +820,7 @@ namespace vka
 
 			// create descriptor set layouts
 			m_VertexDescriptorSetLayout = createVertexSetLayout(m_LogicalDevice.get());
-			m_FragmentDescriptorSetLayout = createFragmentSetLayout(m_LogicalDevice.get(), static_cast<uint32_t>(m_Textures.size()), m_Sampler.get());
+			m_FragmentDescriptorSetLayout = createFragmentSetLayout(m_LogicalDevice.get(), static_cast<uint32_t>(m_Images.size()), m_Sampler.get());
 			m_DescriptorSetLayouts.push_back(m_VertexDescriptorSetLayout.get());
 			m_DescriptorSetLayouts.push_back(m_FragmentDescriptorSetLayout.get());
 
@@ -1006,65 +933,9 @@ namespace vka
 		}
 
 	private:
-		struct BufferCreateResult
-		{
-			vk::UniqueBuffer buffer;
-			UniqueAllocation allocation;
-		};
-		BufferCreateResult CreateBuffer(
-			const vk::DeviceSize bufferSize, 
-			const vk::BufferUsageFlags bufferUsage,
-			const vk::MemoryPropertyFlags memoryFlags,
-			const bool DedicatedAllocation)
-		{
-			BufferCreateResult result;
-			auto bufferCreateInfo = vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),
-				bufferSize,
-				bufferUsage,
-				vk::SharingMode::eExclusive,
-				1U,
-				&m_GraphicsQueueFamilyID);
 
-			VkBuffer buffer = m_LogicalDevice->createBuffer(bufferCreateInfo);
-			result.allocation = m_Allocator.AllocateForBuffer(DedicatedAllocation, buffer, memoryFlags);
-			m_LogicalDevice->bindBufferMemory(buffer, 
-				result.allocation->memory, 
-				result.allocation->offsetInDeviceMemory);
-			result.buffer = vk::UniqueBuffer(buffer, vk::BufferDeleter(m_LogicalDevice.get()));
-			return result;
-		}
 
-		void CopyToBuffer(
-			const vk::CommandBuffer commandBuffer,
-			const vk::Buffer source, 
-			const vk::Buffer destination, 
-			const vk::DeviceSize size, 
-			const vk::DeviceSize sourceOffset, 
-			const vk::DeviceSize destinationOffset,
-			const std::optional<vk::Fence> fence,
-			const std::vector<vk::Semaphore> waitSemaphores = {},
-			const std::vector<vk::Semaphore> signalSemaphores = {}
-		)
-		{
-			// m_LogicalDevice->waitForFences({m_CopyCommandFence.get()}, vk::Bool32(true), std::numeric_limits<uint64_t>::max());
-			commandBuffer.begin(vk::CommandBufferBeginInfo(
-				vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-
-			commandBuffer.copyBuffer(source, destination, 
-			{vk::BufferCopy(sourceOffset, destinationOffset, size)});
-
-			commandBuffer.end();
-
-			m_GraphicsQueue.submit( {vk::SubmitInfo(
-				static_cast<uint32_t>(waitSemaphores.size()),
-				waitSemaphores.data(),
-				nullptr,
-				1U,
-				&commandBuffer,
-				static_cast<uint32_t>(signalSemaphores.size()),
-				signalSemaphores.data()) }, fence.value_or(vk::Fence()));
-		}
+		
 
 		auto acquireImage()
 		{
@@ -1086,7 +957,7 @@ namespace vka
 			{
 				return false;
 			}
-			m_UpdateData.nextImage = nextImage.value;
+			m_RenderState.nextImage = nextImage.value;
 
 			auto& supports = m_Supports[nextImage.value];
 
@@ -1124,13 +995,13 @@ namespace vka
 				supports.m_MatrixMemory = std::move(matrixBufferResult.allocation);
 			}
 
-			m_UpdateData.mapped = m_LogicalDevice->mapMemory(
+			m_RenderState.mapped = m_LogicalDevice->mapMemory(
 				supports.m_MatrixStagingMemory->memory, 
 				supports.m_MatrixStagingMemory->offsetInDeviceMemory,
 				supports.m_MatrixStagingMemory->size);
 
-			m_UpdateData.copyOffset = 0;
-			m_UpdateData.vp = m_Camera.getMatrix();
+			m_RenderState.copyOffset = 0;
+			m_RenderState.vp = m_Camera.getMatrix();
 
 			m_LogicalDevice->waitForFences({ supports.m_RenderBufferExecuted.get() }, 
 			vk::Bool32(true),
@@ -1214,13 +1085,13 @@ namespace vka
 				{ m_FragmentDescriptorSet.get() },
 				{});
 
-			m_UpdateData.spriteIndex = 0;
+			m_RenderState.spriteIndex = 0;
 			return true;
 		}
 
 		void EndRender()
 		{
-			auto& supports = m_Supports[m_UpdateData.nextImage];
+			auto& supports = m_Supports[m_RenderState.nextImage];
 			// copy matrices from staging buffer to gpu buffer
 			m_LogicalDevice->unmapMemory(supports.m_MatrixStagingMemory->memory);
 
@@ -1253,14 +1124,14 @@ namespace vka
 						&supports.m_ImageRenderCompleteSemaphore.get())
 				}, supports.m_RenderBufferExecuted.get());
 
-			std::scoped_lock<std::mutex> resizeLock(m_ResizeMutex);
+			std::scoped_lock<std::mutex> resizeLock(m_RecreateSurfaceMutex);
 			// Present image
 			auto presentInfo = vk::PresentInfoKHR(
 					1U,
 					&supports.m_ImageRenderCompleteSemaphore.get(),
 					1U,
 					&m_Swapchain.get(),
-					&m_UpdateData.nextImage);
+					&m_RenderState.nextImage);
 			auto presentResult = vkQueuePresentKHR(m_GraphicsQueue.operator VkQueue(), &presentInfo.operator const VkPresentInfoKHR &());
 		}
 
@@ -1382,7 +1253,7 @@ namespace vka
 					1U,
 					vk::ShaderStageFlagBits::eFragment,
 					&sampler),
-				// Fragment: texture uniform buffer (array)
+				// Fragment: image2D uniform buffer (array)
 				vk::DescriptorSetLayoutBinding(
 					1U,
 					vk::DescriptorType::eSampledImage,
@@ -1741,7 +1612,7 @@ namespace vka
 
 		void resizeWindow(vk::Extent2D size)
 		{
-			std::scoped_lock<std::mutex> resizeLock(m_ResizeMutex);
+			std::scoped_lock<std::mutex> resizeLock(m_RecreateSurfaceMutex);
 			m_Camera.setSize(glm::vec2(static_cast<float>(size.width), static_cast<float>(size.height)));
 			createSwapchainWithDependencies(size);
 		}
@@ -1913,7 +1784,7 @@ namespace vka
 		struct GlyphData
 		{
 			UniqueFTGlyph glyph;
-			TextureIndex textureIndex;
+			ImageIndex textureIndex;
 		};
 
 		using GlyphMap = std::map<CharCode, GlyphData>;

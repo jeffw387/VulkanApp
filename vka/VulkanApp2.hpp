@@ -10,6 +10,8 @@
 #include "vulkan/vulkan.hpp"
 #include "GLFW/glfw3.h"
 #include "fileIO.h"
+#include "InstanceState.hpp"
+#include "DeviceState.hpp"
 #include "SurfaceState.hpp"
 #include "ShaderState.hpp"
 #include "PipelineState.hpp"
@@ -18,7 +20,6 @@
 #include "Bitmap.hpp"
 #include "Sprite.hpp"
 #include "Camera.hpp"
-#include "ECS.hpp"
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
@@ -45,175 +46,30 @@
 
 namespace vka
 {
-	using SpriteCount = size_t;
-	using VertexIndex = uint16_t;
+	using SpriteCount = SpriteIndex;
 	using json = nlohmann::json;
-	
-	struct VulkanApp;
-
-	constexpr VertexIndex IndicesPerQuad = 6U;
-	constexpr std::array<VertexIndex, IndicesPerQuad> IndexArray = 
-	{
-		0, 1, 2, 2, 3, 0
-	};
-
-	struct FragmentPushConstants
-	{
-		glm::uint32 textureID;
-		glm::float32 r, g, b, a;
-	};
-
 	using UpdateFuncPtr = std::function<SpriteCount(TimePoint_ms)>;
 	using RenderFuncPtr = std::function<void()>;
-	struct LoopCallbacks
-	{
-		UpdateFuncPtr UpdateCallback;
-		RenderFuncPtr RenderCallback;
-	};
-
-	static VulkanApp* GetUserPointer(GLFWwindow* window)
-	{
-		return reinterpret_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
-	}
-
-	static void PushBackInput(GLFWwindow* window, Input::InputMessage&& msg);
-
-	static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
-	{
-		if (action == GLFW_REPEAT)
-			return;
-		Input::InputMessage msg;
-		Input::KeyMessage keyMsg;
-		keyMsg.scancode = scancode;
-		keyMsg.action = action;
-		msg.variant = keyMsg;
-		PushBackInput(window, std::move(msg));
-	}
-
-	static void CharacterCallback(GLFWwindow* window, unsigned int codepoint)
-	{
-		Input::InputMessage msg;
-		Input::CharMessage charMsg;
-		charMsg.codepoint = codepoint;
-		msg.variant = charMsg;
-		PushBackInput(window, std::move(msg));
-	}
-
-	static void CursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
-	{
-		Input::InputMessage msg;
-		Input::CursorPosMessage cursorPosMsg;
-		cursorPosMsg.xpos = xpos;
-		cursorPosMsg.ypos = ypos;
-		msg.variant = cursorPosMsg;
-		PushBackInput(window, std::move(msg));
-	}
-
-	static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
-	{
-		Input::InputMessage msg;
-		Input::MouseButtonMessage mouseButtonMsg;
-		mouseButtonMsg.button = button;
-		mouseButtonMsg.action = action;
-		msg.variant = mouseButtonMsg;
-		PushBackInput(window, std::move(msg));
-	}
-
-	struct InitData
-	{
-		char const* WindowTitle;
-		int width; int height;
-		vk::InstanceCreateInfo instanceCreateInfo;
-		std::vector<const char*> deviceExtensions;
-		ShaderData shaderData;
-		std::function<void(VulkanApp*)> imageLoadCallback;
-	};
-
-	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugBreakCallback(
-		VkDebugReportFlagsEXT flags, 
-		VkDebugReportObjectTypeEXT objType, 
-		uint64_t obj,
-		size_t location,
-		int32_t messageCode,
-		const char* pLayerPrefix,
-		const char* pMessage, 
-		void* userData)
-	{
-		if (flags & VkDebugReportFlagBitsEXT::VK_DEBUG_REPORT_DEBUG_BIT_EXT)
-			std::cerr << "(Debug Callback)";
-		if (flags & VkDebugReportFlagBitsEXT::VK_DEBUG_REPORT_ERROR_BIT_EXT)
-			std::cerr << "(Error Callback)";
-		if (flags & VkDebugReportFlagBitsEXT::VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
-			return false;
-			//std::cerr << "(Information Callback)";
-		if (flags & VkDebugReportFlagBitsEXT::VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-			std::cerr << "(Performance Warning Callback)";
-		if (flags & VkDebugReportFlagBitsEXT::VK_DEBUG_REPORT_WARNING_BIT_EXT)
-			std::cerr << "(Warning Callback)";
-		std::cerr << pLayerPrefix << pMessage <<"\n";
-
-		return false;
-	}
+	
+	static void ResizeCallback(GLFWwindow* window, int width, int height);
 
 	struct VulkanApp
 	{
-		struct Supports
-		{
-			vk::UniqueCommandPool m_CommandPool;
-			vk::UniqueCommandBuffer m_CopyCommandBuffer;
-			vk::UniqueCommandBuffer m_RenderCommandBuffer;
-			vk::UniqueBuffer m_MatrixStagingBuffer;
-			UniqueAllocation m_MatrixStagingMemory;
-			vk::UniqueBuffer m_MatrixBuffer;
-			UniqueAllocation m_MatrixMemory;
-			size_t m_BufferCapacity = 0U;
-			vk::UniqueDescriptorPool m_VertexLayoutDescriptorPool;
-			vk::UniqueDescriptorSet m_VertexDescriptorSet;
-			vk::UniqueFence m_RenderBufferExecuted;
-			// create this fence in acquireImage() and wait for it before using buffers in BeginRender()
-			vk::UniqueFence m_ImagePresentCompleteFence;
-			// These semaphores are created at startup
-			// this semaphore is checked before rendering begins (at submission of draw command buffer)
-			vk::UniqueSemaphore m_MatrixBufferStagingCompleteSemaphore;
-			// this semaphore is checked at image presentation time
-			vk::UniqueSemaphore m_ImageRenderCompleteSemaphore;
-		};
+		entt::ResourceCache<Image2D> m_Images;
+		entt::ResourceCache<Sprite> m_Sprites;
 		
-		static constexpr size_t BufferCount = 3U;
-		InitData m_InitData;
-		LoopCallbacks m_LoopCallbacks;
 		GLFWwindow* m_Window;
 		TimePoint_ms m_StartupTimePoint;
 		TimePoint_ms m_CurrentSimulationTime;
-		CircularQueue<Input::InputMessage, 500> m_InputBuffer;
-		// TODO: possibly convert action map to vector
-		std::map<Input::InputMsgVariant, Input::PlayerEventVariant> m_PlayerEventBindings;
-
 		bool m_GameLoop = false;
-		HMODULE m_VulkanLibrary;
-		vk::UniqueInstance m_Instance;
-		DeviceState m_DeviceState;
-		vk::UniqueCommandPool m_CopyCommandPool;
-		vk::UniqueCommandBuffer m_CopyCommandBuffer;
-		vk::UniqueFence m_CopyCommandFence;
-		entt::ResourceCache<Image2D> m_Images;
-		std::map<SpriteIndex, Sprite> m_Sprites;
-		std::vector<Vertex> m_Vertices;
-		AllocatedBuffer m_VertexBuffer;
-		AllocatedBuffer m_IndexBuffer;
-		vk::UniqueRenderPass m_RenderPass;
-		vk::UniqueSampler m_Sampler;
 
+		InitState m_InitState;
+		InstanceState m_InstanceState;
+		DeviceState m_DeviceState;
 		SurfaceState m_SurfaceState;
 		ShaderState m_ShaderState;
-		PipelineState m_PipelineState;
-		std::array<Supports, BufferCount> m_Supports;
-		vk::UniqueSwapchainKHR m_Swapchain;
-		std::vector<vk::Image> m_SwapImages;
-		std::array<vk::UniqueImageView, BufferCount> m_SwapViews;
-		std::array<vk::UniqueFramebuffer, BufferCount> m_Framebuffers;
-		vk::UniquePipeline m_Pipeline;
 		RenderState m_RenderState;
+		PipelineState m_PipelineState;
 
 		void RenderSprite(
 			uint32_t textureIndex,
@@ -288,9 +144,10 @@ namespace vka
 			}
 		}
 
-		void Run(LoopCallbacks callbacks)
+		void Run(UpdateFuncPtr updateCallback, RenderFuncPtr renderCallback)
 		{
-			m_LoopCallbacks = callbacks;
+			m_UpdateCallback = updateCallback;
+			m_RenderCallback = renderCallback;
 			m_GameLoop = true;
 			m_StartupTimePoint = NowMilliseconds();
 			m_CurrentSimulationTime = m_StartupTimePoint;
@@ -326,7 +183,7 @@ namespace vka
 					auto frameDuration = profiler::getRollingAverage<0>(100);
 					auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
 					auto frameDurationCount = millisecondFrameDuration.count();
-					auto title = m_InitData.WindowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount)) + std::string(" microseconds");
+					auto title = m_InitState.WindowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount)) + std::string(" microseconds");
 					glfwSetWindowTitle(m_Window, title.c_str());
 				}
 				frameCount++;
@@ -671,9 +528,9 @@ namespace vka
 			return textureIndex;
 		}
 
-		void init(InitData initData)
+		void init(InitState initData)
 		{
-			m_InitData = initData;
+			m_InitState = initData;
 			auto glfwInitError = glfwInit();
 			if (!glfwInitError)
 			{
@@ -681,7 +538,7 @@ namespace vka
 				exit(glfwInitError);
 			}
 			glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
-			m_Window = glfwCreateWindow(initData.width, initData.height, initData.WindowTitle, NULL, NULL);
+			m_Window = glfwCreateWindow(initData.width, initData.height, initData.WindowTitle.c_str(), NULL, NULL);
 			if (m_Window == NULL)
 			{
 				std::runtime_error("Error creating GLFW window.");
@@ -693,81 +550,34 @@ namespace vka
 			glfwSetCharCallback(m_Window, CharacterCallback);
 			glfwSetCursorPosCallback(m_Window, CursorPositionCallback);
 			glfwSetMouseButtonCallback(m_Window, MouseButtonCallback);
-			m_Camera = Camera2D();
-			m_Camera.setSize({static_cast<float>(initData.width), static_cast<float>(initData.height)});
+			m_RenderState.camera.setSize({static_cast<float>(initData.width), static_cast<float>(initData.height)});
 
 			// load vulkan dll, entry point, and instance/global function pointers
-			if (!LoadVulkanDLL())
+			if (!LoadVulkanDLL(m_InstanceState))
 			{
 				std::runtime_error("Error loading vulkan DLL.");
 				exit(-1);
 			}
-			LoadVulkanEntryPoint();
+
+			LoadVulkanEntryPoint(m_InstanceState);
+
 			LoadVulkanGlobalFunctions();
-			m_Instance = vk::createInstanceUnique(initData.instanceCreateInfo);
-			LoadVulkanInstanceFunctions();
 
-			// select physical device
-			auto devices = m_Instance->enumeratePhysicalDevices();
-			m_PhysicalDevice = devices[0];
+			CreateInstance(m_InstanceState, initData.instanceCreateInfo);
 
-			m_UniformBufferOffsetAlignment = m_PhysicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
-			auto offsetsForMatrix = sizeof(glm::mat4) / m_UniformBufferOffsetAlignment;
-			if (offsetsForMatrix == 0)
-			{
-				offsetsForMatrix = 1;
-			}
-			m_MatrixBufferOffsetAlignment = offsetsForMatrix * m_UniformBufferOffsetAlignment;
+			LoadVulkanInstanceFunctions(m_InstanceState);
 
+			InitPhysicalDevice(m_DeviceState, m_Instance.get());
 
-			// find graphics queue
-			auto gpuQueueProperties = m_PhysicalDevice.getQueueFamilyProperties();
-			auto graphicsQueueInfo = std::find_if(gpuQueueProperties.begin(), gpuQueueProperties.end(),
-				[&](vk::QueueFamilyProperties q)
-			{
-				return q.queueFlags & vk::QueueFlagBits::eGraphics;
-			});
+			SelectGraphicsQueue(m_DeviceState);
 
-			// this gets the position of the queue, which is also its family ID
-			m_GraphicsQueueFamilyID = static_cast<uint32_t>(graphicsQueueInfo - gpuQueueProperties.begin());
-			// priority of 0 since we only have one queue
-			auto graphicsPriority = 0.f;
-			auto graphicsQueueCreateInfo = vk::DeviceQueueCreateInfo(vk::DeviceQueueCreateFlags(), m_GraphicsQueueFamilyID, 1U, &graphicsPriority);
+			CreateLogicalDevice(m_DeviceState, initData.deviceExtensions);
+			
+			LoadVulkanDeviceFunctions(m_DeviceState);
 
-			// create Logical Device
-			auto gpuFeatures = m_PhysicalDevice.getFeatures();
-			m_LogicalDevice = m_PhysicalDevice.createDeviceUnique(
-				vk::DeviceCreateInfo(vk::DeviceCreateFlags(),
-					1,
-					&graphicsQueueCreateInfo,
-					0,
-					nullptr,
-					static_cast<uint32_t>(initData.deviceExtensions.size()),
-					initData.deviceExtensions.data(),
-					&gpuFeatures)
-			);
-			// Load device-dependent vulkan function pointers
-			LoadVulkanDeviceFunctions();
+			GetGraphicsQueue(m_DeviceState);
 
-			// get the queue from the logical device
-			m_GraphicsQueue = m_LogicalDevice->getQueue(m_GraphicsQueueFamilyID, 0);
-
-			// initialize debug reporting
-			if (vkCreateDebugReportCallbackEXT)
-			{
-				m_DebugBreakpointCallbackData = m_Instance->createDebugReportCallbackEXTUnique(
-					vk::DebugReportCallbackCreateInfoEXT(
-						vk::DebugReportFlagBitsEXT::ePerformanceWarning |
-						vk::DebugReportFlagBitsEXT::eError |
-						vk::DebugReportFlagBitsEXT::eDebug |
-						vk::DebugReportFlagBitsEXT::eInformation |
-						vk::DebugReportFlagBitsEXT::eWarning,
-						reinterpret_cast<PFN_vkDebugReportCallbackEXT>(&debugBreakCallback)
-					));
-			}
-
-			// create the allocator
-			m_Allocator = Allocator(m_PhysicalDevice, m_LogicalDevice.get());
+			CreateAllocator(m_DeviceState);
 
 			// create copy command objects
 			auto copyPoolCreateInfo = vk::CommandPoolCreateInfo(
@@ -787,7 +597,6 @@ namespace vka
 
 			// allow client app to load images
 			initData.imageLoadCallback(this);
-			m_TextureCount = static_cast<uint32_t>(m_Images.size());
 
 			CreateVertexBuffer();
 
@@ -875,68 +684,6 @@ namespace vka
 		}
 
 	private:
-		bool LoadVulkanDLL()
-		{
-			m_VulkanLibrary = LoadLibrary("vulkan-1.dll");
-
-			if (m_VulkanLibrary == nullptr)
-				return false;
-			return true;
-		}
-
-		bool LoadVulkanEntryPoint()
-		{
-	#define VK_EXPORTED_FUNCTION( fun )                                                   \
-		if( !(fun = (PFN_##fun)GetProcAddress( m_VulkanLibrary, #fun )) ) {               \
-		std::cout << "Could not load exported function: " << #fun << "!" << std::endl;  \
-		}
-
-	#include "VulkanFunctions.inl"
-
-			return true;
-		}
-
-		bool LoadVulkanGlobalFunctions()
-		{
-	#define VK_GLOBAL_LEVEL_FUNCTION( fun )                                                   \
-		if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( nullptr, #fun )) ) {                    \
-		std::cout << "Could not load global level function: " << #fun << "!" << std::endl;  \
-		}
-
-	#include "VulkanFunctions.inl"
-
-			return true;
-		}
-
-		bool LoadVulkanInstanceFunctions()
-		{
-	#define VK_INSTANCE_LEVEL_FUNCTION( fun )                                                   \
-		if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( m_Instance.get(), #fun )) ) {             \
-		std::cout << "Could not load instance level function: " << #fun << "!" << std::endl;  \
-		}
-
-	#include "VulkanFunctions.inl"
-
-			return true;
-		}
-
-		bool LoadVulkanDeviceFunctions()
-		{
-	#define VK_DEVICE_LEVEL_FUNCTION( fun )                                                   \
-		if( !(fun = (PFN_##fun)vkGetDeviceProcAddr( m_LogicalDevice.get(), #fun )) ) {        \
-		std::cout << "Could not load device level function: " << #fun << "!" << std::endl;  \
-		}
-
-	#include "VulkanFunctions.inl"
-
-			return true;
-		}
-
-	private:
-
-
-		
-
 		auto acquireImage()
 		{
 			auto renderFinishedFence = m_LogicalDevice->createFence(
@@ -1452,50 +1199,7 @@ namespace vka
 			);
 		}
 
-		void CreateVertexBuffer()
-		{
-			// create vertex buffers
-			auto vertSize = sizeof(Vertex);
-			auto vertexBufferSize = vertSize * m_Vertices.size();
-			auto vertexStagingResult = CreateBuffer(vertexBufferSize,
-				vk::BufferUsageFlagBits::eTransferSrc,
-				vk::MemoryPropertyFlagBits::eHostVisible |
-				vk::MemoryPropertyFlagBits::eHostCoherent,
-				true);
-			
-			auto vertexBufferResult = CreateBuffer(vertexBufferSize, 
-				vk::BufferUsageFlagBits::eTransferDst |
-				vk::BufferUsageFlagBits::eVertexBuffer,
-				vk::MemoryPropertyFlagBits::eDeviceLocal,
-				true);
-
-			// copy data to vertex buffer
-			void* vertexStagingData = m_LogicalDevice->mapMemory(
-				vertexStagingResult.allocation->memory,
-				vertexStagingResult.allocation->offsetInDeviceMemory,
-				vertexStagingResult.allocation->size);
-			
-			memcpy(vertexStagingData, m_Vertices.data(), vertexBufferSize);
-			m_LogicalDevice->unmapMemory(vertexStagingResult.allocation->memory);
-			CopyToBuffer(
-				m_CopyCommandBuffer.get(),
-				vertexStagingResult.buffer.get(),
-				vertexBufferResult.buffer.get(),
-				vertexBufferSize,
-				0U,
-				0U,
-				std::make_optional<vk::Fence>(m_CopyCommandFence.get()));
-			
-			// transfer ownership to VulkanApp
-			m_VertexBuffer = std::move(vertexBufferResult.buffer);
-			m_VertexMemory = std::move(vertexBufferResult.allocation);
-
-			// wait for vertex buffer copy to finish
-			m_LogicalDevice->waitForFences({ m_CopyCommandFence.get() }, 
-				vk::Bool32(true), 
-				std::numeric_limits<uint64_t>::max());
-			m_LogicalDevice->resetFences({ m_CopyCommandFence.get() });
-		}
+		
 
 		void CreateIndexBuffer()
 		{
@@ -1737,16 +1441,20 @@ namespace vka
 				m_SurfaceExtent = m_SurfaceCapabilities.currentExtent;
 			}
 		}
-
-		// Window resize callback
-		static void ResizeCallback(GLFWwindow* window, int width, int height)
-		{
-			GetUserPointer(window)->m_ResizeNeeded = true;
-		};
-
 	};
 
-	static void PushBackInput(GLFWwindow* window, Input::InputMessage&& msg)
+	static VulkanApp* GetUserPointer(GLFWwindow* window)
+	{
+		return reinterpret_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
+	}
+
+	// Window resize callback
+	static void ResizeCallback(GLFWwindow* window, int width, int height)
+	{
+		GetUserPointer(window)->m_ResizeNeeded = true;
+	};
+
+	static void PushBackInput(GLFWwindow* window, InputMessage&& msg)
 	{
 		auto& app = *GetUserPointer(window);
 		msg.time = NowMilliseconds();

@@ -1,5 +1,5 @@
 #pragma once
-#include "Texture2D.hpp"
+#include "vka/Image2D.hpp"
 #include "glm/glm.hpp"
 #include "TimeHelper.hpp"
 #include "Input.hpp"

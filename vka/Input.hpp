@@ -3,7 +3,7 @@
 #include "entt.hpp"
 #include "TimeHelper.hpp"
 
-namespace Input
+namespace vka
 {
 	struct KeyMessage
 	{
@@ -58,6 +58,56 @@ namespace Input
 	{
 		TimePoint_ms time;
 		InputMsgVariant variant;
+	};
+
+	static void PushBackInput(GLFWwindow* window, InputMessage&& msg);
+
+	static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+	{
+		if (action == GLFW_REPEAT)
+			return;
+		InputMessage msg;
+		KeyMessage keyMsg;
+		keyMsg.scancode = scancode;
+		keyMsg.action = action;
+		msg.variant = keyMsg;
+		PushBackInput(window, std::move(msg));
+	}
+
+	static void CharacterCallback(GLFWwindow* window, unsigned int codepoint)
+	{
+		InputMessage msg;
+		CharMessage charMsg;
+		charMsg.codepoint = codepoint;
+		msg.variant = charMsg;
+		PushBackInput(window, std::move(msg));
+	}
+
+	static void CursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
+	{
+		InputMessage msg;
+		CursorPosMessage cursorPosMsg;
+		cursorPosMsg.xpos = xpos;
+		cursorPosMsg.ypos = ypos;
+		msg.variant = cursorPosMsg;
+		PushBackInput(window, std::move(msg));
+	}
+
+	static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+	{
+		InputMessage msg;
+		MouseButtonMessage mouseButtonMsg;
+		mouseButtonMsg.button = button;
+		mouseButtonMsg.action = action;
+		msg.variant = mouseButtonMsg;
+		PushBackInput(window, std::move(msg));
+	}
+
+	struct InputState
+	{
+		CircularQueue<Input::InputMessage, 500> inputBuffer;
+		// TODO: possibly convert action map to vector
+		std::map<Input::InputMsgVariant, Input::PlayerEventVariant> playerEventBindings;
 	};
 
 /*[[[cog

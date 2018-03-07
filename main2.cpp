@@ -3,7 +3,7 @@
 
 #define VMA_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
-#include "VulkanApp2.hpp"
+#include "vka/VulkanApp2.hpp"
 #include <algorithm>
 #include <iostream>
 #include <map>
@@ -50,7 +50,6 @@ class ClientApp
 	vk::ApplicationInfo appInfo;
 	vk::InstanceCreateInfo instanceCreateInfo;
 	std::vector<const char*> deviceExtensions;
-	vka::ShaderData shaderData;
 	std::function<void(vka::VulkanApp*)> imageLoadCallback;
 	vka::InitData initData;
 	vka::VulkanApp app;
@@ -89,16 +88,16 @@ public:
 		{
 			VK_KHR_SWAPCHAIN_EXTENSION_NAME
 		};
-		shaderData = { CONTENTROOT "Shaders/vert.spv", CONTENTROOT "Shaders/frag.spv" };
 		imageLoadCallback = LoadTextures;
 		initData = 
 		{
-			"Vulkan App",
+			std::string("Vulkan App"),
 			900,
 			900,
 			instanceCreateInfo,
 			deviceExtensions,
-			shaderData,
+			std::string(CONTENTROOT "Shaders/vert.spv"),
+			std::string(CONTENTROOT "Shaders/frag.spv"),
 			imageLoadCallback
 		};
 		app.init(initData);

@@ -1,9 +1,19 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
+#include "vulkan/vulkan.hpp"
+#include "glm/glm.hpp"
+#include <vector>
+#include <array>
 
 namespace vka
 {
+    using VertexIndex = uint16_t;
+    constexpr VertexIndex IndicesPerQuad = 6U;
+	constexpr std::array<VertexIndex, IndicesPerQuad> IndexArray = 
+	{
+		0, 1, 2, 2, 3, 0
+	};
+
     struct Vertex
     {
         glm::vec2 Position;

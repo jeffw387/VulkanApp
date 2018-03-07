@@ -29,6 +29,6 @@ namespace vka
 		std::vector<vk::DynamicState> dynamicStates;
 		vk::PipelineDynamicStateCreateInfo pipelineDynamicStateInfo;
 		vk::GraphicsPipelineCreateInfo pipelineCreateInfo;
-        vk::Pipeline pipeline;
+        vk::UniquePipeline pipeline;
     };
 }

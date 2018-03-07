@@ -5,6 +5,12 @@
 
 namespace vka
 {
+	struct FragmentPushConstants
+	{
+		glm::uint32 textureID;
+		glm::float32 r, g, b, a;
+	};
+
     struct ShaderState
     {
         std::string vertexShaderPath;

@@ -13,7 +13,7 @@ namespace vka
 	{
 		std::array<Vertex, VerticesPerQuad> vertices;
 
-		static std::array<VertexIndex, IndicesPerQuad> getIndices(SpriteIndex spriteIndex)
+		static std::array<VertexIndex, IndicesPerQuad> getIndices(SpriteIndex spriteIndex) const
 		{
 			auto result = IndexArray;
 			auto offset = spriteIndex * VerticesPerQuad;

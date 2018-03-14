@@ -17,31 +17,31 @@
 #define CONTENTROOT
 #endif
 
-namespace Image
-{
-	std::array<std::string, static_cast<size_t>(Image::COUNT)> Paths =
-	{
-		CONTENTROOT "Content/Textures/star.png",
-		CONTENTROOT "Content/Textures/texture.jpg",
-		CONTENTROOT "Content/Textures/dungeon_sheet.png"
-	};
-}
+// namespace Image
+// {
+// 	std::array<std::string, static_cast<size_t>(Image::COUNT)> Paths =
+// 	{
+// 		CONTENTROOT "Content/Textures/star.png",
+// 		CONTENTROOT "Content/Textures/texture.jpg",
+// 		CONTENTROOT "Content/Textures/dungeon_sheet.png"
+// 	};
+// }
 
-namespace Font
-{
-std::array<const char*, static_cast<size_t>(Font::COUNT)> Paths = 
-{
-	CONTENTROOT "Content/Fonts/AeroviasBrasilNF.ttf"
-};
-}
+// namespace Font
+// {
+// std::array<const char*, static_cast<size_t>(Font::COUNT)> Paths = 
+// {
+// 	CONTENTROOT "Content/Fonts/AeroviasBrasilNF.ttf"
+// };
+// }
 
-void LoadTextures(vka::VulkanApp* app)
-{
-	// Load Textures Here
-	Image::LoadHelper(app, Image::Star);
-	Image::LoadHelper(app, Image::Test1);
-	Image::LoadHelper(app, Image::DungeonSheet);
-}
+// void LoadTextures(vka::VulkanApp* app)
+// {
+// 	// Load Textures Here
+// 	Image::LoadHelper(app, Image::Star);
+// 	Image::LoadHelper(app, Image::Test1);
+// 	Image::LoadHelper(app, Image::DungeonSheet);
+// }
 
 class ClientApp
 {

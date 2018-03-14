@@ -2,7 +2,7 @@
 #include "vka/Image2D.hpp"
 #include "glm/glm.hpp"
 #include "TimeHelper.hpp"
-#include "Input.hpp"
+#include "vka/Input.hpp"
 #include <optional>
 
 namespace cmp

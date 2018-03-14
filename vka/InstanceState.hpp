@@ -23,42 +23,6 @@ namespace vka
         return true;
     }
 
-    static bool LoadVulkanEntryPoint(InstanceState& instanceState)
-    {
-#define VK_EXPORTED_FUNCTION( fun )                                                   \
-    if( !(fun = (PFN_##fun)GetProcAddress( instanceState.vulkanLibrary, #fun )) ) {   \
-    std::cout << "Could not load exported function: " << #fun << "!" << std::endl;    \
-    }
-
-#include "VulkanFunctions.inl"
-
-        return true;
-    }
-
-    static bool LoadVulkanGlobalFunctions()
-    {
-#define VK_GLOBAL_LEVEL_FUNCTION( fun )                                                   \
-    if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( nullptr, #fun )) ) {                    \
-    std::cout << "Could not load global level function: " << #fun << "!" << std::endl;    \
-    }
-
-#include "VulkanFunctions.inl"
-
-        return true;
-    }
-
-    static bool LoadVulkanInstanceFunctions(InstanceState& instanceState)
-    {
-#define VK_INSTANCE_LEVEL_FUNCTION( fun )                                                   \
-    if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( instanceState.instance.get(), #fun )) ) { \
-    std::cout << "Could not load instance level function: " << #fun << "!" << std::endl;    \
-    }
-
-#include "VulkanFunctions.inl"
-
-        return true;
-    }
-
     void CreateInstance(InstanceState& instanceState, const vk::InstanceCreateInfo& instanceCreateInfo)
     {
         instanceState.instance = vk::createInstanceUnique(instanceCreateInfo);
@@ -94,7 +58,7 @@ namespace vka
 	{
 		if (vkCreateDebugReportCallbackEXT)
 		{
-			m_DebugBreakpointCallbackData = m_Instance->createDebugReportCallbackEXTUnique(
+			instanceState.debugBreakpointCallbackData = instanceState.instance->createDebugReportCallbackEXTUnique(
 				vk::DebugReportCallbackCreateInfoEXT(
 					vk::DebugReportFlagBitsEXT::ePerformanceWarning |
 					vk::DebugReportFlagBitsEXT::eError |
@@ -104,4 +68,40 @@ namespace vka
 					reinterpret_cast<PFN_vkDebugReportCallbackEXT>(&debugBreakCallback)
 				));
 		}
+}
+
+static bool LoadVulkanEntryPoint(vka::InstanceState& instanceState)
+{
+#define VK_EXPORTED_FUNCTION( fun )                                                   \
+    if( !(fun = (PFN_##fun)GetProcAddress( instanceState.vulkanLibrary, #fun )) ) {   \
+    std::cout << "Could not load exported function: " << #fun << "!" << std::endl;    \
+    }
+
+#include "VulkanFunctions.inl"
+
+    return true;
+}
+
+static bool LoadVulkanGlobalFunctions()
+{
+#define VK_GLOBAL_LEVEL_FUNCTION( fun )                                                   \
+    if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( nullptr, #fun )) ) {                    \
+    std::cout << "Could not load global level function: " << #fun << "!" << std::endl;    \
+    }
+
+#include "VulkanFunctions.inl"
+
+    return true;
+}
+
+static bool LoadVulkanInstanceFunctions(vka::InstanceState& instanceState)
+{
+#define VK_INSTANCE_LEVEL_FUNCTION( fun )                                                   \
+    if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( instanceState.instance.get(), #fun )) ) { \
+    std::cout << "Could not load instance level function: " << #fun << "!" << std::endl;    \
+    }
+
+#include "VulkanFunctions.inl"
+
+    return true;
 }

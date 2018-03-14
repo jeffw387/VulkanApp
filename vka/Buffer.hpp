@@ -27,7 +27,7 @@ namespace vka
             vk::SharingMode::eExclusive, 
             1U, 
             &queueFamilyIndex);
-        allocatedBuffer.buffer = device.createBufferUnique(bufferCreateInfo);
+        allocatedBuffer.buffer = device.createBufferUnique(allocatedBuffer.bufferCreateInfo);
         allocatedBuffer.allocation = allocator.AllocateForBuffer(DedicatedAllocation, allocatedBuffer.buffer.get(), memoryFlags);
         device.bindBufferMemory(allocatedBuffer.buffer.get(),
             allocatedBuffer.allocation->memory,

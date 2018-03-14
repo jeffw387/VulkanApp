@@ -5,6 +5,7 @@
 #include "glm/glm.hpp"
 #include "Allocator.hpp"
 #include <vector>
+#include <iostream>
 
 namespace vka
 {
@@ -23,7 +24,7 @@ namespace vka
 
 	static void InitPhysicalDevice(DeviceState& deviceState, const vk::Instance& instance)
 	{
-		auto devices = instance->enumeratePhysicalDevices();
+		auto devices = instance.enumeratePhysicalDevices();
 			deviceState.physicalDevice = devices[0];
 
 			deviceState.uniformBufferOffsetAlignment = deviceState.physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
@@ -76,11 +77,13 @@ namespace vka
 
 	static void CreateAllocator(DeviceState& deviceState)
 	{
-		deviceState.allocator = Allocator(deviceState.physicalDevice, deviceState.logicalDevice);
+		constexpr auto allocSize = 512000U;
+		deviceState.allocator = Allocator(deviceState.physicalDevice, deviceState.logicalDevice.get(), vk::DeviceSize(allocSize));
 	}
+}
 
-	static bool LoadVulkanDeviceFunctions(DeviceState& deviceState)
-	{
+static bool LoadVulkanDeviceFunctions(vka::DeviceState& deviceState)
+{
 #define VK_DEVICE_LEVEL_FUNCTION( fun )                                                   		\
 	if( !(fun = (PFN_##fun)vkGetDeviceProcAddr( deviceState.logicalDevice.get(), #fun )) ) {    \
 		std::cout << "Could not load device level function: " << #fun << "!" << std::endl;  	\
@@ -88,6 +91,5 @@ namespace vka
 
 #include "VulkanFunctions.inl"
 
-		return true;
-	}
+	return true;
 }

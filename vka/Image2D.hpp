@@ -1,9 +1,11 @@
 #pragma once
 
+#undef max
 #include <vulkan/vulkan.hpp>
 #include "Allocator.hpp"
 #include "Buffer.hpp"
 #include "Bitmap.hpp"
+
 
 namespace vka
 {
@@ -40,7 +42,7 @@ namespace vka
 			&queueFamilyIndex,
 			vk::ImageLayout::eUndefined);
 
-		result.image = device.createImageUnique(imageCreateInfo);
+		result.image = device.createImageUnique(result.imageCreateInfo);
 		result.allocation = allocator.AllocateForImage(true, result.image.get(), 
 			vk::MemoryPropertyFlagBits::eDeviceLocal);
 		device.bindImageMemory(
@@ -50,7 +52,7 @@ namespace vka
 		
 		auto stagingBufferResult = CreateBuffer(device, allocator, result.allocation->size,
 			vk::BufferUsageFlagBits::eTransferSrc,
-			&queueFamilyIndex,
+			queueFamilyIndex,
 			vk::MemoryPropertyFlagBits::eHostCoherent |
 			vk::MemoryPropertyFlagBits::eHostVisible,
 			true);
@@ -131,7 +133,7 @@ namespace vka
 		auto imageLoadFence = device.createFenceUnique(vk::FenceCreateInfo());
 		graphicsQueue.submit(
 			vk::SubmitInfo(0U, nullptr, nullptr,
-				1U, &m_CopyCommandBuffer.get(),
+				1U, &commandBuffer,
 				0U, nullptr),
 			imageLoadFence.get());
 
@@ -139,7 +141,7 @@ namespace vka
 		result.view = device.createImageViewUnique(
 			vk::ImageViewCreateInfo(
 				vk::ImageViewCreateFlags(),
-				image.get(),
+				result.image.get(),
 				vk::ImageViewType::e2D,
 				vk::Format::eR8G8B8A8Srgb,
 				vk::ComponentMapping(),
@@ -152,7 +154,5 @@ namespace vka
 				
 		// wait for command buffer to be executed
 		device.waitForFences({ imageLoadFence.get() }, true, std::numeric_limits<uint64_t>::max());
-
-		// auto fenceStatus = device.getFenceStatus(imageLoadFence.get());
 	}
 }

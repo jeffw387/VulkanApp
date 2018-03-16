@@ -1,5 +1,6 @@
 #pragma once
 #include <variant>
+#include "CircularQueue.hpp"
 #include "entt.hpp"
 #include "TimeHelper.hpp"
 
@@ -103,13 +104,6 @@ namespace vka
 		PushBackInput(window, std::move(msg));
 	}
 
-	struct InputState
-	{
-		CircularQueue<Input::InputMessage, 500> inputBuffer;
-		// TODO: possibly convert action map to vector
-		std::map<Input::InputMsgVariant, Input::PlayerEventVariant> playerEventBindings;
-	};
-
 /*[[[cog
 import cog
 bindNames = ['Up', 'Down', 'Left', 'Right', 'Fire', 'Menu', 'Pause', 'Exit']
@@ -180,4 +174,11 @@ using PlayerEventVariant = std::variant<
     StartExitEvent,
     EndExitEvent>;
 //[[[end]]]
+
+	struct InputState
+	{
+		CircularQueue<InputMessage, 500> inputBuffer;
+		// TODO: possibly convert action map to vector
+		std::map<InputMsgVariant, PlayerEventVariant> playerEventBindings;
+	};
 }

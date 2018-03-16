@@ -10,8 +10,13 @@
 #include "Vertex.hpp"
 #include "DeviceState.hpp"
 #include "SurfaceState.hpp"
+#include "Image2D.hpp"
+#include "fileIO.hpp"
 #include <array>
+#include <cstring>
 #include <vector>
+#include <string>
+
 
 namespace vka
 {
@@ -55,30 +60,223 @@ namespace vka
         SpriteIndex spriteIndex;
     };
 
+    struct FragmentPushConstants
+	{
+		glm::uint32 textureID;
+		glm::float32 r, g, b, a;
+	};
+
+    struct ShaderState
+    {
+        std::string vertexShaderPath;
+		std::string fragmentShaderPath;
+        vk::UniqueShaderModule vertexShader;
+		vk::UniqueShaderModule fragmentShader;
+		vk::UniqueDescriptorSetLayout vertexDescriptorSetLayout;
+		vk::UniqueDescriptorSetLayout fragmentDescriptorSetLayout;
+		std::vector<vk::PushConstantRange> pushConstantRanges;
+		vk::UniqueDescriptorPool fragmentLayoutDescriptorPool;
+		vk::UniqueDescriptorSet fragmentDescriptorSet;
+    };
+
+    void CreateShaderModules(ShaderState& shaderState, const DeviceState& deviceState)
+	{
+		// read from file
+		auto vertexShaderBinary = fileIO::readFile(shaderState.vertexShaderPath);
+		// create shader module
+		auto vertexShaderInfo = vk::ShaderModuleCreateInfo(vk::ShaderModuleCreateFlags(),
+			vertexShaderBinary.size(),
+			reinterpret_cast<const uint32_t*>(vertexShaderBinary.data()));
+		shaderState.vertexShader = deviceState.logicalDevice->createShaderModuleUnique(vertexShaderInfo);
+
+		// read from file
+		auto fragmentShaderBinary = fileIO::readFile(shaderState.fragmentShaderPath);
+		// create shader module
+		auto fragmentShaderInfo = vk::ShaderModuleCreateInfo(vk::ShaderModuleCreateFlags(),
+			fragmentShaderBinary.size(),
+			reinterpret_cast<const uint32_t*>(fragmentShaderBinary.data()));
+		shaderState.fragmentShader = deviceState.logicalDevice->createShaderModuleUnique(fragmentShaderInfo);
+	}
+
+	vk::UniqueDescriptorPool CreateVertexDescriptorPool(const DeviceState& deviceState)
+	{
+		auto poolSizes = std::vector<vk::DescriptorPoolSize>
+		{
+			vk::DescriptorPoolSize(vk::DescriptorType::eUniformBufferDynamic, 1U)
+		};
+
+		return deviceState.logicalDevice->createDescriptorPoolUnique(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet),
+				BufferCount,
+				static_cast<uint32_t>(poolSizes.size()),
+				poolSizes.data()));
+	}
+
+	void CreateFragmentDescriptorPool(ShaderState& shaderState, 
+		const DeviceState& deviceState, 
+		const RenderState& renderState)
+	{
+		auto textureCount = renderState.images.size();
+		auto poolSizes = std::vector<vk::DescriptorPoolSize>
+		{
+			vk::DescriptorPoolSize(vk::DescriptorType::eSampler, 1U),
+			vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, textureCount)
+		};
+
+		shaderState.fragmentLayoutDescriptorPool = deviceState.logicalDevice->createDescriptorPoolUnique(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet),
+				1U,
+				static_cast<uint32_t>(poolSizes.size()),
+				poolSizes.data()));
+	}
+
+	void CreateVertexSetLayout(ShaderState& shaderState, const DeviceState& deviceState)
+	{
+		auto vertexLayoutBindings = std::vector<vk::DescriptorSetLayoutBinding>
+		{
+			// Vertex: matrix uniform buffer (dynamic)
+			vk::DescriptorSetLayoutBinding(
+				0U,
+				vk::DescriptorType::eUniformBufferDynamic,
+				1U,
+				vk::ShaderStageFlagBits::eVertex)
+		};
+
+		shaderState.vertexDescriptorSetLayout = deviceState.logicalDevice->createDescriptorSetLayoutUnique(
+			vk::DescriptorSetLayoutCreateInfo(
+				vk::DescriptorSetLayoutCreateFlags(),
+				static_cast<uint32_t>(vertexLayoutBindings.size()),
+				vertexLayoutBindings.data()));
+	}
+
+	void CreateFragmentSetLayout(ShaderState& shaderState, 
+		const DeviceState& deviceState, 
+		const RenderState& renderState)
+	{
+		auto textureCount = renderState.images.size();
+		auto fragmentLayoutBindings = std::vector<vk::DescriptorSetLayoutBinding>
+		{
+			// Fragment: sampler uniform buffer
+			vk::DescriptorSetLayoutBinding(
+				0U,
+				vk::DescriptorType::eSampler,
+				1U,
+				vk::ShaderStageFlagBits::eFragment,
+				&renderState.sampler),
+			// Fragment: image2D uniform buffer (array)
+			vk::DescriptorSetLayoutBinding(
+				1U,
+				vk::DescriptorType::eSampledImage,
+				textureCount,
+				vk::ShaderStageFlagBits::eFragment)
+		};
+
+		shaderState.fragmentDescriptorSetLayout = deviceState.logicalDevice->createDescriptorSetLayoutUnique(
+			vk::DescriptorSetLayoutCreateInfo(
+				vk::DescriptorSetLayoutCreateFlags(),
+				static_cast<uint32_t>(fragmentLayoutBindings.size()),
+				fragmentLayoutBindings.data()));
+	}
+
+	std::vector<vk::DescriptorSetLayout> GetSetLayouts(const ShaderState& shaderState)
+	{
+		return std::vector<vk::DescriptorSetLayout>
+		{ 
+			shaderState.vertexDescriptorSetLayout, 
+			shaderState.fragmentDescriptorSetLayout
+		};
+	}
+
+	void SetupPushConstants(ShaderState& shaderState)
+	{
+		shaderState.pushConstantRanges.emplace_back(vk::PushConstantRange(
+			vk::ShaderStageFlagBits::eFragment,
+			0U,
+			sizeof(FragmentPushConstants)));
+	}
+
+	void CreateAndUpdateFragmentDescriptorSet(ShaderState& shaderState, 
+		const DeviceState& deviceState, 
+		const RenderState& renderState)
+	{
+		auto textureCount = renderState.images.size();
+		// create fragment descriptor set
+		shaderState.fragmentDescriptorSet = std::move(
+			deviceState.logicalDevice->allocateDescriptorSetsUnique(
+				vk::DescriptorSetAllocateInfo(
+					shaderState.fragmentLayoutDescriptorPool.get(),
+					1U,
+					&shaderState.fragmentDescriptorSetLayout.get()))[0]);
+
+		// update fragment descriptor set
+			// binding 0 (sampler)
+		auto descriptorImageInfo = vk::DescriptorImageInfo(renderState.sampler.get());
+		deviceState.logicalDevice->updateDescriptorSets(
+			{
+				vk::WriteDescriptorSet(
+					shaderState.fragmentDescriptorSet.get(),
+					0U,
+					0U,
+					1U,
+					vk::DescriptorType::eSampler,
+					&descriptorImageInfo)
+			},
+			{}
+		);
+			// binding 1 (images)
+		
+		auto imageInfos = std::vector<vk::DescriptorImageInfo>();
+		imageInfos.reserve(textureCount);
+		for (Image2D& image : renderState.images)
+		{
+			imageInfos.emplace_back(vk::DescriptorImageInfo(
+				nullptr,
+				image.view,
+				vk::ImageLayout::eShaderReadOnlyOptimal));
+		}
+
+		deviceState.logicalDevice->updateDescriptorSets(
+			{
+				vk::WriteDescriptorSet(
+					shaderState.fragmentDescriptorSet.get(),
+					1U,
+					0U,
+					static_cast<uint32_t>(imageInfos.size()),
+					vk::DescriptorType::eSampledImage,
+					imageInfos.data())
+			},
+			{}
+		);
+	}
+
     static void CreateVertexAndIndexBuffers(
         RenderState& renderState, 
+        DeviceState& deviceState, 
         const InitState& initState,
-        const DeviceState& deviceState, 
         const std::vector<Sprite>& sprites)
     {
         // create vertex buffers
         constexpr auto quadSize = sizeof(Quad);
         size_t vertexBufferSize = quadSize * sprites.size();
         auto vertexStagingBuffer = CreateBuffer(
-            deviceState.logicalDevice,
+            deviceState.logicalDevice.get(),
             deviceState.allocator,
             vertexBufferSize,
             vk::BufferUsageFlagBits::eTransferSrc,
+            deviceState.graphicsQueueFamilyID,
             vk::MemoryPropertyFlagBits::eHostVisible |
                 vk::MemoryPropertyFlagBits::eHostCoherent,
             true);
         
         renderState.vertexBuffer = CreateBuffer(
-            deviceState.logicalDevice,
+            deviceState.logicalDevice.get(),
             deviceState.allocator,
             vertexBufferSize, 
             vk::BufferUsageFlagBits::eTransferDst |
                 vk::BufferUsageFlagBits::eVertexBuffer,
+            deviceState.graphicsQueueFamilyID,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
             true);
 
@@ -92,11 +290,10 @@ namespace vka
         deviceState.logicalDevice->unmapMemory(vertexStagingBuffer.allocation->memory);
         CopyToBuffer(
             initState.copyCommandBuffer.get(),
+            deviceState.graphicsQueue,
             vertexStagingBuffer.buffer.get(),
-            vertexBuffer.buffer.get(),
-            vertexBufferSize,
-            0U,
-            0U,
+            renderState.vertexBuffer.buffer.get(),
+            vk::BufferCopy(vertexBufferSize, 0U, 0U),
             std::make_optional(initState.copyCommandFence.get()));
         
         // wait for vertex buffer copy to finish
@@ -105,24 +302,25 @@ namespace vka
             std::numeric_limits<uint64_t>::max());
         deviceState.logicalDevice->resetFences({ initState.copyCommandFence.get() });
 
-        constexpr auto quadIndexSize = sizeof(std::array<VertexIndex, IndicesPerQuad>);
-        constexpr auto indexBufferSize = quadIndexSize * sprites.size();
+        auto indexBufferSize = QuadIndicesSize * sprites.size();
 
         auto indexStagingBuffer = CreateBuffer(
-            deviceState.logicalDevice,
+            deviceState.logicalDevice.get(),
             deviceState.allocator,
             indexBufferSize,
             vk::BufferUsageFlagBits::eTransferSrc,
+            deviceState.graphicsQueueFamilyID,
             vk::MemoryPropertyFlagBits::eHostVisible |
                 vk::MemoryPropertyFlagBits::eHostCoherent,
             true);
 
         renderState.indexBuffer = CreateBuffer(
-            deviceState.logicalDevice,
+            deviceState.logicalDevice.get(),
             deviceState.allocator,
             indexBufferSize,
             vk::BufferUsageFlagBits::eTransferDst |
                 vk::BufferUsageFlagBits::eIndexBuffer,
+            deviceState.graphicsQueueFamilyID,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
             true);
 
@@ -132,24 +330,23 @@ namespace vka
             indexStagingBuffer.allocation->offsetInDeviceMemory,
             indexStagingBuffer.allocation->size);
         
-        auto indexOffset = 0U;
         SpriteIndex spriteIndex = 0U;
+        auto quadIndexArray = reinterpret_cast<QuadIndices*>(indexStagingData);
         for (const Sprite& sprite : sprites)
         {
             auto indices = Quad::getIndices(spriteIndex);
-            memcpy(indexStagingData + indexOffset, indices.data(), quadIndexSize);
+            auto destPtr = reinterpret_cast<void*>(quadIndexArray + spriteIndex);
+            std::memcpy(destPtr, &indices, QuadIndicesSize);
             ++spriteIndex;
-            indexOffset = quadIndexSize * spriteIndex;
         }
         deviceState.logicalDevice->unmapMemory(indexStagingBuffer.allocation->memory);
         
         CopyToBuffer(
             initState.copyCommandBuffer.get(),
+            deviceState.graphicsQueue,
             indexStagingBuffer.buffer.get(),
             renderState.indexBuffer.buffer.get(),
-            indexBufferSize,
-            0U,
-            0U,
+            vk::BufferCopy(indexBufferSize, 0U, 0U),
             std::make_optional(initState.copyCommandFence.get()));
 
         deviceState.logicalDevice->waitForFences({ initState.copyCommandFence.get() }, 
@@ -258,14 +455,14 @@ namespace vka
     void ResetSwapChain(RenderState& renderState, const DeviceState& deviceState)
     {
         deviceState.logicalDevice->waitIdle();
-        renderState.swapChain->reset();
+        renderState.swapchain.reset();
     }
 
     void CreateSwapchainWithDependencies(RenderState& renderState, 
         const DeviceState& deviceState, 
         const SurfaceState& surfaceState)
     {
-        renderState.swapChain = deviceState.logicalDevice->createSwapchainKHRUnique(
+        renderState.swapchain = deviceState.logicalDevice->createSwapchainKHRUnique(
             vk::SwapchainCreateInfoKHR(
                 vk::SwapchainCreateFlagsKHR(),
                 surfaceState.surface.get(),
@@ -283,7 +480,7 @@ namespace vka
                 surfaceState.presentMode,
                 0U));
                 
-        renderState.swapImages = deviceState.logicalDevice->getSwapchainImagesKHR(renderState.swapChain.get());
+        renderState.swapImages = deviceState.logicalDevice->getSwapchainImagesKHR(renderState.swapchain.get());
 
         for (auto i = 0U; i < BufferCount; i++)
         {
@@ -315,7 +512,7 @@ namespace vka
         }
     }
 
-    InitializeSupportStructs(RenderState& renderState, const DeviceState& deviceState, const ShaderState& shaderState)
+    void InitializeSupportStructs(RenderState& renderState, const DeviceState& deviceState, const ShaderState& shaderState)
     {
         for (auto& support : renderState.supports)
         {
@@ -331,7 +528,7 @@ namespace vka
 					2U));
 			support.copyCommandBuffer = std::move(commandBuffers[0]);
 			support.renderCommandBuffer = std::move(commandBuffers[1]);
-			support.vertexLayoutDescriptorPool = createVertexDescriptorPool();
+			support.vertexLayoutDescriptorPool = CreateVertexDescriptorPool(deviceState);
 			support.bufferCapacity = 0U;
 			support.renderBufferExecuted = deviceState.logicalDevice->createFenceUnique(
 				vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
@@ -341,7 +538,6 @@ namespace vka
 			support.matrixBufferStagingCompleteSemaphore = deviceState.logicalDevice->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()));
-			support.vertexLayoutDescriptorPool = createVertexDescriptorPool();
 			support.vertexDescriptorSet = vk::UniqueDescriptorSet(deviceState.logicalDevice->allocateDescriptorSets(
 				vk::DescriptorSetAllocateInfo(
 					support.vertexLayoutDescriptorPool.get(),

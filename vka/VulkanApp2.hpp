@@ -15,7 +15,6 @@
 #include "Input.hpp"
 #include "DeviceState.hpp"
 #include "SurfaceState.hpp"
-#include "ShaderState.hpp"
 #include "PipelineState.hpp"
 #include "RenderState.hpp"
 #include "Image2D.hpp"
@@ -26,7 +25,7 @@
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
 #include "Allocator.hpp"
-#include "profiler.hpp"
+// #include "profiler.hpp"
 #include "mymath.hpp"
 #include "CircularQueue.hpp"
 #include "TimeHelper.hpp"
@@ -140,48 +139,47 @@ namespace vka
 
 		void Run()
 		{
-			m_UpdateCallback = updateCallback;
-			m_RenderCallback = renderCallback;
-			m_GameLoop = true;
-			m_StartupTimePoint = NowMilliseconds();
-			m_CurrentSimulationTime = m_StartupTimePoint;
+			m_AppState.gameLoop = true;
+			m_AppState.startupTimePoint = NowMilliseconds();
+			m_AppState.currentSimulationTime = m_AppState.startupTimePoint;
+			m_SurfaceState.surfaceNeedsRecreation = false;
 
-			std::thread gameLoop(&VulkanApp::GameThread, this);
+			std::thread gameLoopThread(&VulkanApp::GameThread, this);
 
 			// Event loop
 			while (!glfwWindowShouldClose(m_Window))
 			{
 				// join threads if resize needed, then restart game thread
-				while (m_ResizeNeeded)
+				while (m_SurfaceState.surfaceNeedsRecreation)
 				{
-					auto size = GetWindowSize();
+					auto size = GetWindowSize(m_AppState);
 					resizeWindow(size);
-					m_ResizeNeeded = false;
-					m_RecreateSurfaceCondition.notify_all();
+					m_SurfaceState.surfaceNeedsRecreation = false;
+					m_SurfaceState.recreateSurfaceCondition.notify_all();
 				}
 				glfwWaitEvents();
 			}
-			m_GameLoop = false;
-			gameLoop.join();
+			m_AppState.gameLoop = false;
+			gameLoopThread.join();
 			deviceState.logicalDevice->waitIdle();
 		}
 
-		void debugprofiler()
-		{
-			size_t frameCount = 0;
-			profiler::Describe<0>("Frame time");
-			profiler::startTimer<0>();
-				profiler::endTimer<0>();
-				if (frameCount % 100 == 0)
-				{
-					auto frameDuration = profiler::getRollingAverage<0>(100);
-					auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
-					auto frameDurationCount = millisecondFrameDuration.count();
-					auto title = m_InitState.windowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount)) + std::string(" microseconds");
-					glfwSetwindowTitle(m_Window, title.c_str());
-				}
-				frameCount++;
-		}
+		// void debugprofiler()
+		// {
+		// 	size_t frameCount = 0;
+		// 	profiler::Describe<0>("Frame time");
+		// 	profiler::startTimer<0>();
+		// 		profiler::endTimer<0>();
+		// 		if (frameCount % 100 == 0)
+		// 		{
+		// 			auto frameDuration = profiler::getRollingAverage<0>(100);
+		// 			auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
+		// 			auto frameDurationCount = millisecondFrameDuration.count();
+		// 			auto title = m_InitState.windowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount)) + std::string(" microseconds");
+		// 			glfwSetwindowTitle(m_Window, title.c_str());
+		// 		}
+		// 		frameCount++;
+		// }
 
 		auto readSpriteSheet(const std::string& path)
 		{
@@ -256,7 +254,15 @@ namespace vka
 			RenderFuncPtr renderCallback
 		)
 		{
+			m_InitState.updateCallback = updateCallback;
+			m_InitState.renderCallback = renderCallback;
+			m_InitState.imageLoadCallback = imageLoadCallback;
 			m_InitState.windowTitle = windowTitle;
+			m_InitState.width = width;
+			m_InitState.height = height;
+			m_InitState.vertexShaderPath = vertexShaderPath;
+			m_InitState.fragmentShaderPath = fragmentShaderPath;
+			m_InitState.deviceExtensions = deviceExtensions;
 			auto glfwInitError = glfwInit();
 			if (!glfwInitError)
 			{
@@ -332,7 +338,7 @@ namespace vka
 				m_AppState, 
 				m_InstanceState, 
 				m_DeviceState, 
-				std::make_optional<vk::Extent2D>());
+				GetWindowSize(m_AppState));
 			SelectPresentMode(m_SurfaceState);
 			CheckForPresentationSupport(m_DeviceState, m_SurfaceState);
 
@@ -536,11 +542,11 @@ namespace vka
 			auto presentResult = vkQueuePresentKHR(deviceState.graphicsQueue.operator VkQueue(), &presentInfo.operator const VkPresentInfoKHR &());
 		}
 
-		vk::Extent2D GetWindowSize()
+		vk::Extent2D GetWindowSize(const ApplicationState& appState)
 		{
 			int width = 0;
 			int height = 0;
-			glfwGetWindowSize(m_AppState.window, &width, &height);
+			glfwGetWindowSize(appState.window, &width, &height);
 			return vk::Extent2D(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 		}
 

@@ -13,17 +13,7 @@ namespace vka
         vk::UniqueDebugReportCallbackEXT debugBreakpointCallbackData;
     };
 
-    static bool LoadVulkanDLL(InstanceState& instanceState)
-    {
-        // TODO: remove platform dependence
-        instanceState.vulkanLibrary = LoadLibrary("vulkan-1.dll");
-
-        if (instanceState.vulkanLibrary == nullptr)
-            return false;
-        return true;
-    }
-
-    void CreateInstance(InstanceState& instanceState, const vk::InstanceCreateInfo& instanceCreateInfo)
+    static void CreateInstance(InstanceState& instanceState, const vk::InstanceCreateInfo& instanceCreateInfo)
     {
         instanceState.instance = vk::createInstanceUnique(instanceCreateInfo);
     }
@@ -68,6 +58,17 @@ namespace vka
 					reinterpret_cast<PFN_vkDebugReportCallbackEXT>(&debugBreakCallback)
 				));
 		}
+	}
+}
+
+static bool LoadVulkanDLL(vka::InstanceState& instanceState)
+{
+	// TODO: remove platform dependence
+	instanceState.vulkanLibrary = LoadLibrary("vulkan-1.dll");
+
+	if (instanceState.vulkanLibrary == nullptr)
+		return false;
+	return true;
 }
 
 static bool LoadVulkanEntryPoint(vka::InstanceState& instanceState)

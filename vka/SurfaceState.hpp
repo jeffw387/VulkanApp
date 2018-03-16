@@ -8,6 +8,7 @@
 #include <vector>
 #include <optional>
 #include <mutex>
+#include <condition_variable>
 
 namespace vka
 {
@@ -15,6 +16,7 @@ namespace vka
     {
         bool surfaceNeedsRecreation = false;
 		std::mutex recreateSurfaceMutex;
+		std::condition_variable recreateSurfaceCondition;
 		vk::UniqueSurfaceKHR surface;
 		vk::Extent2D surfaceExtent;
 		vk::Format surfaceFormat;
@@ -29,7 +31,7 @@ namespace vka
 		ApplicationState& appState, 
 		const InstanceState& instanceState, 
 		const DeviceState& deviceState, 
-		const std::optional<vk::Extent2D> extent)
+		const vk::Extent2D& extent)
 	{
 		VkSurfaceKHR surface;
 		glfwCreateWindowSurface(instanceState.instance.get(), appState.window, nullptr, &surface);
@@ -56,10 +58,7 @@ namespace vka
 		if (surfaceState.surfaceCapabilities.currentExtent.width == -1 ||
 			surfaceState.surfaceCapabilities.currentExtent.height == -1)
 		{
-			if (extent)
-				surfaceState.surfaceExtent = extent.value();
-			else
-				surfaceState.surfaceExtent = GetWindowSize();
+			surfaceState.surfaceExtent = extent;
 		}
 		else
 		{

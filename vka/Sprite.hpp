@@ -9,11 +9,13 @@ namespace vka
 {
 	using SpriteIndex = uint32_t;
 	constexpr auto VerticesPerQuad = 4U;
+	using QuadIndices = std::array<VertexIndex, IndicesPerQuad>;
+	constexpr auto QuadIndicesSize = sizeof(QuadIndices);
 	struct Quad
 	{
 		std::array<Vertex, VerticesPerQuad> vertices;
 
-		static std::array<VertexIndex, IndicesPerQuad> getIndices(const SpriteIndex spriteIndex)
+		static QuadIndices getIndices(const SpriteIndex spriteIndex)
 		{
 			auto result = IndexArray;
 			auto offset = spriteIndex * VerticesPerQuad;

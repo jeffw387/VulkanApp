@@ -3,7 +3,6 @@
 #include "vulkan/vulkan.hpp"
 #include "DeviceState.hpp"
 #include "RenderState.hpp"
-#include "ShaderState.hpp"
 #include <vector>
 
 namespace vka

@@ -36,9 +36,6 @@ namespace vka
         vk::UniqueFence imagePresentCompleteFence;
         vk::UniqueSemaphore matrixBufferStagingCompleteSemaphore;
         vk::UniqueSemaphore imageRenderCompleteSemaphore;
-        entt::ResourceCache<Image2D> images;
-		entt::ResourceCache<Sprite> sprites;
-		std::vector<Sprite> spriteVector;
     };
 
     struct RenderState
@@ -58,6 +55,9 @@ namespace vka
         vk::DeviceSize copyOffset;
         void* mapped;
         SpriteIndex spriteIndex;
+        entt::ResourceCache<Image2D> images;
+		entt::ResourceCache<Sprite> sprites;
+		std::vector<Sprite> spriteVector;
     };
 
     struct FragmentPushConstants
@@ -164,7 +164,7 @@ namespace vka
 				vk::DescriptorType::eSampler,
 				1U,
 				vk::ShaderStageFlagBits::eFragment,
-				&renderState.sampler),
+				&renderState.sampler.get()),
 			// Fragment: image2D uniform buffer (array)
 			vk::DescriptorSetLayoutBinding(
 				1U,
@@ -184,8 +184,8 @@ namespace vka
 	{
 		return std::vector<vk::DescriptorSetLayout>
 		{ 
-			shaderState.vertexDescriptorSetLayout, 
-			shaderState.fragmentDescriptorSetLayout
+			shaderState.vertexDescriptorSetLayout.get(), 
+			shaderState.fragmentDescriptorSetLayout.get()
 		};
 	}
 

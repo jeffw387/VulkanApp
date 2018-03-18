@@ -14855,7 +14855,11 @@ namespace VULKAN_HPP_NAMESPACE
 
   struct DescriptorSetLayoutBinding
   {
-    DescriptorSetLayoutBinding( uint32_t binding_ = 0, DescriptorType descriptorType_ = DescriptorType::eSampler, uint32_t descriptorCount_ = 0, ShaderStageFlags stageFlags_ = ShaderStageFlags(), const Sampler* pImmutableSamplers_ = nullptr )
+    DescriptorSetLayoutBinding( uint32_t binding_ = 0, 
+      DescriptorType descriptorType_ = DescriptorType::eSampler, 
+      uint32_t descriptorCount_ = 0, 
+      ShaderStageFlags stageFlags_ = ShaderStageFlags(), 
+      const Sampler* pImmutableSamplers_ = nullptr )
       : binding( binding_ )
       , descriptorType( descriptorType_ )
       , descriptorCount( descriptorCount_ )

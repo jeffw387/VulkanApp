@@ -10,9 +10,7 @@ namespace vka
     struct PipelineState
     {
         vk::UniquePipelineLayout pipelineLayout;
-		std::vector<vk::SpecializationMapEntry> vertexSpecializations;
 		std::vector<vk::SpecializationMapEntry> fragmentSpecializations;
-		vk::SpecializationInfo vertexSpecializationInfo;
 		vk::SpecializationInfo fragmentSpecializationInfo;
 		vk::PipelineShaderStageCreateInfo vertexShaderStageInfo;
 		vk::PipelineShaderStageCreateInfo fragmentShaderStageInfo;
@@ -36,13 +34,12 @@ namespace vka
 
 	void CreatePipelineLayout(PipelineState& pipelineState, const DeviceState& deviceState, const ShaderState& shaderState)
 	{
-		auto layouts = std::vector<vk::DescriptorSetLayout> layouts;
-		layouts.push_back(shaderState.vertexDescriptorSetLayout.get());
-		layouts.push_back(shaderState.fragmentDescriptorSetLayout.get());
+		auto setLayouts = std::vector<vk::DescriptorSetLayout>();
+		setLayouts.push_back(shaderState.fragmentDescriptorSetLayout.get());
 		auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo(
 			vk::PipelineLayoutCreateFlags(),
-			static_cast<uint32_t>(layouts.size()),
-			layouts.data(),
+			static_cast<uint32_t>(setLayouts.size()),
+			setLayouts.data(),
 			static_cast<uint32_t>(shaderState.pushConstantRanges.size()),
 			shaderState.pushConstantRanges.data());
 		pipelineState.pipelineLayout = deviceState.logicalDevice->createPipelineLayoutUnique(pipelineLayoutInfo);
@@ -56,7 +53,6 @@ namespace vka
 			0U,
 			sizeof(glm::uint32)));
 
-		pipelineState.vertexSpecializationInfo = vk::SpecializationInfo();
 		pipelineState.fragmentSpecializationInfo = vk::SpecializationInfo(
 			static_cast<uint32_t>(pipelineState.fragmentSpecializations.size()),
 			pipelineState.fragmentSpecializations.data(),
@@ -69,7 +65,7 @@ namespace vka
 			vk::ShaderStageFlagBits::eVertex,
 			pipelineState.vertexShader.get(),
 			"main",
-			&pipelineState.vertexSpecializationInfo);
+			nullptr);
 
 		pipelineState.fragmentShaderStageInfo = vk::PipelineShaderStageCreateInfo(
 			vk::PipelineShaderStageCreateFlags(),

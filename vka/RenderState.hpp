@@ -12,6 +12,7 @@
 #include "SurfaceState.hpp"
 #include "Image2D.hpp"
 #include "fileIO.hpp"
+#include "entt.hpp"
 #include <array>
 #include <cstring>
 #include <vector>
@@ -24,24 +25,16 @@ namespace vka
 
     struct Supports
     {
-        vk::UniqueCommandPool commandPool;
-        vk::UniqueCommandBuffer copyCommandBuffer;
+        vk::UniqueCommandPool renderCommandPool;
         vk::UniqueCommandBuffer renderCommandBuffer;
-        AllocatedBuffer matrixStagingBuffer;
-        AllocatedBuffer matrixBuffer;
-        size_t bufferCapacity = 0U;
-        vk::UniqueDescriptorPool vertexLayoutDescriptorPool;
-        vk::UniqueDescriptorSet vertexDescriptorSet;
         vk::UniqueFence renderBufferExecuted;
         vk::UniqueFence imagePresentCompleteFence;
-        vk::UniqueSemaphore matrixBufferStagingCompleteSemaphore;
         vk::UniqueSemaphore imageRenderCompleteSemaphore;
     };
 
     struct RenderState
     {
         AllocatedBuffer vertexBuffer;
-		AllocatedBuffer indexBuffer;
         vk::UniqueRenderPass renderPass;
 		vk::UniqueSampler sampler;
         std::array<Supports, BufferCount> supports;
@@ -51,19 +44,16 @@ namespace vka
 		std::array<vk::UniqueFramebuffer, BufferCount> framebuffers;
         Camera2D camera;
         uint32_t nextImage;
-        glm::mat4 vp;
-        vk::DeviceSize copyOffset;
-        void* mapped;
-        SpriteIndex spriteIndex;
+        entt::ident<ImageIdentifiers...> imageIdentifiers;
         entt::ResourceCache<Image2D> images;
-		entt::ResourceCache<Sprite> sprites;
 		std::vector<Sprite> spriteVector;
     };
 
     struct FragmentPushConstants
 	{
-		glm::uint32 textureID;
-		glm::float32 r, g, b, a;
+		glm::uint32 imageIndex;
+        glm::vec4 color;
+        glm::mat4 mvp;
 	};
 
     struct ShaderState
@@ -72,14 +62,13 @@ namespace vka
 		std::string fragmentShaderPath;
         vk::UniqueShaderModule vertexShader;
 		vk::UniqueShaderModule fragmentShader;
-		vk::UniqueDescriptorSetLayout vertexDescriptorSetLayout;
-		vk::UniqueDescriptorSetLayout fragmentDescriptorSetLayout;
 		std::vector<vk::PushConstantRange> pushConstantRanges;
+		vk::UniqueDescriptorSetLayout fragmentDescriptorSetLayout;
 		vk::UniqueDescriptorPool fragmentLayoutDescriptorPool;
 		vk::UniqueDescriptorSet fragmentDescriptorSet;
     };
 
-    void CreateShaderModules(ShaderState& shaderState, const DeviceState& deviceState)
+    static void CreateShaderModules(ShaderState& shaderState, const DeviceState& deviceState)
 	{
 		// read from file
 		auto vertexShaderBinary = fileIO::readFile(shaderState.vertexShaderPath);
@@ -98,22 +87,7 @@ namespace vka
 		shaderState.fragmentShader = deviceState.logicalDevice->createShaderModuleUnique(fragmentShaderInfo);
 	}
 
-	vk::UniqueDescriptorPool CreateVertexDescriptorPool(const DeviceState& deviceState)
-	{
-		auto poolSizes = std::vector<vk::DescriptorPoolSize>
-		{
-			vk::DescriptorPoolSize(vk::DescriptorType::eUniformBufferDynamic, 1U)
-		};
-
-		return deviceState.logicalDevice->createDescriptorPoolUnique(
-			vk::DescriptorPoolCreateInfo(
-				vk::DescriptorPoolCreateFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet),
-				BufferCount,
-				static_cast<uint32_t>(poolSizes.size()),
-				poolSizes.data()));
-	}
-
-	void CreateFragmentDescriptorPool(ShaderState& shaderState, 
+	static void CreateFragmentDescriptorPool(ShaderState& shaderState, 
 		const DeviceState& deviceState, 
 		const RenderState& renderState)
 	{
@@ -132,26 +106,7 @@ namespace vka
 				poolSizes.data()));
 	}
 
-	void CreateVertexSetLayout(ShaderState& shaderState, const DeviceState& deviceState)
-	{
-		auto vertexLayoutBindings = std::vector<vk::DescriptorSetLayoutBinding>
-		{
-			// Vertex: matrix uniform buffer (dynamic)
-			vk::DescriptorSetLayoutBinding(
-				0U,
-				vk::DescriptorType::eUniformBufferDynamic,
-				1U,
-				vk::ShaderStageFlagBits::eVertex)
-		};
-
-		shaderState.vertexDescriptorSetLayout = deviceState.logicalDevice->createDescriptorSetLayoutUnique(
-			vk::DescriptorSetLayoutCreateInfo(
-				vk::DescriptorSetLayoutCreateFlags(),
-				static_cast<uint32_t>(vertexLayoutBindings.size()),
-				vertexLayoutBindings.data()));
-	}
-
-	void CreateFragmentSetLayout(ShaderState& shaderState, 
+	static void CreateFragmentSetLayout(ShaderState& shaderState, 
 		const DeviceState& deviceState, 
 		const RenderState& renderState)
 	{
@@ -180,24 +135,23 @@ namespace vka
 				fragmentLayoutBindings.data()));
 	}
 
-	std::vector<vk::DescriptorSetLayout> GetSetLayouts(const ShaderState& shaderState)
+	static std::vector<vk::DescriptorSetLayout> GetSetLayouts(const ShaderState& shaderState)
 	{
 		return std::vector<vk::DescriptorSetLayout>
 		{ 
-			shaderState.vertexDescriptorSetLayout.get(), 
 			shaderState.fragmentDescriptorSetLayout.get()
 		};
 	}
 
-	void SetupPushConstants(ShaderState& shaderState)
+	static void SetupPushConstants(ShaderState& shaderState)
 	{
 		shaderState.pushConstantRanges.emplace_back(vk::PushConstantRange(
-			vk::ShaderStageFlagBits::eFragment,
+			vk::ShaderStageFlagBits::eVertex,
 			0U,
 			sizeof(FragmentPushConstants)));
 	}
 
-	void CreateAndUpdateFragmentDescriptorSet(ShaderState& shaderState, 
+	static void CreateAndUpdateFragmentDescriptorSet(ShaderState& shaderState, 
 		const DeviceState& deviceState, 
 		const RenderState& renderState)
 	{
@@ -251,15 +205,15 @@ namespace vka
 		);
 	}
 
-    static void CreateVertexAndIndexBuffers(
+    static void CreateVertexBuffer(
         RenderState& renderState, 
         DeviceState& deviceState, 
         const InitState& initState,
-        const std::vector<Sprite>& sprites)
+        const std::vector<Quad>& quads)
     {
         // create vertex buffers
         constexpr auto quadSize = sizeof(Quad);
-        size_t vertexBufferSize = quadSize * sprites.size();
+        size_t vertexBufferSize = quadSize * quads.size();
         auto vertexStagingBuffer = CreateBuffer(
             deviceState.logicalDevice.get(),
             deviceState.allocator,
@@ -286,7 +240,7 @@ namespace vka
             vertexStagingBuffer.allocation->offsetInDeviceMemory,
             vertexStagingBuffer.allocation->size);
         
-        memcpy(vertexStagingData, sprites.data(), vertexBufferSize);
+        memcpy(vertexStagingData, quads.data(), vertexBufferSize);
         deviceState.logicalDevice->unmapMemory(vertexStagingBuffer.allocation->memory);
         CopyToBuffer(
             initState.copyCommandBuffer.get(),
@@ -301,61 +255,9 @@ namespace vka
             vk::Bool32(true), 
             std::numeric_limits<uint64_t>::max());
         deviceState.logicalDevice->resetFences({ initState.copyCommandFence.get() });
-
-        auto indexBufferSize = QuadIndicesSize * sprites.size();
-
-        auto indexStagingBuffer = CreateBuffer(
-            deviceState.logicalDevice.get(),
-            deviceState.allocator,
-            indexBufferSize,
-            vk::BufferUsageFlagBits::eTransferSrc,
-            deviceState.graphicsQueueFamilyID,
-            vk::MemoryPropertyFlagBits::eHostVisible |
-                vk::MemoryPropertyFlagBits::eHostCoherent,
-            true);
-
-        renderState.indexBuffer = CreateBuffer(
-            deviceState.logicalDevice.get(),
-            deviceState.allocator,
-            indexBufferSize,
-            vk::BufferUsageFlagBits::eTransferDst |
-                vk::BufferUsageFlagBits::eIndexBuffer,
-            deviceState.graphicsQueueFamilyID,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            true);
-
-        // copy data to index buffer
-        void* indexStagingData = deviceState.logicalDevice->mapMemory(
-            indexStagingBuffer.allocation->memory,
-            indexStagingBuffer.allocation->offsetInDeviceMemory,
-            indexStagingBuffer.allocation->size);
-        
-        SpriteIndex spriteIndex = 0U;
-        auto quadIndexArray = reinterpret_cast<QuadIndices*>(indexStagingData);
-        for (const Sprite& sprite : sprites)
-        {
-            auto indices = Quad::getIndices(spriteIndex);
-            auto destPtr = reinterpret_cast<void*>(quadIndexArray + spriteIndex);
-            std::memcpy(destPtr, &indices, QuadIndicesSize);
-            ++spriteIndex;
-        }
-        deviceState.logicalDevice->unmapMemory(indexStagingBuffer.allocation->memory);
-        
-        CopyToBuffer(
-            initState.copyCommandBuffer.get(),
-            deviceState.graphicsQueue,
-            indexStagingBuffer.buffer.get(),
-            renderState.indexBuffer.buffer.get(),
-            vk::BufferCopy(indexBufferSize, 0U, 0U),
-            std::make_optional(initState.copyCommandFence.get()));
-
-        deviceState.logicalDevice->waitForFences({ initState.copyCommandFence.get() }, 
-            vk::Bool32(true), 
-            std::numeric_limits<uint64_t>::max());
-        deviceState.logicalDevice->resetFences({ initState.copyCommandFence.get() });
     }
 
-    void CreateRenderPass(RenderState& renderState, const DeviceState& deviceState, const SurfaceState& surfaceState)
+    static void CreateRenderPass(RenderState& renderState, const DeviceState& deviceState, const SurfaceState& surfaceState)
     {
         // create render pass
         auto colorAttachmentDescription = vk::AttachmentDescription(
@@ -420,7 +322,7 @@ namespace vka
         renderState.renderPass = deviceState.logicalDevice->createRenderPassUnique(renderPassInfo);
     }
 
-    void CreateSampler(RenderState& renderState, const DeviceState& deviceState)
+    static void CreateSampler(RenderState& renderState, const DeviceState& deviceState)
     {
         renderState.sampler = deviceState.logicalDevice->createSamplerUnique(
             vk::SamplerCreateInfo(
@@ -438,7 +340,7 @@ namespace vka
                 vk::CompareOp::eNever));
     }
 
-    void CheckForPresentationSupport(const DeviceState& deviceState, const SurfaceState& surfaceState)
+    static void CheckForPresentationSupport(const DeviceState& deviceState, const SurfaceState& surfaceState)
     {
         vk::Bool32 presentSupport;
         vkGetPhysicalDeviceSurfaceSupportKHR(deviceState.physicalDevice, 
@@ -452,13 +354,13 @@ namespace vka
         }
     }
 
-    void ResetSwapChain(RenderState& renderState, const DeviceState& deviceState)
+    static void ResetSwapChain(RenderState& renderState, const DeviceState& deviceState)
     {
         deviceState.logicalDevice->waitIdle();
         renderState.swapchain.reset();
     }
 
-    void CreateSwapchainWithDependencies(RenderState& renderState, 
+    static void CreateSwapchainWithDependencies(RenderState& renderState, 
         const DeviceState& deviceState, 
         const SurfaceState& surfaceState)
     {
@@ -512,11 +414,11 @@ namespace vka
         }
     }
 
-    void InitializeSupportStructs(RenderState& renderState, const DeviceState& deviceState, const ShaderState& shaderState)
+    static void InitializeSupportStructs(RenderState& renderState, const DeviceState& deviceState, const ShaderState& shaderState)
     {
         for (auto& support : renderState.supports)
         {
-            support.commandPool = deviceState.logicalDevice->createCommandPoolUnique(
+            support.renderCommandPool = deviceState.logicalDevice->createCommandPoolUnique(
 				vk::CommandPoolCreateInfo(
 					vk::CommandPoolCreateFlagBits::eResetCommandBuffer |
 					vk::CommandPoolCreateFlagBits::eTransient,
@@ -525,26 +427,13 @@ namespace vka
 				vk::CommandBufferAllocateInfo(
 					support.commandPool.get(),
 					vk::CommandBufferLevel::ePrimary,
-					2U));
-			support.copyCommandBuffer = std::move(commandBuffers[0]);
-			support.renderCommandBuffer = std::move(commandBuffers[1]);
-			support.vertexLayoutDescriptorPool = CreateVertexDescriptorPool(deviceState);
-			support.bufferCapacity = 0U;
+					1U));
+			support.renderCommandBuffer = std::move(commandBuffers[0]);
 			support.renderBufferExecuted = deviceState.logicalDevice->createFenceUnique(
 				vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
 			support.imageRenderCompleteSemaphore = deviceState.logicalDevice->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()));
-			support.matrixBufferStagingCompleteSemaphore = deviceState.logicalDevice->createSemaphoreUnique(
-				vk::SemaphoreCreateInfo(
-					vk::SemaphoreCreateFlags()));
-			support.vertexDescriptorSet = vk::UniqueDescriptorSet(deviceState.logicalDevice->allocateDescriptorSets(
-				vk::DescriptorSetAllocateInfo(
-					support.vertexLayoutDescriptorPool.get(),
-					1U,
-					&shaderState.vertexDescriptorSetLayout.get()))[0],
-				vk::DescriptorSetDeleter(deviceState.logicalDevice.get(),
-					support.vertexLayoutDescriptorPool.get()));
         }
     }
 }

@@ -64,24 +64,18 @@ namespace vka
 		RenderState m_RenderState;
 		PipelineState m_PipelineState;
 
-		void RenderSprite(
-			uint32_t textureIndex,
+		void RenderSpriteInstance(
+			Sprite sprite,
 			glm::mat4 transform,
 			glm::vec4 color)
 		{
-			Sprite sprite;
-			auto& supports = m_Supports[m_RenderState.nextImage];
-			glm::mat4 mvp =  m_RenderState.vp * transform;
-
-			memcpy((char*)m_RenderState.mapped + m_RenderState.copyOffset, &mvp, sizeof(glm::mat4));
-			m_RenderState.copyOffset += m_MatrixBufferOffsetAlignment;
+			auto& supports = m_RenderState.supports[m_RenderState.nextImage];
+			glm::mat4 mvp =  m_RenderState.camera.getMatrix() * transform;
 
 			FragmentPushConstants pushRange;
-			pushRange.textureID = textureIndex;
-			pushRange.r = color.r;
-			pushRange.g = color.g;
-			pushRange.b = color.b;
-			pushRange.a = color.a;
+			pushRange.imageIndex = sprite.imageIndex;
+			pushRange.color = color;
+			pushRange.mvp = mvp;
 
 			supports.renderCommandBuffer->pushConstants<FragmentPushConstants>(
 				m_PipelineLayout.get(),
@@ -89,38 +83,27 @@ namespace vka
 				0U,
 				{ pushRange });
 
-			uint32_t dynamicOffset = static_cast<uint32_t>(m_RenderState.spriteIndex * m_MatrixBufferOffsetAlignment);
-
-			// bind dynamic matrix uniform
-			supports.renderCommandBuffer->bindDescriptorSets(
-				vk::PipelineBindPoint::eGraphics,
-				m_PipelineLayout.get(),
-				0U,
-				{ supports.vertexDescriptorSet.get() },
-				{ dynamicOffset });
-
-			auto vertexOffset = textureIndex * IndicesPerQuad;
+			auto vertexOffset = sprite.index * IndicesPerQuad;
 			// draw the sprite
 			supports.renderCommandBuffer->
 				drawIndexed(IndicesPerQuad, 1U, 0U, vertexOffset, 0U);
-			m_RenderState.spriteIndex++;
 		}
 
 		void GameThread()
 		{
-			while(m_GameLoop)
+			while(m_AppState.gameLoop)
 			{
 				auto currentTime = NowMilliseconds();
-				std::unique_lock<std::mutex> resizeLock(m_RecreateSurfaceMutex);
-				m_RecreateSurfaceCondition.wait(resizeLock, [this](){ return !m_ResizeNeeded; });
+				std::unique_lock<std::mutex> resizeLock(m_SurfaceState.recreateSurfaceMutex);
+				m_SurfaceState.recreateSurfaceCondition.wait(resizeLock, [this](){ return !m_SurfaceState.surfaceNeedsRecreation; });
 				resizeLock.unlock();
 				// Update simulation to be in sync with actual time
 				SpriteCount spriteCount = 0;
-				while (currentTime - m_CurrentSimulationTime > UpdateDuration)
+				while (currentTime - m_AppState.currentSimulationTime > UpdateDuration)
 				{
-					m_CurrentSimulationTime += UpdateDuration;
+					m_AppState.currentSimulationTime += UpdateDuration;
 
-					spriteCount = m_LoopCallbacks.UpdateCallback(m_CurrentSimulationTime);
+					spriteCount = m_InitState.updateCallback(m_AppState.currentSimulationTime);
 				}
 				if (!spriteCount)
 				{
@@ -132,7 +115,7 @@ namespace vka
 					// TODO: probably need to handle some specific errors here
 					continue;
 				}
-				m_LoopCallbacks.RenderCallback();
+				m_InitState.renderCallback();
 				EndRender();
 			}
 		}
@@ -147,9 +130,9 @@ namespace vka
 			std::thread gameLoopThread(&VulkanApp::GameThread, this);
 
 			// Event loop
-			while (!glfwWindowShouldClose(m_Window))
+			while (!glfwWindowShouldClose(m_AppState.window))
 			{
-				// join threads if resize needed, then restart game thread
+				// sync threads if resize needed
 				while (m_SurfaceState.surfaceNeedsRecreation)
 				{
 					auto size = GetWindowSize(m_AppState);
@@ -353,19 +336,21 @@ namespace vka
 	private:
 		auto acquireImage()
 		{
-			auto renderFinishedFence = deviceState.logicalDevice->createFence(
+			auto renderFinishedFence = m_DeviceState.logicalDevice->createFence(
 				vk::FenceCreateInfo(vk::FenceCreateFlags()));
-			auto nextImage = deviceState.logicalDevice->acquireNextImageKHR(
+			auto nextImage = m_DeviceState.logicalDevice->acquireNextImageKHR(
 				renderState.swapChain.get(), 
 				std::numeric_limits<uint64_t>::max(), 
 				vk::Semaphore(),
 				renderFinishedFence);
-			renderState.supports[nextImage.value].imagePresentCompleteFence = vk::UniqueFence(renderFinishedFence, vk::FenceDeleter(deviceState.logicalDevice.get()));
+			renderState.supports[nextImage.value].imagePresentCompleteFence = 
+				vk::UniqueFence(renderFinishedFence, vk::FenceDeleter(m_DeviceState.logicalDevice.get()));
 			return nextImage;
 		}
 
 		bool BeginRender(SpriteCount spriteCount)
 		{
+			// try to acquire an image from the swapchain
 			auto nextImage = acquireImage();
 			if (nextImage.result != vk::Result::eSuccess)
 			{
@@ -376,70 +361,18 @@ namespace vka
 			auto& supports = supports[nextImage.value];
 
 			// Sync host to device for the next image
+			// TODO: determine if both fences are necessary
 			deviceState.logicalDevice->waitForFences(
-				{supports.imagePresentCompleteFence.get()}, 
+				{ 
+					supports.imagePresentCompleteFence.get(),
+					supports.renderBufferExecuted.get() 
+				}, 
 				static_cast<vk::Bool32>(true), 
 				std::numeric_limits<uint64_t>::max());
-
-			const size_t minimumCount = 1;
-			size_t instanceCount = std::max(minimumCount, spriteCount);
-			// (re)create matrix buffer if it is smaller than required
-			if (instanceCount > supports.bufferCapacity)
-			{
-				supports.bufferCapacity = instanceCount * 2;
-
-				auto newBufferSize = supports.bufferCapacity * deviceState.matrixBufferOffsetAlignment;
-
-				// create staging buffer
-				supports.matrixStagingBuffer = CreateBuffer(newBufferSize,
-					vk::BufferUsageFlagBits::eTransferSrc,
-					vk::MemoryPropertyFlagBits::eHostCoherent |
-					vk::MemoryPropertyFlagBits::eHostVisible,
-					true);
-					
-				// create matrix buffer
-				supports.matrixBuffer = CreateBuffer(newBufferSize,
-					vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer,
-					vk::MemoryPropertyFlagBits::eDeviceLocal,
-					true);
-			}
-
-			m_RenderState.mapped = deviceState.logicalDevice->mapMemory(
-				supports.matrixStagingMemory->memory, 
-				supports.matrixStagingMemory->offsetInDeviceMemory,
-				supports.matrixStagingMemory->size);
-
-			m_RenderState.copyOffset = 0;
-			m_RenderState.vp = m_RenderState.camera.getMatrix();
-
-			deviceState.logicalDevice->waitForFences({ supports.renderBufferExecuted.get() }, 
-			vk::Bool32(true),
-			std::numeric_limits<uint64_t>::max());
 			deviceState.logicalDevice->resetFences({ supports.renderBufferExecuted.get() });
 
-			// TODO: benchmark whether staging buffer use is faster than alternatives
-			auto descriptorBufferInfo = vk::DescriptorBufferInfo(
-					supports.matrixBuffer.get(),
-					0U,
-					deviceState.matrixBufferOffsetAlignment);
-			deviceState.logicalDevice->updateDescriptorSets(
-				{ 
-					vk::WriteDescriptorSet(
-						supports.vertexDescriptorSet.get(),
-						0U,
-						0U,
-						1U,
-						vk::DescriptorType::eUniformBufferDynamic,
-						nullptr,
-						&descriptorBufferInfo,
-						nullptr) 
-				},
-				{ }
-			);
-
-			/////////////////////////////////////////////////////////////
 			// set up data that is constant between all command buffers
-			//
+			m_RenderState.vp = m_RenderState.camera.getMatrix();
 
 			// Dynamic viewport info
 			auto viewport = vk::Viewport(
@@ -479,10 +412,6 @@ namespace vka
 				0U,
 				{ m_ShaderState.vertexBuffer.get() }, 
 				{ 0U });
-			supports.renderCommandBuffer->bindIndexBuffer(
-				m_ShaderState.indexBuffer.get(), 
-				0U, 
-				vk::IndexType::eUint16);
 
 			// bind sampler and images uniforms
 			supports.renderCommandBuffer->bindDescriptorSets(
@@ -492,26 +421,12 @@ namespace vka
 				{ m_ShaderState.fragmentDescriptorSet.get() },
 				{});
 
-			m_RenderState.spriteIndex = 0;
 			return true;
 		}
 
 		void EndRender()
 		{
 			auto& supports = m_RenderState.supports[m_RenderState.nextImage];
-			// copy matrices from staging buffer to gpu buffer
-			deviceState.logicalDevice->unmapMemory(supports.matrixStagingMemory->memory);
-
-			CopyToBuffer(
-				supports.copyCommandBuffer.get(),
-				supports.matrixStagingBuffer.get(),
-				supports.matrixBuffer.get(),
-				supports.matrixMemory->size,
-				0U,
-				0U,
-				std::optional<vk::Fence>(),
-				{},
-				{ supports.matrixBufferStagingCompleteSemaphore.get() });
 
 			// Finish recording draw command buffer
 			supports.renderCommandBuffer->endRenderPass();
@@ -523,7 +438,7 @@ namespace vka
 				{
 					vk::SubmitInfo(
 						1U,
-						&supports.matrixBufferStagingCompleteSemaphore.get(),
+						nullptr,
 						&stageFlags,
 						1U,
 						&supports.renderCommandBuffer.get(),
@@ -539,7 +454,9 @@ namespace vka
 					1U,
 					&m_RenderState.swapChain.get(),
 					&m_RenderState.nextImage);
-			auto presentResult = vkQueuePresentKHR(deviceState.graphicsQueue.operator VkQueue(), &presentInfo.operator const VkPresentInfoKHR &());
+			auto presentResult = vkQueuePresentKHR(
+				m_DeviceState.graphicsQueue.operator VkQueue(), 
+				&presentInfo.operator const VkPresentInfoKHR &());
 		}
 
 		vk::Extent2D GetWindowSize(const ApplicationState& appState)

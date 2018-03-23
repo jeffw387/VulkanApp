@@ -27,7 +27,7 @@ namespace vka
         vk::PresentModeKHR presentMode;
     };
 
-	void CreateSurface(SurfaceState& surfaceState, 
+	static void CreateSurface(SurfaceState& surfaceState, 
 		ApplicationState& appState, 
 		const InstanceState& instanceState, 
 		const DeviceState& deviceState, 
@@ -66,7 +66,7 @@ namespace vka
 		}
 	}
 
-	void SelectPresentMode(SurfaceState& surfaceState)
+	static void SelectPresentMode(SurfaceState& surfaceState)
 	{
 		// default present mode: immediate
 		surfaceState.presentMode = vk::PresentModeKHR::eImmediate;

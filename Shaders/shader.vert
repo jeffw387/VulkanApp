@@ -1,15 +1,20 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(set = 0, binding = 0) uniform VertexUniforms
+layout(push_constant) uniform PushConstants
 {
-    mat4 transform;
-} uniforms;
+    uint imageIndex;
+    vec4 color;
+    mat4 mvp;
+} pushConstants;
 
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inTexCoord;
 
-layout(location = 0) out vec2 fragTexCoord;
+layout(location = 0) out vec2 outTexCoord;
+layout(location = 1) out uint outImageIndex;
+layout(location = 2) out vec4 outColor;
+
 out gl_PerVertex
 {
     vec4 gl_Position;
@@ -17,6 +22,9 @@ out gl_PerVertex
 
 void main()
 {
-    gl_Position = uniforms.transform * vec4(inPosition, 0.0, 1.0);
-    fragTexCoord = inTexCoord;
+    outTexCoord = inTexCoord;
+    outImageIndex = pushConstants.imageIndex;
+    outColor = pushConstants.color;
+
+    gl_Position = pushConstants.mvp * vec4(inPosition, 0.0, 1.0);
 }

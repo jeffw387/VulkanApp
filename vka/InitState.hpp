@@ -32,7 +32,7 @@ namespace vka
 		vk::UniqueFence copyCommandFence;
 	};
 
-    void InitCopyStructures(InitState& initState, const DeviceState& deviceState)
+    static void InitCopyStructures(InitState& initState, const DeviceState& deviceState)
     {
         // create copy command objects
 			auto copyPoolCreateInfo = vk::CommandPoolCreateInfo(

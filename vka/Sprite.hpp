@@ -8,28 +8,17 @@
 namespace vka
 {
 	using SpriteIndex = uint32_t;
-	constexpr auto VerticesPerQuad = 4U;
-	using QuadIndices = std::array<VertexIndex, IndicesPerQuad>;
-	constexpr auto QuadIndicesSize = sizeof(QuadIndices);
+	constexpr auto VerticesPerQuad = 6U;
+	using QuadVertices = std::array<Vertex, VerticesPerQuad>;
+
 	struct Quad
 	{
-		std::array<Vertex, VerticesPerQuad> vertices;
-
-		static QuadIndices getIndices(const SpriteIndex spriteIndex)
-		{
-			auto result = IndexArray;
-			auto offset = spriteIndex * VerticesPerQuad;
-			for (auto& index : result)
-			{
-				index += offset;
-			}
-			return result;
-		}
+		QuadVertices vertices;
 	};
 
 	struct Sprite
 	{
-		vk::Image image;
-		Quad quad;
+		SpriteIndex index;
+		ImageIndex imageIndex;
 	};
 }

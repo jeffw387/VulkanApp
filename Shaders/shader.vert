@@ -12,8 +12,8 @@ layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inTexCoord;
 
 layout(location = 0) out vec2 outTexCoord;
-layout(location = 1) out uint outImageIndex;
-layout(location = 2) out vec4 outColor;
+layout(location = 1) flat out uint outImageOffset;
+layout(location = 2) flat out vec4 outColor;
 
 out gl_PerVertex
 {
@@ -23,7 +23,7 @@ out gl_PerVertex
 void main()
 {
     outTexCoord = inTexCoord;
-    outImageIndex = pushConstants.imageIndex;
+    outImageOffset = pushConstants.imageIndex;
     outColor = pushConstants.color;
 
     gl_Position = pushConstants.mvp * vec4(inPosition, 0.0, 1.0);

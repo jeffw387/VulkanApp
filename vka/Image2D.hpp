@@ -1,22 +1,21 @@
 #pragma once
 
 #undef max
-#include <vulkan/vulkan.hpp>
+#include "vulkan/vulkan.hpp"
 #include "Allocator.hpp"
 #include "Buffer.hpp"
 #include "Bitmap.hpp"
-
+#include "entt.hpp"
 
 namespace vka
 {
-	using ImageIndex = uint32_t;
-	
 	struct Image2D
 	{
 		vk::UniqueImage image;
 		vk::UniqueImageView view;
 		UniqueAllocation allocation;
 		vk::ImageCreateInfo imageCreateInfo;
+		uint64_t imageOffset;
 	};
 
 	Image2D&& CreateImage2D(vk::Device device,

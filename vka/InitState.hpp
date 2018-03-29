@@ -10,9 +10,8 @@
 namespace vka
 {
     struct VulkanApp;
-    using SpriteCount = SpriteIndex;
-    using ImageLoadFuncPtr = std::function<void(VulkanApp*)>;
-	using UpdateFuncPtr = std::function<SpriteCount(TimePoint_ms)>;
+    using ImageLoadFuncPtr = std::function<void()>;
+	using UpdateFuncPtr = std::function<size_t(TimePoint_ms)>;
 	using RenderFuncPtr = std::function<void()>;
 
     struct InitState

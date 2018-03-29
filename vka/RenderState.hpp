@@ -17,6 +17,7 @@
 #include <cstring>
 #include <vector>
 #include <string>
+#include <map>
 
 
 namespace vka
@@ -44,14 +45,14 @@ namespace vka
 		std::array<vk::UniqueFramebuffer, BufferCount> framebuffers;
         Camera2D camera;
         uint32_t nextImage;
-        entt::ident<ImageIdentifiers...> imageIdentifiers;
-        entt::ResourceCache<Image2D> images;
-		std::vector<Sprite> spriteVector;
+        std::map<uint64_t, Image2D> images;
+		std::map<uint64_t, Sprite> sprites;
+        std::vector<Quad> quads;
     };
 
     struct FragmentPushConstants
 	{
-		glm::uint32 imageIndex;
+		glm::uint32 imageOffset;
         glm::vec4 color;
         glm::mat4 mvp;
 	};
@@ -183,11 +184,11 @@ namespace vka
 		
 		auto imageInfos = std::vector<vk::DescriptorImageInfo>();
 		imageInfos.reserve(textureCount);
-		for (Image2D& image : renderState.images)
+		for (auto& imagePair : renderState.images)
 		{
 			imageInfos.emplace_back(vk::DescriptorImageInfo(
-				nullptr,
-				image.view,
+				vk::Sampler(),
+				imagePair.second.view.get(),
 				vk::ImageLayout::eShaderReadOnlyOptimal));
 		}
 
@@ -208,9 +209,9 @@ namespace vka
     static void CreateVertexBuffer(
         RenderState& renderState, 
         DeviceState& deviceState, 
-        const InitState& initState,
-        const std::vector<Quad>& quads)
+        const InitState& initState)
     {
+        auto& quads = renderState.quads;
         // create vertex buffers
         constexpr auto quadSize = sizeof(Quad);
         size_t vertexBufferSize = quadSize * quads.size();
@@ -425,7 +426,7 @@ namespace vka
 					deviceState.graphicsQueueFamilyID));
 			auto commandBuffers = deviceState.logicalDevice->allocateCommandBuffersUnique(
 				vk::CommandBufferAllocateInfo(
-					support.commandPool.get(),
+					support.renderCommandPool.get(),
 					vk::CommandBufferLevel::ePrimary,
 					1U));
 			support.renderCommandBuffer = std::move(commandBuffers[0]);
@@ -434,6 +435,27 @@ namespace vka
 			support.imageRenderCompleteSemaphore = deviceState.logicalDevice->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()));
+        }
+    }
+
+    static void FinalizeImageOrder(RenderState& renderState)
+    {
+        auto imageOffset = 0;
+        for (auto& image : renderState.images)
+        {
+            image.second.imageOffset = imageOffset;
+            ++imageOffset;
+        }
+    }
+
+    static void FinalizeSpriteOrder(RenderState& renderState)
+    {
+        auto spriteOffset = 0;
+        for (auto& sprite : renderState.sprites)
+        {
+            sprite.second.vertexOffset = spriteOffset;
+            sprite.second.imageOffset = renderState.images[sprite.second.imageID].imageOffset;
+            ++spriteOffset;
         }
     }
 }

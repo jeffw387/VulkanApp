@@ -65,28 +65,28 @@ namespace vka
 		PipelineState m_PipelineState;
 
 		void RenderSpriteInstance(
-			Sprite sprite,
+			uint64_t spriteIndex,
 			glm::mat4 transform,
 			glm::vec4 color)
 		{
+			auto sprite = m_RenderState.sprites.at(spriteIndex);
 			auto& supports = m_RenderState.supports[m_RenderState.nextImage];
 			glm::mat4 mvp =  m_RenderState.camera.getMatrix() * transform;
 
 			FragmentPushConstants pushRange;
-			pushRange.imageIndex = sprite.imageIndex;
+			pushRange.imageOffset = sprite.imageOffset;
 			pushRange.color = color;
 			pushRange.mvp = mvp;
 
 			supports.renderCommandBuffer->pushConstants<FragmentPushConstants>(
-				m_PipelineLayout.get(),
+				m_PipelineState.pipelineLayout.get(),
 				vk::ShaderStageFlagBits::eFragment,
 				0U,
 				{ pushRange });
 
-			auto vertexOffset = sprite.index * IndicesPerQuad;
 			// draw the sprite
 			supports.renderCommandBuffer->
-				drawIndexed(IndicesPerQuad, 1U, 0U, vertexOffset, 0U);
+				draw(VerticesPerQuad, 1U, sprite.vertexOffset, 0U);
 		}
 
 		void GameThread()
@@ -98,7 +98,7 @@ namespace vka
 				m_SurfaceState.recreateSurfaceCondition.wait(resizeLock, [this](){ return !m_SurfaceState.surfaceNeedsRecreation; });
 				resizeLock.unlock();
 				// Update simulation to be in sync with actual time
-				SpriteCount spriteCount = 0;
+				size_t spriteCount = 0;
 				while (currentTime - m_AppState.currentSimulationTime > UpdateDuration)
 				{
 					m_AppState.currentSimulationTime += UpdateDuration;
@@ -144,85 +144,51 @@ namespace vka
 			}
 			m_AppState.gameLoop = false;
 			gameLoopThread.join();
-			deviceState.logicalDevice->waitIdle();
+			m_DeviceState.logicalDevice->waitIdle();
 		}
 
-		// void debugprofiler()
-		// {
-		// 	size_t frameCount = 0;
-		// 	profiler::Describe<0>("Frame time");
-		// 	profiler::startTimer<0>();
-		// 		profiler::endTimer<0>();
-		// 		if (frameCount % 100 == 0)
-		// 		{
-		// 			auto frameDuration = profiler::getRollingAverage<0>(100);
-		// 			auto millisecondFrameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameDuration);
-		// 			auto frameDurationCount = millisecondFrameDuration.count();
-		// 			auto title = m_InitState.windowTitle + std::string(": ") + helper::uitostr(size_t(frameDurationCount)) + std::string(" microseconds");
-		// 			glfwSetwindowTitle(m_Window, title.c_str());
-		// 		}
-		// 		frameCount++;
-		// }
-
-		auto readSpriteSheet(const std::string& path)
+		static auto LoadSpriteSheet(const entt::HashedString path)
 		{
-			std::ifstream i(path);
+			std::ifstream i(path.operator const char *());
 			json j;
 			i >> j;
 
 			return j["frames"];
 		}
 
-		SpriteSheet createSpriteMapTexture(const Bitmap& bitmap, const std::string& path)
+		void LoadImage2D(const uint64_t imageID, const Bitmap& bitmap)
 		{
-			auto& frames = readSpriteSheet(path);
-						
-			for (auto& frame : frames)
-			{
-				float left   = 	frame["frame"]["x"];
-				float top 	 = 	frame["frame"]["y"];
-				float width = frame["frame"]["w"];
-				float height = frame["frame"]["h"];
-				float right  = 	left + width;
-				float bottom = 	top + height;
-
-				glm::vec2 LeftTopPos, LeftBottomPos, RightBottomPos, RightTopPos;
-				LeftTopPos     = { left,		top };
-				LeftBottomPos  = { left,		bottom };
-				RightBottomPos = { right,		bottom };
-				RightTopPos    = { right,		top };
-
-				float leftUV = left / width;
-				float rightUV = right / width;
-				float topUV = top / height;
-				float bottomUV = bottom / height;
-
-				glm::vec2 LeftTopUV, LeftBottomUV, RightBottomUV, RightTopUV;
-				LeftTopUV     = { leftUV, topUV };
-				LeftBottomUV  = { leftUV, bottomUV };
-				RightBottomUV = { rightUV, bottomUV };
-				RightTopUV    = { rightUV, topUV };
-
-				Vertex LeftTop, LeftBottom, RightBottom, RightTop;
-				LeftTop 	= { LeftTopPos,		LeftTopUV 		};
-				LeftBottom  = { LeftBottomPos,	LeftBottomUV 	};
-				RightBottom = { RightBottomPos,	RightBottomUV 	};
-				RightTop 	= { RightTopPos,	RightTopUV 		};
-
-				// push back vertices
-				m_Vertices.push_back(LeftTop);
-				m_Vertices.push_back(LeftBottom);
-				m_Vertices.push_back(RightBottom);
-				m_Vertices.push_back(RightTop);
-			}
-
-			// initialize the image2D object
-			auto image2D = createImage2D(bitmap);
-			auto sheet = SpriteSheet();
-
-			sheet.textureIndex = image2D.index;
-			return sheet;
+			m_RenderState.images[imageID] = CreateImage2D(
+				m_DeviceState.logicalDevice.get(), 
+				m_InitState.copyCommandBuffer.get(), 
+				m_DeviceState.allocator,
+				bitmap,
+				m_DeviceState.graphicsQueueFamilyID,
+				m_DeviceState.graphicsQueue);
 		}
+
+		void CreateSprite(const entt::HashedString imageID, const entt::HashedString spriteName, const Quad quad)
+		{
+			Sprite sprite;
+			sprite.imageID = imageID;
+			sprite.quad = quad;
+			m_RenderState.sprites[spriteName] = sprite;
+		}
+
+		// SpriteSheet createSpriteMapTexture(const Bitmap& bitmap, const std::string& path)
+		// {
+		// 	auto& frames = readSpriteSheet(path);
+						
+		// 	for (auto& frame : frames)
+		// 	{
+		// 		float left   = 	frame["frame"]["x"];
+		// 		float top 	 = 	frame["frame"]["y"];
+		// 		float width = frame["frame"]["w"];
+		// 		float height = frame["frame"]["h"];
+				
+		// 	}
+
+		// }
 
 		void init(
 			std::string windowTitle,
@@ -282,7 +248,7 @@ namespace vka
 
 			LoadVulkanInstanceFunctions(m_InstanceState);
 
-			InitPhysicalDevice(m_DeviceState, m_Instance.get());
+			InitPhysicalDevice(m_DeviceState, m_InstanceState.instance.get());
 
 			SelectGraphicsQueue(m_DeviceState);
 
@@ -299,16 +265,18 @@ namespace vka
 			// allow client app to load images
 			m_InitState.imageLoadCallback(this);
 
-			CreateVertexAndIndexBuffers(
-				m_RenderState, 
-				m_InitState,
-				m_DeviceState, 
-				m_SpriteVector);
+			FinalizeImageOrder(m_RenderState);
+
+			FinalizeSpriteOrder(m_RenderState);
+
+			CreateVertexBuffer(
+				m_RenderState,
+				m_DeviceState,
+				m_InitState);
 
 			CreateSampler(m_RenderState, m_DeviceState);
 
 			CreateShaderModules(m_ShaderState, m_DeviceState);
-			CreateVertexSetLayout(m_ShaderState, m_DeviceState);
 			CreateFragmentSetLayout(m_ShaderState, m_DeviceState, m_RenderState);
 			SetupPushConstants(m_ShaderState);
 			CreateFragmentDescriptorPool(m_ShaderState, 
@@ -327,10 +295,10 @@ namespace vka
 
 			InitializeSupportStructs(m_RenderState, m_DeviceState, m_ShaderState);
 			CreateRenderPass(m_RenderState, m_DeviceState, m_SurfaceState);
-			CreateSwapchainWithDependencies(m_RenderState, m_DeviceState, m_SurfaceState)
+			CreateSwapchainWithDependencies(m_RenderState, m_DeviceState, m_SurfaceState);
 
 			CreatePipelineLayout(m_PipelineState, m_DeviceState, m_ShaderState);
-			CreatePipeline(m_PipelineState, m_DeviceState, m_RenderState);
+			CreatePipeline(m_PipelineState, m_DeviceState, m_RenderState, m_ShaderState);
 		}
 
 	private:
@@ -339,16 +307,17 @@ namespace vka
 			auto renderFinishedFence = m_DeviceState.logicalDevice->createFence(
 				vk::FenceCreateInfo(vk::FenceCreateFlags()));
 			auto nextImage = m_DeviceState.logicalDevice->acquireNextImageKHR(
-				renderState.swapChain.get(), 
+				m_RenderState.swapchain.get(), 
 				std::numeric_limits<uint64_t>::max(), 
 				vk::Semaphore(),
 				renderFinishedFence);
-			renderState.supports[nextImage.value].imagePresentCompleteFence = 
+			m_RenderState.supports[nextImage.value].imagePresentCompleteFence = 
 				vk::UniqueFence(renderFinishedFence, vk::FenceDeleter(m_DeviceState.logicalDevice.get()));
 			return nextImage;
 		}
 
-		bool BeginRender(SpriteCount spriteCount)
+		// TODO: is spritecount still needed?
+		bool BeginRender(size_t spriteCount)
 		{
 			// try to acquire an image from the swapchain
 			auto nextImage = acquireImage();
@@ -358,21 +327,18 @@ namespace vka
 			}
 			m_RenderState.nextImage = nextImage.value;
 
-			auto& supports = supports[nextImage.value];
+			auto& supports = m_RenderState.supports[nextImage.value];
 
 			// Sync host to device for the next image
 			// TODO: determine if both fences are necessary
-			deviceState.logicalDevice->waitForFences(
+			m_DeviceState.logicalDevice->waitForFences(
 				{ 
 					supports.imagePresentCompleteFence.get(),
 					supports.renderBufferExecuted.get() 
 				}, 
 				static_cast<vk::Bool32>(true), 
 				std::numeric_limits<uint64_t>::max());
-			deviceState.logicalDevice->resetFences({ supports.renderBufferExecuted.get() });
-
-			// set up data that is constant between all command buffers
-			m_RenderState.vp = m_RenderState.camera.getMatrix();
+			m_DeviceState.logicalDevice->resetFences({ supports.renderBufferExecuted.get() });
 
 			// Dynamic viewport info
 			auto viewport = vk::Viewport(
@@ -396,7 +362,7 @@ namespace vka
 
 			// Render pass info
 			auto renderPassInfo = vk::RenderPassBeginInfo(
-				m_RenderPass.get(),
+				m_RenderState.renderPass.get(),
 				m_RenderState.framebuffers[nextImage.value].get(),
 				scissorRect,
 				1U,
@@ -410,7 +376,7 @@ namespace vka
 			supports.renderCommandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, m_PipelineState.pipeline.get());
 			supports.renderCommandBuffer->bindVertexBuffers(
 				0U,
-				{ m_ShaderState.vertexBuffer.get() }, 
+				{ m_RenderState.vertexBuffer.buffer.get() }, 
 				{ 0U });
 
 			// bind sampler and images uniforms
@@ -452,7 +418,7 @@ namespace vka
 					1U,
 					&supports.imageRenderCompleteSemaphore.get(),
 					1U,
-					&m_RenderState.swapChain.get(),
+					&m_RenderState.swapchain.get(),
 					&m_RenderState.nextImage);
 			auto presentResult = vkQueuePresentKHR(
 				m_DeviceState.graphicsQueue.operator VkQueue(), 
@@ -469,7 +435,7 @@ namespace vka
 
 		void resizeWindow(vk::Extent2D size)
 		{
-			std::scoped_lock<std::mutex> resizeLock(m_RecreateSurfaceMutex);
+			std::scoped_lock<std::mutex> resizeLock(m_SurfaceState.recreateSurfaceMutex);
 			m_RenderState.camera.setSize(glm::vec2(static_cast<float>(size.width), static_cast<float>(size.height)));
 			ResetSwapChain(m_RenderState, m_DeviceState);
 			CreateSurface(m_SurfaceState, m_AppState, m_InstanceState, m_DeviceState, size);
@@ -495,84 +461,84 @@ namespace vka
 		app.m_InputState.inputBuffer.pushLast(std::move(msg));
 	}
 
-	class Text
-	{
-	public:
-		using FontID = size_t;
-		using FontSize = size_t;
-		using GlyphID = FT_UInt;
-		using CharCode = FT_ULong;
+	// class Text
+	// {
+	// public:
+	// 	using FontID = size_t;
+	// 	using FontSize = size_t;
+	// 	using GlyphID = FT_UInt;
+	// 	using CharCode = FT_ULong;
 
-		struct FT_LibraryDeleter
-		{
-			using pointer = FT_Library;
-			void operator()(FT_Library library)
-			{
-				FT_Done_FreeType(library);
-			}
-		};
-		using UniqueFTLibrary = std::unique_ptr<FT_Library, FT_LibraryDeleter>;
+	// 	struct FT_LibraryDeleter
+	// 	{
+	// 		using pointer = FT_Library;
+	// 		void operator()(FT_Library library)
+	// 		{
+	// 			FT_Done_FreeType(library);
+	// 		}
+	// 	};
+	// 	using UniqueFTLibrary = std::unique_ptr<FT_Library, FT_LibraryDeleter>;
 
-		struct FT_GlyphDeleter
-		{
-			using pointer = FT_Glyph;
-			void operator()(FT_Glyph glyph) noexcept
-			{
-				FT_Done_Glyph(glyph);
-			}
-		};
-		using UniqueFTGlyph = std::unique_ptr<FT_Glyph, FT_GlyphDeleter>;
+	// 	struct FT_GlyphDeleter
+	// 	{
+	// 		using pointer = FT_Glyph;
+	// 		void operator()(FT_Glyph glyph) noexcept
+	// 		{
+	// 			FT_Done_Glyph(glyph);
+	// 		}
+	// 	};
+	// 	using UniqueFTGlyph = std::unique_ptr<FT_Glyph, FT_GlyphDeleter>;
 
-		struct GlyphData
-		{
-			UniqueFTGlyph glyph;
-			ImageIndex textureIndex;
-		};
+	// 	struct GlyphData
+	// 	{
+	// 		UniqueFTGlyph glyph;
+	// 		entt::HashedString textureIndex;
+	// 	};
 
-		using GlyphMap = std::map<CharCode, GlyphData>;
+	// 	using GlyphMap = std::map<CharCode, GlyphData>;
 
-		struct SizeData
-		{
-			GlyphMap glyphMap;
-			FT_F26Dot6 spaceAdvance;
-		};
+	// 	struct SizeData
+	// 	{
+	// 		GlyphMap glyphMap;
+	// 		FT_F26Dot6 spaceAdvance;
+	// 	};
 
-		struct FontData
-		{
-			FT_Face face;
-			std::string path;
-			std::map<FontSize, SizeData> glyphsBySize;
-		};
+	// 	struct FontData
+	// 	{
+	// 		FT_Face face;
+	// 		std::string path;
+	// 		std::map<FontSize, SizeData> glyphsBySize;
+	// 	};
 
-		struct TextGroup
-		{
-			std::vector<Entity> characters;
-		};
+	// 	struct TextGroup
+	// 	{
+	// 		std::vector<Entity> characters;
+	// 	};
 
-		struct InitInfo
-		{
-			Text::FontID fontID;
-			Text::FontSize fontSize;
-			std::string text;
-			glm::vec4 textColor;
-			int baseline_x;
-			int baseline_y;
-			float depth;
-		};
+	// 	struct InitInfo
+	// 	{
+	// 		Text::FontID fontID;
+	// 		Text::FontSize fontSize;
+	// 		std::string text;
+	// 		glm::vec4 textColor;
+	// 		int baseline_x;
+	// 		int baseline_y;
+	// 		float depth;
+	// 	};
 
-		UniqueFTLibrary m_FreeTypeLibrary;
-		std::map<FontID, FontData> m_FontMaps;
-		VulkanApp* m_VulkanApp = nullptr;
+	// 	UniqueFTLibrary m_FreeTypeLibrary;
+	// 	std::map<FontID, FontData> m_FontMaps;
+	// 	VulkanApp* m_VulkanApp = nullptr;
 
-		Text() = default;
-		Text(VulkanApp* app);
-		Text::SizeData & getSizeData(Text::FontID fontID, Text::FontSize size);
-		Bitmap getFullBitmap(FT_Glyph glyph);
-		std::optional<FT_Glyph> getGlyph(Text::FontID fontID, Text::FontSize size, Text::CharCode charcode);
-		auto getAdvance(Text::FontID fontID, Text::FontSize size, Text::CharCode left);
-		auto getAdvance(Text::FontID fontID, Text::FontSize size, Text::CharCode left, Text::CharCode right);
-		void LoadFont(Text::FontID fontID, Text::FontSize fontSize, uint32_t DPI, const char * fontPath);
-		std::vector<Sprite> createTextGroup(const Text::InitInfo & initInfo);
-	};
+	// 	Text() = default;
+	// 	Text(VulkanApp* app);
+	// 	Text::SizeData & getSizeData(Text::FontID fontID, Text::FontSize size);
+	// 	Bitmap getFullBitmap(FT_Glyph glyph);
+	// 	std::optional<FT_Glyph> getGlyph(Text::FontID fontID, Text::FontSize size, Text::CharCode charcode);
+	// 	auto getAdvance(Text::FontID fontID, Text::FontSize size, Text::CharCode left);
+	// 	auto getAdvance(Text::FontID fontID, Text::FontSize size, Text::CharCode left, Text::CharCode right);
+	// 	void LoadFont(Text::FontID fontID, Text::FontSize fontSize, uint32_t DPI, const char * fontPath);
+	// 	std::vector<Sprite> createTextGroup(const Text::InitInfo & initInfo);
+	// };
 
 }

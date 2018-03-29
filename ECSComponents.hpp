@@ -7,20 +7,20 @@
 
 namespace cmp
 {
-    struct TextureID
+    struct Sprite
     {
-        ImageIndex index;
+        uint64_t index;
 
-        TextureID() noexcept = default;
-        TextureID(ImageIndex index) : index(std::move(index)) {}
+        Sprite() noexcept = default;
+        Sprite(uint64_t index) : index(std::move(index)) {}
     };
 
     struct Position
     {
-        glm::vec3 position;
+        glm::vec2 position;
 
         Position() noexcept = default;
-        Position(glm::vec3 position) : position(std::move(position)) {}
+        Position(glm::vec2 position) : position(std::move(position)) {}
     };
 
     struct PositionMatrix

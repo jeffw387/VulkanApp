@@ -45,7 +45,10 @@ namespace vka
 		pipelineState.pipelineLayout = deviceState.logicalDevice->createPipelineLayoutUnique(pipelineLayoutInfo);
 	}
 
-	void CreatePipeline(PipelineState& pipelineState, const DeviceState& deviceState, const RenderState& renderState)
+	void CreatePipeline(PipelineState& pipelineState, 
+		const DeviceState& deviceState, 
+		const RenderState& renderState, 
+		const ShaderState& shaderState)
 	{
 		auto textureCount = renderState.images.size();
 		pipelineState.fragmentSpecializations.emplace_back(vk::SpecializationMapEntry(
@@ -63,14 +66,14 @@ namespace vka
 		pipelineState.vertexShaderStageInfo = vk::PipelineShaderStageCreateInfo(
 			vk::PipelineShaderStageCreateFlags(),
 			vk::ShaderStageFlagBits::eVertex,
-			pipelineState.vertexShader.get(),
+			shaderState.vertexShader.get(),
 			"main",
 			nullptr);
 
 		pipelineState.fragmentShaderStageInfo = vk::PipelineShaderStageCreateInfo(
 			vk::PipelineShaderStageCreateFlags(),
 			vk::ShaderStageFlagBits::eFragment,
-			pipelineState.fragmentShader.get(),
+			shaderState.fragmentShader.get(),
 			"main",
 			&pipelineState.fragmentSpecializationInfo);
 

@@ -1,6 +1,7 @@
 project('VulkanApp', 'cpp')
 
-run_command('python', '-m', 'cogapp', '-r', 'Input.hpp')
+run_command('python', '-m', 'cogapp', '-r', 'vka/Input.hpp')
+run_command('python', '-m', 'cogapp', '-r', 'SpriteData.hpp')
 
 freetype_proj = subproject('freetype')
 freetype = freetype_proj.get_variable('freetype_dep')

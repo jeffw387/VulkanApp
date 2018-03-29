@@ -263,7 +263,7 @@ namespace vka
 			InitCopyStructures(m_InitState, m_DeviceState);
 
 			// allow client app to load images
-			m_InitState.imageLoadCallback(this);
+			m_InitState.imageLoadCallback();
 
 			FinalizeImageOrder(m_RenderState);
 

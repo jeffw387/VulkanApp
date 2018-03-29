@@ -17,6 +17,8 @@
 #define CONTENTROOT
 #endif
 
+#include "SpriteData.hpp"
+
 namespace Image
 {
 	constexpr auto Star = entt::HashedString(CONTENTROOT "Content/Textures/star.png");
@@ -106,7 +108,9 @@ public:
 
 		auto loadImageCallback = [this]()
 		{
-			app.LoadImage2D(Image::Star)
+			auto sheet1 = vka::loadImageFromFile(std::string(Image::Sheet1));
+			app.LoadImage2D(Image::Sheet1, sheet1);
+
 		};
 
 		auto updateCallback = [this](TimePoint_ms timePoint)
@@ -158,7 +162,7 @@ public:
 		deviceExtensions,
 		std::string(CONTENTROOT "Shaders/vert.spv"),
 		std::string(CONTENTROOT "Shaders/frag.spv"),
-		LoadTextures,
+		loadImageCallback,
 		updateCallback,
 		drawCallback);
 		enttRegistry.prepare<cmp::Sprite, cmp::PositionMatrix, cmp::Color>();
@@ -175,8 +179,7 @@ public:
 				cmp::RectSize());
 		}
 
-		callbacks.RenderCallback = 
-		app.Run(callbacks);
+		app.Run();
 
 		return 0;
 	}

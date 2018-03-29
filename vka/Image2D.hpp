@@ -153,5 +153,7 @@ namespace vka
 				
 		// wait for command buffer to be executed
 		device.waitForFences({ imageLoadFence.get() }, true, std::numeric_limits<uint64_t>::max());
+
+		return std::move(result);
 	}
 }

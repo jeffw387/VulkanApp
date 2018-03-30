@@ -46,11 +46,11 @@ class ClientApp
 	entt::DefaultRegistry enttRegistry;
 
 public:
-	struct InputVisitor
+	struct PlayerInputBindingVisitor
 	{
 		ClientApp* app;
 
-		explicit InputVisitor(ClientApp* app) : app(app) {}
+		explicit PlayerInputBindingVisitor(ClientApp* app) : app(app) {}
 
 		void operator()(vka::KeyMessage msg)
 		{
@@ -115,17 +115,30 @@ public:
 
 		auto updateCallback = [this](TimePoint_ms timePoint)
 		{
+			auto& bindings = app.m_InputState.playerEventBindings;
 			bool inputToProcess = true;
 			while (inputToProcess)
 			{
 				auto messageOptional = app.m_InputState.inputBuffer.popFirstIf(
 						[timePoint](vka::InputMessage msg){ return msg.time < timePoint; }
 					);
-				auto visitor = InputVisitor(this);
+				
 				if (messageOptional.has_value())
 				{
+					auto bindingVisitor = vka::BindingVisitor();
+					bindingVisitor.eventTime = messageOptional->time;
+					bindingVisitor.eventType = messageOptional->
 					vka::InputMsgVariant& variant = messageOptional.value().variant;
-					std::visit(visitor, variant);
+					auto bindingIterator = bindings.find(variant);
+					if (bindingIterator != bindings.end())
+					{
+						auto& bindingVariant = *bindingIterator;
+						std::visit(visitor, bindingVariant);
+					}
+				}
+				else
+				{
+					inputToProcess = false;
 				}
 			}
 			
@@ -136,6 +149,8 @@ public:
 				auto& position = physicsView.get<cmp::Position>(entity);
 				auto& velocity = physicsView.get<cmp::Velocity>(entity);
 				auto& transform = physicsView.get<cmp::PositionMatrix>(entity);
+
+				position.position += velocity.velocity;
 			}
 			auto renderView = enttRegistry.persistent<cmp::Sprite, cmp::PositionMatrix, cmp::Color>();
 			return renderView.size();

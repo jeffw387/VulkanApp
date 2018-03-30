@@ -1,8 +1,9 @@
 #pragma once
-#include <variant>
 #include "CircularQueue.hpp"
 #include "entt.hpp"
 #include "TimeHelper.hpp"
+#include <variant>
+#include <functional>
 
 namespace vka
 {
@@ -104,81 +105,297 @@ namespace vka
 		PushBackInput(window, std::move(msg));
 	}
 
+    template <typename T>
+    struct Binding
+    {
+        using bindType = T;
+    };
+
+	enum class BindingEvents
+	{
+		Start,
+		End
+	};
+
+	template <typename T>
+	struct BindingEvent
+	{
+		BindingEvents event;
+		TimePoint_ms eventTime;
+	};
+
+    template <typename T>
+    struct InputEvent
+    {
+        using bindType = T;
+        using type = InputEvent<bindType>;
+        using func = std::function<void(type)>;
+        TimePoint_ms eventTime;
+        BindingEvents eventType;
+    };
 /*[[[cog
 import cog
 bindNames = ['Up', 'Down', 'Left', 'Right', 'Fire', 'Menu', 'Pause', 'Exit']
+bindAppend = "Binding"
+eventAppend = "Event"
+funcAppend = "Func"
 
+# create the binding structs
 for bind in bindNames:
-    cog.outl("struct Start%sEvent { TimePoint_ms time; };" % bind)
-    cog.outl("struct End%sEvent { TimePoint_ms time; };" % bind)
-    cog.outl("struct %sBinding {};" % bind)
-    cog.outl()
+    bindType = bind + bindAppend
+    cog.outl("struct %s" % bind)
+    cog.outl('{};')
+    cog.outl("using {0} = Binding<{1}>;".format(bindType, bind))
 
+# create the binding variant
 cog.outl()
-cog.outl("using PlayerEventVariant = std::variant<")
+cog.outl("using BindVariant = std::variant<")
 for index, bind in enumerate(bindNames):
-    cog.outl("    Start%sEvent," % bind)
-    cog.out("    End%sEvent" % bind)
+    bindType = bind + bindAppend
+    cog.out("    {}".format(bindType))
     if (index + 1) != len(bindNames):
         cog.outl(",")
 cog.outl(">;")
+
+# create the event variant
+cog.outl()
+cog.outl("using EventVariant = std::variant<")
+for index, bind in enumerate(bindNames):
+    eventType = bind + eventAppend
+    cog.out("    {}".format(eventType))
+    if (index + 1) != len(bindNames):
+        cog.outl(",")
+cog.outl(">;")
+
+# create the event variant visitor
+cog.outl()
+cog.outl("struct EventVisitor")
+cog.outl("{")
+for bind in bindNames:
+    eventType = bind + eventAppend
+    eventFunc = bind + funcAppend
+    cog.outl("    {0}::func {1};".format(eventType, eventFunc))
+# void operator()
+cog.outl()
+for bind in bindNames:
+    eventType = bind + eventAppend
+    funcName = bind + funcAppend
+    cog.outl("    void operator()({0} event)".format(eventType))
+    cog.outl("    {")
+    cog.outl("        {0}(event);".format(funcName))
+    cog.outl("    }")
+    cog.outl()
+cog.outl("};")
+
+# create the binding variant visitor
+cog.outl()
+cog.outl("struct BindingVisitor")
+cog.outl("{")
+# data members
+cog.outl("    EventVisitor eventVisitor;")
+cog.outl("    TimePoint_ms eventTime;")
+cog.outl("    BindingEvents eventType;")
+# void operator()
+cog.outl()
+for bind in bindNames:
+    bindType = bind + bindAppend
+    eventType = bind + eventAppend
+    cog.outl("    void operator()({0} binding)".format(bindType))
+    cog.outl("    {")
+    cog.outl("        auto event = {0}();".format(eventType))
+    cog.outl("        event.eventTime = eventTime;")
+    cog.outl("        event.eventType = eventType;")
+    cog.outl("        EventVariant eventVariant = event;")
+    cog.outl("        std::visit(eventVisitor, eventVariant);")
+    cog.outl("    }")
+    cog.outl()
+cog.outl("};")
+
+
 ]]]*/
-struct StartUpEvent { TimePoint_ms time; };
-struct EndUpEvent { TimePoint_ms time; };
-struct UpBinding {};
+struct Up
+{};
+using UpBinding = Binding<Up>;
+struct Down
+{};
+using DownBinding = Binding<Down>;
+struct Left
+{};
+using LeftBinding = Binding<Left>;
+struct Right
+{};
+using RightBinding = Binding<Right>;
+struct Fire
+{};
+using FireBinding = Binding<Fire>;
+struct Menu
+{};
+using MenuBinding = Binding<Menu>;
+struct Pause
+{};
+using PauseBinding = Binding<Pause>;
+struct Exit
+{};
+using ExitBinding = Binding<Exit>;
 
-struct StartDownEvent { TimePoint_ms time; };
-struct EndDownEvent { TimePoint_ms time; };
-struct DownBinding {};
+using BindVariant = std::variant<
+    UpBinding,
+    DownBinding,
+    LeftBinding,
+    RightBinding,
+    FireBinding,
+    MenuBinding,
+    PauseBinding,
+    ExitBinding>;
 
-struct StartLeftEvent { TimePoint_ms time; };
-struct EndLeftEvent { TimePoint_ms time; };
-struct LeftBinding {};
+using EventVariant = std::variant<
+    UpEvent,
+    DownEvent,
+    LeftEvent,
+    RightEvent,
+    FireEvent,
+    MenuEvent,
+    PauseEvent,
+    ExitEvent>;
 
-struct StartRightEvent { TimePoint_ms time; };
-struct EndRightEvent { TimePoint_ms time; };
-struct RightBinding {};
+struct EventVisitor
+{
+    UpEvent::func UpFunc;
+    DownEvent::func DownFunc;
+    LeftEvent::func LeftFunc;
+    RightEvent::func RightFunc;
+    FireEvent::func FireFunc;
+    MenuEvent::func MenuFunc;
+    PauseEvent::func PauseFunc;
+    ExitEvent::func ExitFunc;
 
-struct StartFireEvent { TimePoint_ms time; };
-struct EndFireEvent { TimePoint_ms time; };
-struct FireBinding {};
+    void operator()(UpEvent event)
+    {
+        UpFunc(event);
+    }
 
-struct StartMenuEvent { TimePoint_ms time; };
-struct EndMenuEvent { TimePoint_ms time; };
-struct MenuBinding {};
+    void operator()(DownEvent event)
+    {
+        DownFunc(event);
+    }
 
-struct StartPauseEvent { TimePoint_ms time; };
-struct EndPauseEvent { TimePoint_ms time; };
-struct PauseBinding {};
+    void operator()(LeftEvent event)
+    {
+        LeftFunc(event);
+    }
 
-struct StartExitEvent { TimePoint_ms time; };
-struct EndExitEvent { TimePoint_ms time; };
-struct ExitBinding {};
+    void operator()(RightEvent event)
+    {
+        RightFunc(event);
+    }
 
+    void operator()(FireEvent event)
+    {
+        FireFunc(event);
+    }
 
-using PlayerEventVariant = std::variant<
-    StartUpEvent,
-    EndUpEvent,
-    StartDownEvent,
-    EndDownEvent,
-    StartLeftEvent,
-    EndLeftEvent,
-    StartRightEvent,
-    EndRightEvent,
-    StartFireEvent,
-    EndFireEvent,
-    StartMenuEvent,
-    EndMenuEvent,
-    StartPauseEvent,
-    EndPauseEvent,
-    StartExitEvent,
-    EndExitEvent>;
+    void operator()(MenuEvent event)
+    {
+        MenuFunc(event);
+    }
+
+    void operator()(PauseEvent event)
+    {
+        PauseFunc(event);
+    }
+
+    void operator()(ExitEvent event)
+    {
+        ExitFunc(event);
+    }
+
+};
+
+struct BindingVisitor
+{
+    EventVisitor eventVisitor;
+    TimePoint_ms eventTime;
+    BindingEvents eventType;
+
+    void operator()(UpBinding binding)
+    {
+        auto event = UpEvent();
+        event.eventTime = eventTime;
+        event.eventType = eventType;
+        EventVariant eventVariant = event;
+        std::visit(eventVisitor, eventVariant);
+    }
+
+    void operator()(DownBinding binding)
+    {
+        auto event = DownEvent();
+        event.eventTime = eventTime;
+        event.eventType = eventType;
+        EventVariant eventVariant = event;
+        std::visit(eventVisitor, eventVariant);
+    }
+
+    void operator()(LeftBinding binding)
+    {
+        auto event = LeftEvent();
+        event.eventTime = eventTime;
+        event.eventType = eventType;
+        EventVariant eventVariant = event;
+        std::visit(eventVisitor, eventVariant);
+    }
+
+    void operator()(RightBinding binding)
+    {
+        auto event = RightEvent();
+        event.eventTime = eventTime;
+        event.eventType = eventType;
+        EventVariant eventVariant = event;
+        std::visit(eventVisitor, eventVariant);
+    }
+
+    void operator()(FireBinding binding)
+    {
+        auto event = FireEvent();
+        event.eventTime = eventTime;
+        event.eventType = eventType;
+        EventVariant eventVariant = event;
+        std::visit(eventVisitor, eventVariant);
+    }
+
+    void operator()(MenuBinding binding)
+    {
+        auto event = MenuEvent();
+        event.eventTime = eventTime;
+        event.eventType = eventType;
+        EventVariant eventVariant = event;
+        std::visit(eventVisitor, eventVariant);
+    }
+
+    void operator()(PauseBinding binding)
+    {
+        auto event = PauseEvent();
+        event.eventTime = eventTime;
+        event.eventType = eventType;
+        EventVariant eventVariant = event;
+        std::visit(eventVisitor, eventVariant);
+    }
+
+    void operator()(ExitBinding binding)
+    {
+        auto event = ExitEvent();
+        event.eventTime = eventTime;
+        event.eventType = eventType;
+        EventVariant eventVariant = event;
+        std::visit(eventVisitor, eventVariant);
+    }
+
+};
 //[[[end]]]
 
 	struct InputState
 	{
 		CircularQueue<InputMessage, 500> inputBuffer;
 		// TODO: possibly convert action map to vector
-		std::map<InputMsgVariant, PlayerEventVariant> playerEventBindings;
+		std::map<InputMsgVariant, BindVariant> playerEventBindings;
 	};
 }

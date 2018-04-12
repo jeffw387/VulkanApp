@@ -4,14 +4,14 @@
 
 namespace vka
 {
-    struct AllocatedBuffer
+    struct UniqueAllocatedBuffer
     {
         vk::UniqueBuffer buffer;
         vk::BufferCreateInfo bufferCreateInfo;
         UniqueAllocation allocation;
     };
 
-    AllocatedBuffer&& CreateBuffer(vk::Device device, 
+    UniqueAllocatedBuffer CreateBuffer(vk::Device device, 
         Allocator& allocator, 
         vk::DeviceSize size,
         vk::BufferUsageFlags usageFlags,
@@ -19,7 +19,7 @@ namespace vka
         vk::MemoryPropertyFlags memoryFlags,
         bool DedicatedAllocation)
     {
-        AllocatedBuffer allocatedBuffer;
+        UniqueAllocatedBuffer allocatedBuffer;
         allocatedBuffer.bufferCreateInfo = vk::BufferCreateInfo(
             vk::BufferCreateFlags(), 
             size, 

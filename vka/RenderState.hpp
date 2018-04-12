@@ -35,7 +35,7 @@ namespace vka
 
     struct RenderState
     {
-        AllocatedBuffer vertexBuffer;
+        UniqueAllocatedBuffer vertexBuffer;
         vk::UniqueRenderPass renderPass;
 		vk::UniqueSampler sampler;
         std::array<Supports, BufferCount> supports;
@@ -45,7 +45,7 @@ namespace vka
 		std::array<vk::UniqueFramebuffer, BufferCount> framebuffers;
         Camera2D camera;
         uint32_t nextImage;
-        std::map<uint64_t, Image2D> images;
+        std::map<uint64_t, UniqueImage2D> images;
 		std::map<uint64_t, Sprite> sprites;
         std::vector<Quad> quads;
     };

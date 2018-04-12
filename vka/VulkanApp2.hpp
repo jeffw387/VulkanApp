@@ -49,6 +49,7 @@
 namespace vka
 {
 	using json = nlohmann::json;
+	using HashType = entt::HashedString::hash_type;
 	
 	static void ResizeCallback(GLFWwindow* window, int width, int height);
 
@@ -147,16 +148,16 @@ namespace vka
 			m_DeviceState.logicalDevice->waitIdle();
 		}
 
-		static auto LoadSpriteSheet(const entt::HashedString path)
+		static json LoadSpriteSheet(char* const path)
 		{
-			std::ifstream i(path.operator const char *());
+			std::ifstream i(path);
 			json j;
 			i >> j;
 
-			return j["frames"];
+			return j;
 		}
 
-		void LoadImage2D(const uint64_t imageID, const Bitmap& bitmap)
+		void LoadImage2D(const HashType imageID, const Bitmap& bitmap)
 		{
 			m_RenderState.images[imageID] = CreateImage2D(
 				m_DeviceState.logicalDevice.get(), 
@@ -167,28 +168,13 @@ namespace vka
 				m_DeviceState.graphicsQueue);
 		}
 
-		void CreateSprite(const entt::HashedString imageID, const entt::HashedString spriteName, const Quad quad)
+		void CreateSprite(const HashType imageID, const HashType spriteName, const Quad quad)
 		{
 			Sprite sprite;
 			sprite.imageID = imageID;
 			sprite.quad = quad;
 			m_RenderState.sprites[spriteName] = sprite;
 		}
-
-		// SpriteSheet createSpriteMapTexture(const Bitmap& bitmap, const std::string& path)
-		// {
-		// 	auto& frames = readSpriteSheet(path);
-						
-		// 	for (auto& frame : frames)
-		// 	{
-		// 		float left   = 	frame["frame"]["x"];
-		// 		float top 	 = 	frame["frame"]["y"];
-		// 		float width = frame["frame"]["w"];
-		// 		float height = frame["frame"]["h"];
-				
-		// 	}
-
-		// }
 
 		void init(
 			std::string windowTitle,
@@ -459,6 +445,13 @@ namespace vka
 		auto& app = *GetUserPointer(window);
 		msg.time = NowMilliseconds();
 		app.m_InputState.inputBuffer.pushLast(std::move(msg));
+	}
+
+	static void SetCursorPosition(GLFWwindow* window, double x, double y)
+	{
+		auto& app = *GetUserPointer(window);
+		app.m_InputState.cursorX = x;
+		app.m_InputState.cursorY = y;
 	}
 
 	// class Text

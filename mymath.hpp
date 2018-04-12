@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 namespace helper
 {
 	inline size_t roundUp(size_t numToRound, size_t multiple)
@@ -79,5 +81,14 @@ namespace helper
 			it++;
 
 		return std::string((char*)it,(char*)&buf[BUFFER_SIZE]-(char*)it);
+	}
+
+	template <typename T>
+	T Normalize(T value, T min, T max)
+	{
+		auto clamped = std::clamp(newValue, min, max);
+        auto shifted = clamped - min;
+		auto maxShifted = max - min;
+		return shifted / maxShifted;
 	}
 }

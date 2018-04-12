@@ -9,7 +9,7 @@
 
 namespace vka
 {
-	struct Image2D
+	struct UniqueImage2D
 	{
 		vk::UniqueImage image;
 		vk::UniqueImageView view;
@@ -18,14 +18,14 @@ namespace vka
 		uint64_t imageOffset;
 	};
 
-	Image2D&& CreateImage2D(vk::Device device,
+	UniqueImage2D CreateImage2D(vk::Device device,
 			vk::CommandBuffer commandBuffer,
 			Allocator& allocator,
 			const Bitmap& bitmap,
 			uint32_t queueFamilyIndex,
 			vk::Queue graphicsQueue)
 	{
-		auto result = Image2D();
+		auto result = UniqueImage2D();
 		result.imageCreateInfo = vk::ImageCreateInfo(
 			vk::ImageCreateFlags(),
 			vk::ImageType::e2D,

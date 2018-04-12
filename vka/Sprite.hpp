@@ -16,6 +16,32 @@ namespace vka
 		QuadVertices vertices;
 	};
 
+	static Quad MakeQuad(float left, float top, float right, float bottom, float leftUV, float topUV, float rightUV, float bottomUV)
+	{
+		Quad quad;
+		Vertex LT, LB, RB, RT;
+		LT.Position = glm::vec2(left, top);
+		LT.UV = glm::vec2(leftUV, topUV);
+
+		LB.Position = glm::vec2(left, bottom);
+		LB.UV = glm::vec2(leftUV, bottomUV);
+
+		RB.Position = glm::vec2(right, bottom);
+		RB.UV = glm::vec2(rightUV, bottomUV);
+
+		RT.Position = glm::vec2(right, top);
+		RT.UV = glm::vec2(rightUV, topUV);
+
+		quad.vertices[0] = LT;
+		quad.vertices[1] = LB;
+		quad.vertices[2] = RB;
+		quad.vertices[3] = RB;
+		quad.vertices[4] = RT;
+		quad.vertices[5] = LT;
+
+		return quad;
+	}
+
 	struct Sprite
 	{
 		uint64_t imageID;

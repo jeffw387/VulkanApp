@@ -159,13 +159,13 @@ public:
         
         for (auto i = 0.f; i < 3.f; i++)
         {
-            // auto entity = enttRegistry.create(
-            //     cmp::Sprite(Image::Star), 
-            //     cmp::Position(glm::vec2(i*2.f, i*2.f)),
-            //     cmp::PositionMatrix(),
-            //     cmp::Velocity(glm::vec2()),
-            //     cmp::Color(glm::vec4(1.f)),
-            //     cmp::RectSize());
+            auto entity = enttRegistry.create(
+                cmp::Sprite(Sprites::SpriteSheet1::starpng::Name), 
+                cmp::Position(glm::vec2(i*2.f, i*2.f)),
+                cmp::PositionMatrix(),
+                cmp::Velocity(glm::vec2()),
+                cmp::Color(glm::vec4(1.f)),
+                cmp::RectSize());
         }
 
         app.Run();

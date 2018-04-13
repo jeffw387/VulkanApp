@@ -369,7 +369,7 @@ namespace vka
 			supports.renderCommandBuffer->bindDescriptorSets(
 				vk::PipelineBindPoint::eGraphics,
 				m_PipelineState.pipelineLayout.get(),
-				1U,
+				0U,
 				{ m_ShaderState.fragmentDescriptorSet.get() },
 				{});
 
@@ -389,7 +389,7 @@ namespace vka
 			m_DeviceState.graphicsQueue.submit(
 				{
 					vk::SubmitInfo(
-						1U,
+						0U,
 						nullptr,
 						&stageFlags,
 						1U,

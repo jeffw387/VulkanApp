@@ -59,8 +59,6 @@ namespace vka
 
     struct ShaderState
     {
-        std::string vertexShaderPath;
-		std::string fragmentShaderPath;
         vk::UniqueShaderModule vertexShader;
 		vk::UniqueShaderModule fragmentShader;
 		std::vector<vk::PushConstantRange> pushConstantRanges;
@@ -69,10 +67,10 @@ namespace vka
 		vk::UniqueDescriptorSet fragmentDescriptorSet;
     };
 
-    static void CreateShaderModules(ShaderState& shaderState, const DeviceState& deviceState)
+    static void CreateShaderModules(ShaderState& shaderState, const DeviceState& deviceState, const InitState& initState)
 	{
 		// read from file
-		auto vertexShaderBinary = fileIO::readFile(shaderState.vertexShaderPath);
+		auto vertexShaderBinary = fileIO::readFile(initState.vertexShaderPath);
 		// create shader module
 		auto vertexShaderInfo = vk::ShaderModuleCreateInfo(vk::ShaderModuleCreateFlags(),
 			vertexShaderBinary.size(),
@@ -80,7 +78,7 @@ namespace vka
 		shaderState.vertexShader = deviceState.logicalDevice->createShaderModuleUnique(vertexShaderInfo);
 
 		// read from file
-		auto fragmentShaderBinary = fileIO::readFile(shaderState.fragmentShaderPath);
+		auto fragmentShaderBinary = fileIO::readFile(initState.fragmentShaderPath);
 		// create shader module
 		auto fragmentShaderInfo = vk::ShaderModuleCreateInfo(vk::ShaderModuleCreateFlags(),
 			fragmentShaderBinary.size(),
@@ -147,7 +145,7 @@ namespace vka
 	static void SetupPushConstants(ShaderState& shaderState)
 	{
 		shaderState.pushConstantRanges.emplace_back(vk::PushConstantRange(
-			vk::ShaderStageFlagBits::eVertex,
+			vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
 			0U,
 			sizeof(FragmentPushConstants)));
 	}
@@ -212,6 +210,10 @@ namespace vka
         const InitState& initState)
     {
         auto& quads = renderState.quads;
+        if (quads.size() == 0)
+        {
+            std::runtime_error("Error: no vertices loaded.");
+        }
         // create vertex buffers
         constexpr auto quadSize = sizeof(Quad);
         size_t vertexBufferSize = quadSize * quads.size();
@@ -451,10 +453,11 @@ namespace vka
     static void FinalizeSpriteOrder(RenderState& renderState)
     {
         auto spriteOffset = 0;
-        for (auto& sprite : renderState.sprites)
+        for (auto& [spriteID, sprite] : renderState.sprites)
         {
-            sprite.second.vertexOffset = spriteOffset;
-            sprite.second.imageOffset = renderState.images[sprite.second.imageID].imageOffset;
+            renderState.quads.push_back(sprite.quad);
+            sprite.vertexOffset = spriteOffset;
+            sprite.imageOffset = renderState.images[sprite.imageID].imageOffset;
             ++spriteOffset;
         }
     }

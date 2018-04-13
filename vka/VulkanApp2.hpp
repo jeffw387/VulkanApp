@@ -56,10 +56,10 @@ namespace vka
 	struct VulkanApp
 	{
 		ApplicationState m_AppState;
-		InitState m_InitState;
 		InputState m_InputState;
 		InstanceState m_InstanceState;
 		DeviceState m_DeviceState;
+		InitState m_InitState;
 		SurfaceState m_SurfaceState;
 		ShaderState m_ShaderState;
 		RenderState m_RenderState;
@@ -176,7 +176,7 @@ namespace vka
 			m_RenderState.sprites[spriteName] = sprite;
 		}
 
-		void init(
+		void Init(
 			std::string windowTitle,
 			int width,
 			int height,
@@ -262,7 +262,7 @@ namespace vka
 
 			CreateSampler(m_RenderState, m_DeviceState);
 
-			CreateShaderModules(m_ShaderState, m_DeviceState);
+			CreateShaderModules(m_ShaderState, m_DeviceState, m_InitState);
 			CreateFragmentSetLayout(m_ShaderState, m_DeviceState, m_RenderState);
 			SetupPushConstants(m_ShaderState);
 			CreateFragmentDescriptorPool(m_ShaderState, 

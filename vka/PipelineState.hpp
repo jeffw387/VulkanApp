@@ -34,8 +34,7 @@ namespace vka
 
 	void CreatePipelineLayout(PipelineState& pipelineState, const DeviceState& deviceState, const ShaderState& shaderState)
 	{
-		auto setLayouts = std::vector<vk::DescriptorSetLayout>();
-		setLayouts.push_back(shaderState.fragmentDescriptorSetLayout.get());
+		auto setLayouts = GetSetLayouts(shaderState);
 		auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo(
 			vk::PipelineLayoutCreateFlags(),
 			static_cast<uint32_t>(setLayouts.size()),

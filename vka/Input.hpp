@@ -56,7 +56,7 @@ namespace vka
 
     struct Action
     {
-        std::function<void()> func;
+        std::function<void()> func = nullptr;
     };
 
     Action MakeAction(std::function<void()> func)
@@ -87,7 +87,8 @@ namespace vka
         KeySignature signature;
         void operator()(Action& action)
         {
-            action.func();
+            if (action.func != nullptr)
+                action.func();
         }
         void operator()(State& state)
         {

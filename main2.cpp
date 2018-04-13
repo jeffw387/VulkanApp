@@ -75,6 +75,7 @@ public:
             app.CreateSprite(Sprites::SpriteSheet1::ImagePath, 
                 Sprites::SpriteSheet1::starpng::Name, 
                 Sprites::SpriteSheet1::starpng::SpriteQuad);
+            
             // TODO: Load sprite sheet as sprites
         };
 
@@ -143,7 +144,7 @@ public:
                 }
             }
         };
-        app.init(std::string("Vulkan App"),
+        app.Init(std::string("Vulkan App"),
         900,
         900,
         instanceCreateInfo,

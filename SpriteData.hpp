@@ -17,7 +17,7 @@ cog.outl("    struct SpriteSheet1")
 cog.outl("    {")
 jsonPath = "Content/SpriteSheets/spritesheet.json"
 imagePath = "Content/SpriteSheets/spritesheet.png"
-cog.outl("        static constexpr auto ImagePath = entt::HashedString(\"{0}\");".format(imagePath))
+cog.outl("        static constexpr auto ImagePath = entt::HashedString(CONTENTROOT \"{0}\");".format(imagePath))
 with open(jsonPath) as spritesheetfile:
     spritesheetdict = json.load(spritesheetfile)
     frames = spritesheetdict["frames"]
@@ -53,7 +53,7 @@ with open(jsonPath) as spritesheetfile:
 ]]]*/
 struct SpriteSheet1
 {
-    static constexpr auto ImagePath = entt::HashedString("Content/SpriteSheets/spritesheet.png");
+    static constexpr auto ImagePath = entt::HashedString(CONTENTROOT "Content/SpriteSheets/spritesheet.png");
     struct starpng
     {
         static constexpr auto Name = entt::HashedString("star.png");

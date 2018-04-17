@@ -1,7 +1,6 @@
 #undef min
 #undef max
 
-#define VMA_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #include "vka/VulkanApp2.hpp"
 #include <algorithm>
@@ -41,6 +40,7 @@ public:
         {
         #ifndef NO_VALIDATION
             "VK_LAYER_LUNARG_standard_validation",
+            "VK_LAYER_LUNARG_assistant_layer",
             //"VK_LAYER_LUNARG_api_dump",
         #endif
         };
@@ -125,6 +125,10 @@ public:
                 auto& transform = physicsView.get<cmp::PositionMatrix>(entity);
 
                 position.position += velocity.velocity;
+                transform.matrix = glm::translate(glm::mat4(1.f), 
+                glm::vec3(position.position.x,
+                    position.position.y,
+                    0.f));
             }
             auto renderView = enttRegistry.persistent<cmp::Sprite, cmp::PositionMatrix, cmp::Color>();
             return renderView.size();

@@ -6,8 +6,8 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
-#include "VulkanFunctions.hpp"
-#include "vulkan/vulkan.hpp"
+// #include "VulkanFunctions.hpp"
+#define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 #include "ApplicationState.hpp"
 #include "InitState.hpp"
@@ -56,6 +56,7 @@ namespace vka
 	struct VulkanApp
 	{
 		ApplicationState m_AppState;
+		vk::DispatchLoaderDynamic m_Dispatch;
 		InputState m_InputState;
 		InstanceState m_InstanceState;
 		DeviceState m_DeviceState;
@@ -72,16 +73,18 @@ namespace vka
 		{
 			auto sprite = m_RenderState.sprites.at(spriteIndex);
 			auto& supports = m_RenderState.supports[m_RenderState.nextImage];
-			glm::mat4 mvp =  m_RenderState.camera.getMatrix() * transform;
+			auto vp = m_RenderState.camera.getMatrix();
+			auto m = transform;
+			auto mvp = vp * m;
 
-			FragmentPushConstants pushRange;
+			VertexPushConstants pushRange;
 			pushRange.imageOffset = sprite.imageOffset;
 			pushRange.color = color;
 			pushRange.mvp = mvp;
 
-			supports.renderCommandBuffer->pushConstants<FragmentPushConstants>(
+			supports.renderCommandBuffer->pushConstants<VertexPushConstants>(
 				m_PipelineState.pipelineLayout.get(),
-				vk::ShaderStageFlagBits::eFragment,
+				vk::ShaderStageFlagBits::eVertex,
 				0U,
 				{ pushRange });
 
@@ -198,13 +201,13 @@ namespace vka
 			m_InitState.vertexShaderPath = vertexShaderPath;
 			m_InitState.fragmentShaderPath = fragmentShaderPath;
 			m_InitState.deviceExtensions = deviceExtensions;
-			auto glfwInitError = glfwInit();
-			if (!glfwInitError)
+			auto glfwInitSuccess = glfwInit();
+			if (!glfwInitSuccess)
 			{
 				std::runtime_error("Error initializing GLFW.");
-				exit(glfwInitError);
+				exit(glfwInitSuccess);
 			}
-			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+			// glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 			m_AppState.window = glfwCreateWindow(width, height, windowTitle.c_str(), NULL, NULL);
 			if (m_AppState.window == NULL)
 			{
@@ -219,28 +222,30 @@ namespace vka
 			glfwSetMouseButtonCallback(m_AppState.window, MouseButtonCallback);
 			m_RenderState.camera.setSize({static_cast<float>(width), static_cast<float>(height)});
 
-			// load vulkan dll, entry point, and instance/global function pointers
-			if (!LoadVulkanDLL(m_InstanceState))
-			{
-				std::runtime_error("Error loading vulkan DLL.");
-				exit(-1);
-			}
+			// // load vulkan dll, entry point, and instance/global function pointers
+			// if (!LoadVulkanDLL(m_InstanceState))
+			// {
+			// 	std::runtime_error("Error loading vulkan DLL.");
+			// 	exit(-1);
+			// }
 
-			LoadVulkanEntryPoint(m_InstanceState);
+			// LoadVulkanEntryPoint(m_InstanceState);
 
-			LoadVulkanGlobalFunctions();
+			// LoadVulkanGlobalFunctions();
 
 			CreateInstance(m_InstanceState, instanceCreateInfo);
 
-			LoadVulkanInstanceFunctions(m_InstanceState);
+
+			// LoadVulkanInstanceFunctions(m_InstanceState);
 
 			InitPhysicalDevice(m_DeviceState, m_InstanceState.instance.get());
 
 			SelectGraphicsQueue(m_DeviceState);
 
-			CreateLogicalDevice(m_DeviceState, deviceExtensions);
+			CreateLogicalDevice(m_DeviceState, deviceExtensions, m_Dispatch);
 			
-			LoadVulkanDeviceFunctions(m_DeviceState);
+			m_Dispatch = vk::DispatchLoaderDynamic(m_InstanceState.instance.get(), m_DeviceState.logicalDevice.get());
+			// LoadVulkanDeviceFunctions(m_DeviceState);
 
 			GetGraphicsQueue(m_DeviceState);
 
@@ -290,15 +295,15 @@ namespace vka
 	private:
 		auto acquireImage()
 		{
-			auto renderFinishedFence = m_DeviceState.logicalDevice->createFence(
+			auto renderFinishedFence = m_DeviceState.logicalDevice->createFenceUnique(
 				vk::FenceCreateInfo(vk::FenceCreateFlags()));
 			auto nextImage = m_DeviceState.logicalDevice->acquireNextImageKHR(
 				m_RenderState.swapchain.get(), 
 				std::numeric_limits<uint64_t>::max(), 
 				vk::Semaphore(),
-				renderFinishedFence);
+				renderFinishedFence.get());
 			m_RenderState.supports[nextImage.value].imagePresentCompleteFence = 
-				vk::UniqueFence(renderFinishedFence, vk::FenceDeleter(m_DeviceState.logicalDevice.get()));
+				std::move(renderFinishedFence);
 			return nextImage;
 		}
 

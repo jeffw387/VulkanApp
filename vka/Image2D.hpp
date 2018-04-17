@@ -1,132 +1,171 @@
 #pragma once
 
 #undef max
-#include "vulkan/vulkan.hpp"
+#include "vulkan/vulkan.h"
 #include "Allocator.hpp"
 #include "Buffer.hpp"
 #include "Bitmap.hpp"
 #include "entt.hpp"
+#include "UniqueVulkan.hpp"
 
 namespace vka
 {
 	struct UniqueImage2D
 	{
-		vk::UniqueImage image;
-		vk::UniqueImageView view;
-		UniqueAllocation allocation;
-		vk::ImageCreateInfo imageCreateInfo;
+		VkImageUnique image;
+		VkImageViewUnique view;
+		UniqueAllocationHandle allocation;
+		VkImageCreateInfo imageCreateInfo;
 		uint64_t imageOffset;
 	};
 
-	UniqueImage2D CreateImage2D(vk::Device device,
-			vk::CommandBuffer commandBuffer,
+	UniqueImage2D CreateImage2D(VkDevice device,
+			VkCommandBuffer commandBuffer,
 			Allocator& allocator,
 			const Bitmap& bitmap,
 			uint32_t queueFamilyIndex,
-			vk::Queue graphicsQueue)
+			VkQueue graphicsQueue)
 	{
-		auto result = UniqueImage2D();
-		result.imageCreateInfo = vk::ImageCreateInfo(
-			vk::ImageCreateFlags(),
-			vk::ImageType::e2D,
-			vk::Format::eR8G8B8A8Srgb,
-			vk::Extent3D(bitmap.m_Width, bitmap.m_Height, 1U),
-			1U,
-			1U,
-			vk::SampleCountFlagBits::e1,
-			vk::ImageTiling::eOptimal,
-			vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-			vk::SharingMode::eExclusive,
-			1U,
-			&queueFamilyIndex,
-			vk::ImageLayout::eUndefined);
+		auto imageResult = UniqueImage2D();
+		imageResult.imageCreateInfo = {};
+		imageResult.imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageResult.imageCreateInfo.pNext = nullptr;
+		imageResult.imageCreateInfo.flags = VkImageCreateFlags(0);
+		imageResult.imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+		imageResult.imageCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+		imageResult.imageCreateInfo.extent.width = bitmap.m_Width;
+		imageResult.imageCreateInfo.extent.height = bitmap.m_Height;
+		imageResult.imageCreateInfo.extent.depth = 1;
+		imageResult.imageCreateInfo.mipLevels = 1;
+		imageResult.imageCreateInfo.arrayLayers = 1;
+		imageResult.imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageResult.imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imageResult.imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		imageResult.imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		imageResult.imageCreateInfo.queueFamilyIndexCount = 1;
+		imageResult.imageCreateInfo.pQueueFamilyIndices = &queueFamilyIndex;
+		imageResult.imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-		result.image = device.createImageUnique(result.imageCreateInfo);
-		result.allocation = allocator.AllocateForImage(true, result.image.get(), 
-			vk::MemoryPropertyFlagBits::eDeviceLocal);
-		device.bindImageMemory(
-			result.image.get(),
-			result.allocation->memory,
-			result.allocation->offsetInDeviceMemory);
+		VkImage image;
+		auto result = vkCreateImage(device, &imageResult.imageCreateInfo, nullptr, &image);
+
+		VkImageDeleter imageDeleter;
+		imageDeleter.device = device;
+		imageResult.image = VkImageUnique(image, imageDeleter);
+		imageResult.allocation = allocator.AllocateForImage(true, image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+		vkBindImageMemory(device, image,
+			imageResult.allocation.memory,
+			imageResult.allocation.offsetInDeviceMemory)
 		
-		auto stagingBufferResult = CreateBuffer(device, allocator, result.allocation->size,
-			vk::BufferUsageFlagBits::eTransferSrc,
+		auto stagingBufferResult = CreateBuffer(device, allocator, imageResult.allocation.size,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			queueFamilyIndex,
-			vk::MemoryPropertyFlagBits::eHostCoherent |
-			vk::MemoryPropertyFlagBits::eHostVisible,
+			VK_MEMORY_PROPERTY_FLAG_HOST_COHERENT_BIT |
+			VK_MEMORY_PROPERTY_FLAG_HOST_VISIBLE_BIT,
 			true);
-			
+
 		// copy from host to staging buffer
-		void* stagingBufferData = device.mapMemory(
-			stagingBufferResult.allocation->memory,
-			stagingBufferResult.allocation->offsetInDeviceMemory,
-			stagingBufferResult.allocation->size);
+		void* stagingBufferData = nullptr;
+		vkMapMemory(device, 
+			stagingBufferResult.allocation.memory,
+			stagingBufferResult.allocation.offsetInDeviceMemory,
+			stagingBufferResult.allocation.size,
+			VkMemoryMapFlags(0),
+			&stagingBufferData);
+
 		memcpy(stagingBufferData, bitmap.m_Data.data(), bitmap.m_Size);
-		device.unmapMemory(stagingBufferResult.allocation->memory);
+		vkUnmapMemory(device, 
+			stagingBufferResult.allocation.memory);
 
-		// begin recording command buffer
-		commandBuffer.begin(vk::CommandBufferBeginInfo(
-			vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+		auto cmdBufferBeginInfo = VkCommandBufferBeginInfo();
+		cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		cmdBufferBeginInfo.pNext = nullptr;
+		cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		cmdBufferBeginInfo.pInheritanceInfo = nullptr;
 
-		// transition image layout
-		auto imageMemoryBarrier = vk::ImageMemoryBarrier(
-			vk::AccessFlags(),
-			vk::AccessFlagBits::eTransferWrite,
-			vk::ImageLayout::eUndefined,
-			vk::ImageLayout::eTransferDstOptimal,
-			queueFamilyIndex,
-			queueFamilyIndex,
-			result.image.get(),
-			vk::ImageSubresourceRange(
-				vk::ImageAspectFlagBits::eColor,
-				0U,
-				1U,
-				0U,
-				1U));
-		commandBuffer.pipelineBarrier(
-			vk::PipelineStageFlagBits::eTopOfPipe,
-			vk::PipelineStageFlagBits::eTransfer,
-			vk::DependencyFlags(),
-			{ },
-			{ },
-			{ imageMemoryBarrier });
+		vkBeginCommandBuffer(commandBuffer, &cmdBufferBeginInfo);
+
+		// transition image layout for transfer
+		VkImageMemoryBarrier imageMemoryBarrier = {};
+		imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imageMemoryBarrier.pNext = nullptr;
+		imageMemoryBarrier.srcAccessMask = VkAccessFlags(0);
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageMemoryBarrier.newLayout VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageMemoryBarrier.srcQueueFamilyIndex = queueFamilyIndex;
+		imageMemoryBarrier.dstQueueFamilyIndex = queueFamilyIndex;
+		imageMemoryBarrier.image = image;
+		imageMemoryBarrier.subresourceRange = {};
+		imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
+		imageMemoryBarrier.subresourceRange.levelCount = 1;
+		imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
+		imageMemoryBarrier.subresourceRange.layerCount = 1;
+
+		vkCmdPipelineBarrier(commandBuffer, 
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VkDependencyFlags(0),
+			0,
+			nullptr,
+			0,
+			nullptr,
+			1,
+			&imageMemoryBarrier);
 
 		// copy from host to device (to image)
-		commandBuffer.copyBufferToImage(
+		VkBufferImageCopy bufferImageCopy = {};
+		bufferImageCopy.bufferOffset = 0;
+		bufferImageCopy.bufferRowLength = 0;
+		bufferImageCopy.bufferImageHeight = 0;
+		bufferImageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		bufferImageCopy.imageSubresource.mipLevel = 0;
+		bufferImageCopy.imageSubresource.baseArrayLayer = 0;
+		bufferImageCopy.imageSubresource.layerCount = 1;
+		bufferImageCopy.imageOffset = {};
+		bufferImageCopy.imageExtent.width = bitmap.m_Width;
+		bufferImageCopy.imageExtent.height = bitmap.m_Height;
+		bufferImageCopy.imageExtent.depth = 1;
+
+		vkCmdCopyBufferToImage(commandBuffer, 
 			stagingBufferResult.buffer.get(),
-			result.image.get(),
-			vk::ImageLayout::eTransferDstOptimal,
-			{
-				vk::BufferImageCopy(0U, 0U, 0U,
-					vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0U, 0U, 1U),
-					vk::Offset3D(),
-					vk::Extent3D(bitmap.m_Width, bitmap.m_Height, 1U))
-			});
+			image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1,
+			&bufferImageCopy);
 
 		// transition image for shader access
-		auto imageMemoryBarrier2 = vk::ImageMemoryBarrier(
-			vk::AccessFlagBits::eTransferWrite,
-			vk::AccessFlagBits::eShaderRead,
-			vk::ImageLayout::eTransferDstOptimal,
-			vk::ImageLayout::eShaderReadOnlyOptimal,
-			queueFamilyIndex,
-			queueFamilyIndex,
-			result.image.get(),
-			vk::ImageSubresourceRange(
-				vk::ImageAspectFlagBits::eColor,
-				0U,
-				1U,
-				0U,
-				1U));
-		commandBuffer.pipelineBarrier(
-			vk::PipelineStageFlagBits::eTransfer,
-			vk::PipelineStageFlagBits::eFragmentShader,
-			vk::DependencyFlags(),
-			{ },
-			{ },
-			{ imageMemoryBarrier2 });
+		VkImageMemoryBarrier imageMemoryBarrier2 = {};
+		imageMemoryBarrier2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imageMemoryBarrier2.pNext = nullptr;
+		imageMemoryBarrier2.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageMemoryBarrier2.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		imageMemoryBarrier2.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageMemoryBarrier2.newLayout VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageMemoryBarrier2.srcQueueFamilyIndex = queueFamilyIndex;
+		imageMemoryBarrier2.dstQueueFamilyIndex = queueFamilyIndex;
+		imageMemoryBarrier2.image = image;
+		imageMemoryBarrier2.subresourceRange = {};
+		imageMemoryBarrier2.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageMemoryBarrier2.subresourceRange.baseMipLevel = 0;
+		imageMemoryBarrier2.subresourceRange.levelCount = 1;
+		imageMemoryBarrier2.subresourceRange.baseArrayLayer = 0;
+		imageMemoryBarrier2.subresourceRange.layerCount = 1;
 
-		commandBuffer.end();
+		vkCmdPipelineBarrier(commandBuffer, 
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			VkDependencyFlags(0),
+			0,
+			nullptr,
+			0,
+			nullptr,
+			1,
+			&imageMemoryBarrier2);
+
+		vkEndCommandBuffer(commandBuffer);
 
 		// create fence, submit command buffer
 		auto imageLoadFence = device.createFenceUnique(vk::FenceCreateInfo());
@@ -137,10 +176,10 @@ namespace vka
 			imageLoadFence.get());
 
 		// create image view
-		result.view = device.createImageViewUnique(
+		imageResult.view = device.createImageViewUnique(
 			vk::ImageViewCreateInfo(
 				vk::ImageViewCreateFlags(),
-				result.image.get(),
+				imageResult.image.get(),
 				vk::ImageViewType::e2D,
 				vk::Format::eR8G8B8A8Srgb,
 				vk::ComponentMapping(),
@@ -154,6 +193,6 @@ namespace vka
 		// wait for command buffer to be executed
 		device.waitForFences({ imageLoadFence.get() }, true, std::numeric_limits<uint64_t>::max());
 
-		return std::move(result);
+		return std::move(imageResult);
 	}
 }

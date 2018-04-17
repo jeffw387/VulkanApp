@@ -50,7 +50,7 @@ namespace vka
         std::vector<Quad> quads;
     };
 
-    struct FragmentPushConstants
+    struct VertexPushConstants
 	{
 		glm::uint32 imageOffset;
         glm::vec4 color;
@@ -145,9 +145,9 @@ namespace vka
 	static void SetupPushConstants(ShaderState& shaderState)
 	{
 		shaderState.pushConstantRanges.emplace_back(vk::PushConstantRange(
-			vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+			vk::ShaderStageFlagBits::eVertex,
 			0U,
-			sizeof(FragmentPushConstants)));
+			sizeof(VertexPushConstants)));
 	}
 
 	static void CreateAndUpdateFragmentDescriptorSet(ShaderState& shaderState, 
@@ -250,7 +250,7 @@ namespace vka
             deviceState.graphicsQueue,
             vertexStagingBuffer.buffer.get(),
             renderState.vertexBuffer.buffer.get(),
-            vk::BufferCopy(vertexBufferSize, 0U, 0U),
+            vk::BufferCopy(0U, 0U, vertexBufferSize),
             std::make_optional(initState.copyCommandFence.get()));
         
         // wait for vertex buffer copy to finish

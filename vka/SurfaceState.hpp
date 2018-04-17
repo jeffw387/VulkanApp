@@ -2,6 +2,8 @@
 
 #include "vulkan/vulkan.hpp"
 #include "GLFW/glfw3.h"
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include "GLFW/glfw3native.h"
 #include "ApplicationState.hpp"
 #include "InstanceState.hpp"
 #include "DeviceState.hpp"
@@ -33,9 +35,12 @@ namespace vka
 		const DeviceState& deviceState, 
 		const vk::Extent2D& extent)
 	{
+		// TODO: remove platform dependence here
 		VkSurfaceKHR surface;
-		glfwCreateWindowSurface(instanceState.instance.get(), appState.window, nullptr, &surface);
-		surfaceState.surface = vk::UniqueSurfaceKHR(surface, vk::SurfaceKHRDeleter(instanceState.instance.get()));
+		auto win32Window = glfwGetWin32Window(appState.window);
+		auto hinstance = GetModuleHandle(NULL);
+		surfaceState.surface = instanceState.instance->createWin32SurfaceKHRUnique(
+			vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), hinstance, win32Window));
 		
 		// get surface format from supported list
 		auto surfaceFormats = deviceState.physicalDevice.getSurfaceFormatsKHR(surfaceState.surface.get());

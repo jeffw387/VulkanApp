@@ -1,6 +1,7 @@
 #pragma once
 
-#include "vulkan/vulkan.hpp"
+#include "vulkan/vulkan.h"
+#include "UniqueVulkan.hpp"
 #include <memory>
 #include <optional>
 #include <map>
@@ -8,75 +9,76 @@
 
 namespace vka
 {
-    struct Allocation
+    struct AllocationHandle
     {
-        vk::DeviceMemory memory;
-        vk::DeviceSize size;
-        vk::DeviceSize offsetInDeviceMemory;
+        VkDeviceMemory memory;
+        VkDeviceSize size;
+        VkDeviceSize offsetInDeviceMemory;
         uint32_t typeID;
     };
 
     struct MemoryBlock;
-    struct AllocationDeleter
+    struct AllocationHandleDeleter
     {
-        void operator()(Allocation* allocation);
-        AllocationDeleter(const AllocationDeleter&) noexcept = default;
-        AllocationDeleter() noexcept = default;
+        using pointer = AllocationHandle;
+        void operator()(AllocationHandle allocation);
+        AllocationHandleDeleter(const AllocationHandleDeleter&) noexcept = default;
+        AllocationHandleDeleter() noexcept = default;
         MemoryBlock* block;
     };
-    using UniqueAllocation = std::unique_ptr<Allocation, AllocationDeleter>;
+    using UniqueAllocationHandle = std::unique_ptr<AllocationHandle, AllocationHandleDeleter>;
 
-        struct SubAllocation
-        {
-            vk::DeviceSize size = 0U;
-            bool allocated = false;
-        };
-        using SubAllocationMap = std::map<vk::DeviceSize, SubAllocation>;
+    struct Allocation
+    {
+        VkDeviceSize size = 0U;
+        bool allocated = false;
+    };
+    using AllocationMap = std::map<VkDeviceSize, Allocation>;
 
-        struct MemoryBlock
-        {
-            MemoryBlock(vk::UniqueDeviceMemory&& memory, const vk::MemoryAllocateInfo& allocateInfo);
-            std::optional<vk::DeviceSize> CanSuballocate(const vk::MemoryRequirements& requirements);
-            vk::DeviceSize DivideSubAllocation(
-                const vk::DeviceSize allocationOffset,
-                const vk::MemoryRequirements& requirements);
-            UniqueAllocation CreateExternalAllocationFromSuballocation(vk::DeviceSize allocationOffset);
-            void DeallocateMemory(Allocation allocation);
+    struct MemoryBlock
+    {
+        MemoryBlock(VkDeviceMemoryUnique&& memory, const VkMemoryAllocateInfo& allocateInfo);
+        std::optional<VkDeviceSize> CanAllocate(const VkMemoryRequirements& requirements);
+        VkDeviceSize DivideAllocation(
+            const VkDeviceSize allocationOffset,
+            const VkMemoryRequirements& requirements);
+        UniqueAllocationHandle CreateHandleFromAllocation(VkDeviceSize allocationOffset);
+        void DeallocateMemory(AllocationHandle allocation);
 
-            vk::UniqueDeviceMemory m_DeviceMemory;
-            vk::MemoryAllocateInfo m_AllocateInfo;
-            SubAllocationMap m_Suballocations;
-        };
+        VkDeviceMemoryUnique m_DeviceMemory;
+        VkMemoryAllocateInfo m_AllocateInfo;
+        AllocationMap m_Allocations;
+    };
 
     class Allocator
     {
     public:
-        static const vk::DeviceSize DefaultMemoryBlockSize = 1000000U;
+        static const VkDeviceSize DefaultMemoryBlockSize = 1000000U;
         Allocator() = default;
-        Allocator(vk::PhysicalDevice physicalDevice, 
-            vk::Device device, 
-            vk::DeviceSize defaultBlockSize = DefaultMemoryBlockSize);
-        std::optional<uint32_t> Allocator::ChooseMemoryType(vk::MemoryPropertyFlags memoryFlags, 
-        const vk::MemoryRequirements& requirements);
-        UniqueAllocation AllocateMemory(const bool DedicatedAllocation, 
-        const vk::MemoryRequirements& requirements, 
-        const vk::MemoryPropertyFlags memoryFlags);
-        UniqueAllocation AllocateForImage(
+        Allocator(VkPhysicalDevice physicalDevice, 
+            VkDevice device, 
+            VkDeviceSize defaultBlockSize = DefaultMemoryBlockSize);
+        std::optional<uint32_t> Allocator::ChooseMemoryType(VkMemoryPropertyFlags memoryFlags, 
+        const VkMemoryRequirements& requirements);
+        UniqueAllocationHandle AllocateMemory(const bool DedicatedAllocation, 
+        const VkMemoryRequirements& requirements, 
+        const VkMemoryPropertyFlags memoryFlags);
+        UniqueAllocationHandle AllocateForImage(
             const bool DedicatedAllocation, 
-            const vk::Image image, 
-            const vk::MemoryPropertyFlags memoryFlags);
-        UniqueAllocation AllocateForBuffer(
+            const VkImage image, 
+            const VkMemoryPropertyFlags memoryFlags);
+        UniqueAllocationHandle AllocateForBuffer(
             const bool DedicatedAllocation, 
-            const vk::Buffer buffer, 
-            const vk::MemoryPropertyFlags memoryFlags);
+            const VkBuffer buffer, 
+            const VkMemoryPropertyFlags memoryFlags);
 
     private:
-        MemoryBlock& AllocateNewBlock(const vk::MemoryAllocateInfo& allocateInfo);
+        MemoryBlock& AllocateNewBlock(const VkMemoryAllocateInfo& allocateInfo);
 
         std::list<MemoryBlock> m_MemoryBlocks;
-        vk::PhysicalDevice m_PhysicalDevice;
-        vk::Device m_Device;
-        vk::DeviceSize m_DefaultBlockSize;
-        vk::PhysicalDeviceMemoryProperties m_MemoryProperties;
+        VkPhysicalDevice m_PhysicalDevice;
+        VkDevice m_Device;
+        VkDeviceSize m_DefaultBlockSize;
+        VkPhysicalDeviceMemoryProperties m_MemoryProperties;
     };
 }// namespace vka

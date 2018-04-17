@@ -1,101 +1,106 @@
 #include <stdexcept>
 #include <algorithm>
 
-#include "VulkanFunctions.hpp"
 #include "Allocator.hpp"
 #include "mymath.hpp"
 namespace vka
 {
-    void AllocationDeleter::operator()(Allocation* allocation)
+    void AllocationHandleDeleter::operator()(AllocationHandle allocation)
     {
-        block->DeallocateMemory(*allocation);
-        delete allocation;
-    }
-    MemoryBlock::MemoryBlock(vk::UniqueDeviceMemory&& memory, const vk::MemoryAllocateInfo& allocateInfo) :
-        m_DeviceMemory(std::move(memory)), m_AllocateInfo(allocateInfo)
-    {
-        SubAllocation fullBlock = {};
-        fullBlock.size = allocateInfo.allocationSize;
-        auto fullBlockOffset = 0U;
-        m_Suballocations[fullBlockOffset] = fullBlock;
+        block->DeallocateMemory(allocation);
     }
 
-    // returns the offset of a suballocation that can contain the requested allocation if possible
-    std::optional<vk::DeviceSize> MemoryBlock::CanSuballocate(const vk::MemoryRequirements& requirements)
+    MemoryBlock::MemoryBlock(const VkMemoryAllocateInfo& allocateInfo) :
+        m_AllocateInfo(allocateInfo)
     {
-        for (auto& allocPair : m_Suballocations)
+        VkDeviceMemory memory;
+        auto result = vkAllocateMemory(m_Device, &allocateInfo, nullptr, &memory);
+        auto deleter = VkDeviceMemoryDeleter();
+        deleter.device = m_Device;
+        m_DeviceMemory = VkDeviceMemoryUnique(memory, deleter)
+
+        Allocation fullBlock = {};
+        fullBlock.size = allocateInfo.allocationSize;
+        auto fullBlockOffset = 0U;
+        m_Allocations[fullBlockOffset] = fullBlock;
+    }
+
+    // returns the offset of a allocation that can contain the requested allocation if possible
+    std::optional<VkDeviceSize> MemoryBlock::CanAllocate(const VkMemoryRequirements& requirements)
+    {
+        for (auto& allocPair : m_Allocations)
         {
             if (allocPair.second.allocated)
                 continue;
             if ((helper::roundUp(allocPair.first, requirements.alignment) + requirements.size) <= 
                 (allocPair.first + allocPair.second.size))
-                return std::make_optional<vk::DeviceSize>(allocPair.first);
+                return std::make_optional<VkDeviceSize>(allocPair.first);
         }
-        return std::make_optional<vk::DeviceSize>();
+        return std::make_optional<VkDeviceSize>();
     }
 
-    // divides suballocation at the given offset, returning the offset of the requested suballocation
-    // this does not bounds check, CanSuballocate() should have been called first
-    vk::DeviceSize MemoryBlock::DivideSubAllocation(
-        const vk::DeviceSize firstOffset,
-        const vk::MemoryRequirements& requirements)
+    // divides allocation at the given offset, returning the offset of the requested allocation
+    // this does not bounds check, CanAllocate() should have been called first
+    VkDeviceSize MemoryBlock::DivideAllocation(
+        const VkDeviceSize firstOffset,
+        const VkMemoryRequirements& requirements)
     {
-        // get first suballocation from map
-        auto& first = m_Suballocations.at(firstOffset);
+        // get first allocation from map
+        auto& first = m_Allocations.at(firstOffset);
         // get the next offset that matches alignment
         auto nextAlignedOffset = helper::roundUp(firstOffset, requirements.alignment);
         // check if the alignment offset matches the first offset
         if (nextAlignedOffset == firstOffset)
         {
-            // subdivide if possible
+            // divide if possible
             if (first.size > requirements.size)
             {
                 auto secondOffset = firstOffset + requirements.size;
-                auto& second = m_Suballocations[secondOffset];
+                auto& second = m_Allocations[secondOffset];
                 second.size = first.size - requirements.size;
                 first.size = requirements.size;
             }
             return firstOffset;
         }
-        // create second suballocation at that offset
-        auto& second = m_Suballocations[nextAlignedOffset];
-        // set second sub's size (end of original sub minus beginning of new sub)
+        // create second allocation at that offset
+        auto& second = m_Allocations[nextAlignedOffset];
+        // set second allocation's size (end of original allocation minus beginning of new allocation)
         second.size = firstOffset + first.size - nextAlignedOffset;
-        // shrink first sub
+        // shrink first allocation
         first.size = nextAlignedOffset - firstOffset;
-        // return offset of second sub
+        // return offset of second allocation
         return nextAlignedOffset;
     }
 
-    UniqueAllocation MemoryBlock::CreateExternalAllocationFromSuballocation(vk::DeviceSize allocationOffset)
+    UniqueAllocationHandle MemoryBlock::CreateHandleFromAllocation(VkDeviceSize allocationOffset)
     {
-        auto& subAlloc = m_Suballocations.at(allocationOffset);
-        AllocationDeleter deleter;
+        auto& alloc = m_Allocations.at(allocationOffset);
+        AllocationHandleDeleter deleter;
         deleter.block = this;
-        UniqueAllocation newAllocation = UniqueAllocation(new Allocation(), deleter);
+        UniqueAllocationHandle newAllocation = UniqueAllocationHandle(AllocationHandle(), deleter);
         newAllocation->memory = m_DeviceMemory.get();
         newAllocation->typeID = m_AllocateInfo.memoryTypeIndex;
-        newAllocation->size = subAlloc.size;
+        newAllocation->size = alloc.size;
         newAllocation->offsetInDeviceMemory = allocationOffset;
-        subAlloc.allocated = true;
+        alloc.allocated = true;
         return std::move(newAllocation);
     }
 
-    void MemoryBlock::DeallocateMemory(Allocation allocation)
+    void MemoryBlock::DeallocateMemory(AllocationHandle allocation)
     {
-        m_Suballocations.at(allocation.offsetInDeviceMemory).allocated = false;
+        m_Allocations.at(allocation.offsetInDeviceMemory).allocated = false;
     }
-    Allocator::Allocator(vk::PhysicalDevice physicalDevice, 
-        vk::Device device, 
-        vk::DeviceSize defaultBlockSize) :
+    Allocator::Allocator(VkPhysicalDevice physicalDevice, 
+        VkDevice device, 
+        VkDeviceSize defaultBlockSize) :
         m_PhysicalDevice(physicalDevice), 
         m_Device(device), 
         m_DefaultBlockSize(defaultBlockSize),
         m_MemoryProperties(m_PhysicalDevice.getMemoryProperties())
     {}
 
-    std::optional<uint32_t> Allocator::ChooseMemoryType(vk::MemoryPropertyFlags memoryFlags, 
-        const vk::MemoryRequirements& requirements)
+    std::optional<uint32_t> Allocator::ChooseMemoryType(VkMemoryPropertyFlags memoryFlags, 
+        const VkMemoryRequirements& requirements)
     {
 		for(auto i = 0U; i < m_MemoryProperties.memoryTypeCount; i++)
 		{
@@ -108,25 +113,25 @@ namespace vka
 		return std::make_optional<uint32_t>();
     }
 
-    MemoryBlock& Allocator::AllocateNewBlock(const vk::MemoryAllocateInfo& allocateInfo)
+    MemoryBlock& Allocator::AllocateNewBlock(const VkMemoryAllocateInfo& allocateInfo)
     {
-        // hopefully avoiding std::move by not naming the block here
-        m_MemoryBlocks.push_back(MemoryBlock(
-            m_Device.allocateMemoryUnique(allocateInfo), allocateInfo));
+        
+        m_MemoryBlocks.push_back(MemoryBlock(allocateInfo));
+            
         return m_MemoryBlocks.back();
     }
 
-    UniqueAllocation Allocator::AllocateMemory(
+    UniqueAllocationHandle Allocator::AllocateMemory(
         const bool DedicatedAllocation, 
-        const vk::MemoryRequirements& requirements, 
-        const vk::MemoryPropertyFlags memoryFlags)
+        const VkMemoryRequirements& requirements, 
+        const VkMemoryPropertyFlags memoryFlags)
     {
         auto typeID = ChooseMemoryType(memoryFlags, requirements);
         if (!typeID)
         {
             std::runtime_error("Cannot find matching memory type!");
         }
-        vk::MemoryAllocateInfo allocateInfo = vk::MemoryAllocateInfo(requirements.size, typeID.value());
+        
         // if a dedicated allocation is not required, attempt to allocate from existing blocks
         if (!DedicatedAllocation)
         {
@@ -137,42 +142,48 @@ namespace vka
             {
                 if (block.m_AllocateInfo.memoryTypeIndex != typeID.value())
                     continue;
-                auto optionalOffset = block.CanSuballocate(requirements);
+                auto optionalOffset = block.CanAllocate(requirements);
                 if (!optionalOffset)
                     continue;
-                // subdivide the allocation if possible
-                auto newOffset = block.DivideSubAllocation(*optionalOffset, requirements);
+                // divide the allocation if possible
+                auto newOffset = block.DivideAllocation(*optionalOffset, requirements);
 
-                // create an external Allocation object
-                return block.CreateExternalAllocationFromSuballocation(newOffset);
+                // create an external AllocationHandle object
+                return block.CreateHandleFromAllocation(newOffset);
             }
             // no existing blocks are appropriate
         }
         // allocate a new block
+        VkMemoryAllocateInfo allocateInfo = {};
+        allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocateInfo.pNext = nullptr;
+        allocateInfo.size = requirements.size;
+        allocateInfo.memoryTypeIndex = typeID.value();
+
+        // if no dedicated block is needed, allocate the default block size 
+        // or the requested size, whichever is larger
         if (!DedicatedAllocation)
         {
-            // if no dedicated block is needed, allocate the default block size 
-            // or the requested size, whichever is larger
-            allocateInfo.allocationSize = std::max<vk::DeviceSize>(allocateInfo.allocationSize, m_DefaultBlockSize);
+            allocateInfo.allocationSize = std::max<VkDeviceSize>(allocateInfo.allocationSize, m_DefaultBlockSize);
         }
         auto& newBlock = AllocateNewBlock(allocateInfo);
-        auto newOffset = newBlock.DivideSubAllocation(0U, requirements);
-        return newBlock.CreateExternalAllocationFromSuballocation(newOffset);
+        auto newOffset = newBlock.DivideAllocation(0U, requirements);
+        return newBlock.CreateHandleFromAllocation(newOffset);
     }
 
-    UniqueAllocation Allocator::AllocateForImage(
+    UniqueAllocationHandle Allocator::AllocateForImage(
         const bool DedicatedAllocation, 
-        const vk::Image image, 
-        vk::MemoryPropertyFlags memoryFlags)
+        const VkImage image, 
+        VkMemoryPropertyFlags memoryFlags)
     {
         auto requirements = m_Device.getImageMemoryRequirements(image);
         return AllocateMemory(DedicatedAllocation, requirements, memoryFlags);
     }
 
-    UniqueAllocation Allocator::AllocateForBuffer(
+    UniqueAllocationHandle Allocator::AllocateForBuffer(
         const bool DedicatedAllocation, 
-        const vk::Buffer buffer, 
-        vk::MemoryPropertyFlags memoryFlags)
+        const VkBuffer buffer, 
+        VkMemoryPropertyFlags memoryFlags)
     {
         auto requirements = m_Device.getBufferMemoryRequirements(buffer);
         return AllocateMemory(DedicatedAllocation, requirements, memoryFlags);

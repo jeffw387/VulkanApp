@@ -7,6 +7,7 @@
 #include "Bitmap.hpp"
 #include "entt.hpp"
 #include "UniqueVulkan.hpp"
+#include <limits>
 
 namespace vka
 {
@@ -168,30 +169,48 @@ namespace vka
 		vkEndCommandBuffer(commandBuffer);
 
 		// create fence, submit command buffer
-		auto imageLoadFence = device.createFenceUnique(vk::FenceCreateInfo());
-		graphicsQueue.submit(
-			vk::SubmitInfo(0U, nullptr, nullptr,
-				1U, &commandBuffer,
-				0U, nullptr),
-			imageLoadFence.get());
+		VkFenceCreateInfo fenceCreateInfo = {};
+		fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		fenceCreateInfo.pNext = nullptr;
+		fenceCreateInfo.flags = VkFenceCreateFlags(0);
+
+		VkFence imageLoadFence;
+		vkCreateFence(device, &fenceCreateInfo, nullptr, &imageLoadFence);
+
+		VkSubmitInfo submitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.pNext = nullptr;
+		submitInfo.waitSemaphoreCount = 0;
+		submitInfo.pWaitSemaphores = nullptr;
+		submitInfo.pWaitDstStageMask = nullptr;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffer;
+		submitInfo.signalSemaphoreCount = 0;
+		submitInfo.pSignalSemaphores = nullptr;
+
+		vkQueueSubmit(graphicsQueue, 1, &submitInfo, imageLoadFence);
 
 		// create image view
-		imageResult.view = device.createImageViewUnique(
-			vk::ImageViewCreateInfo(
-				vk::ImageViewCreateFlags(),
-				imageResult.image.get(),
-				vk::ImageViewType::e2D,
-				vk::Format::eR8G8B8A8Srgb,
-				vk::ComponentMapping(),
-				vk::ImageSubresourceRange(
-					vk::ImageAspectFlagBits::eColor,
-					0U,
-					1U,
-					0U,
-					1U)));
-				
-		// wait for command buffer to be executed
-		device.waitForFences({ imageLoadFence.get() }, true, std::numeric_limits<uint64_t>::max());
+		VkImageView imageView;
+
+		VkImageViewCreateInfo viewCreateInfo = {};
+		viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewCreateInfo.pNext = nullptr;
+		viewCreateInfo.flags = (VkImageViewCreateFlags)0;
+		viewCreateInfo.image = image;
+		viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+		viewCreateInfo.components = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewCreateInfo.subresourceRange.baseMipLevel = 0;
+		viewCreateInfo.subresourceRange.levelCount = 1;
+		viewCreateInfo.subresourceRange.baseArrayLayer = 0;
+		viewCreateInfo.subresourceRange.layerCount = 1;
+
+		vkCreateImageView(device, &viewCreateInfo, nullptr, &imageView);
+
+		vkWaitForFences(device, 1, &imageLoadFence.get(), (VkBool32)true, 
+			std::numeric_limits<uint64_t>::max())
 
 		return std::move(imageResult);
 	}

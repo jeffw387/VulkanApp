@@ -94,4 +94,124 @@ namespace vka
     };
     using VkFenceUnique = std::unique_ptr<VkFence, VkFenceDeleter>;
 
+    struct VkSemaphoreDeleter
+    {
+        using pointer = VkSemaphore;
+        VkDevice device;
+
+        void operator()(VkSemaphore semaphore)
+        {
+            vkDestroySemaphore(device, semaphore, nullptr);
+        }
+    };
+    using VkSemaphoreUnique = std::unique_ptr<VkSemaphore, VkSemaphoreDeleter>;
+
+    struct VkCommandPoolDeleter
+    {
+        using pointer = VkCommandPool;
+        VkDevice device;
+
+        void operator()(VkCommandPool pool)
+        {
+            vkDestroyCommandPool(device, pool, nullptr);
+        }
+    };
+    using VkCommandPoolUnique = std::unique_ptr<VkCommandPool, VkCommandPoolDeleter>;
+    
+    struct VkSurfaceKHRDeleter
+    {
+        using pointer = VkSurfaceKHR;
+        VkInstance instance;
+
+        void operator()(VkSurfaceKHR surface)
+        {
+            vkDestroySurfaceKHR(instance, surface, nullptr);
+        }
+    };
+    using VkSurfaceKHRUnique = std::unique_ptr<VkSurfaceKHR, VkSurfaceKHRDeleter>;
+
+    struct VkFramebufferDeleter
+    {
+        using pointer = VkFramebuffer;
+        VkDevice device;
+
+        void operator()(VkFramebuffer framebuffer)
+        {
+            vkDestroyFramebuffer(device, framebuffer, nullptr);
+        }
+    };
+    using VkFramebufferUnique = std::unique_ptr<VkFramebuffer, VkFramebufferDeleter>;
+
+    struct VkRenderPassDeleter
+    {
+        using pointer = VkRenderPass;
+        VkDevice device;
+
+        void operator()(VkRenderPass renderpass)
+        {
+            vkDestroyRenderPass(device, renderpass, nullptr);
+        }
+    };
+    using VkRenderPassUnique = std::unique_ptr<VkRenderPass, VkRenderPassDeleter>;
+
+    struct VkSamplerDeleter
+    {
+        using pointer = VkSampler;
+        VkDevice device;
+
+        void operator()(VkSampler sampler)
+        {
+            vkDestroySampler(device, sampler, nullptr);
+        }
+    };
+    using VkSamplerUnique = std::unique_ptr<VkSampler, VkSamplerDeleter>;
+
+    struct VkShaderModuleDeleter
+    {
+        using pointer = VkShaderModule;
+        VkDevice device;
+
+        void operator()(VkShaderModule shader)
+        {
+            vkDestroyShaderModule(device, shader, nullptr);
+        }
+    };
+    using VkShaderModuleUnique = std::unique_ptr<VkShaderModule, VkShaderModuleDeleter>;
+
+    struct VkDescriptorSetLayoutDeleter
+    {
+        using pointer = VkDescriptorSetLayout;
+        VkDevice device;
+
+        void operator()(VkDescriptorSetLayout layout)
+        {
+            vkDestroyDescriptorSetLayout(device, layout, nullptr);
+        }
+    };
+    using VkDescriptorSetLayoutUnique = std::unique_ptr<VkDescriptorSetLayout, VkDescriptorSetLayoutDeleter>;
+
+    struct VkDescriptorPoolDeleter
+    {
+        using pointer = VkDescriptorPool;
+        VkDevice device;
+
+        void operator()(VkDescriptorPool pool)
+        {
+            vkDestroyDescriptorPool(device, pool, nullptr);
+        }
+    };
+    using VkDescriptorPoolUnique = std::unique_ptr<VkDescriptorPool, VkDescriptorPoolDeleter>;
+
+    struct VkSwapchainKHRDeleter
+    {
+        using pointer = VkSwapchainKHR;
+        VkDevice device;
+
+        void operator()(VkSwapchainKHR swapchain)
+        {
+            vkDestroySwapchainKHR(device, swapchain, nullptr);
+        }
+    };
+    using VkSwapchainKHRUnique = std::unique_ptr<VkSwapchainKHR, VkSwapchainKHRDeleter>;
+
 }

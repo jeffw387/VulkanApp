@@ -55,7 +55,7 @@ namespace vka
             const VkQueue graphicsQueue,
 			const VkBuffer source, 
 			const VkBuffer destination, 
-			const VkBufferCopy bufferCopy,
+			const VkBufferCopy& bufferCopy,
 			const std::optional<VkFence> fence,
 			const std::vector<VkSemaphore> waitSemaphores = {},
 			const std::vector<VkSemaphore> signalSemaphores = {}

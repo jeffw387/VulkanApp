@@ -34,13 +34,10 @@ namespace vka
 
 	void CreatePipelineLayout(PipelineState& pipelineState, const DeviceState& deviceState, const ShaderState& shaderState)
 	{
-		auto setLayouts = GetSetLayouts(shaderState);
 		auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo(
 			vk::PipelineLayoutCreateFlags(),
-			static_cast<uint32_t>(setLayouts.size()),
-			setLayouts.data(),
-			static_cast<uint32_t>(shaderState.pushConstantRanges.size()),
-			shaderState.pushConstantRanges.data());
+			1, &shaderState.fragmentDescriptorSetLayout.get(),
+			1, &shaderState.pushConstantRange,
 		pipelineState.pipelineLayout = deviceState.logicalDevice->createPipelineLayoutUnique(pipelineLayoutInfo);
 	}
 

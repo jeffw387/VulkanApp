@@ -1,5 +1,4 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
 #include "glm/glm.hpp"
 #include "Image2D.hpp"
 #include "entt.hpp"
@@ -7,7 +6,6 @@
 
 namespace vka
 {
-	using SpriteIndex = entt::HashedString;
 	constexpr auto VerticesPerQuad = 6U;
 	using QuadVertices = std::array<Vertex, VerticesPerQuad>;
 

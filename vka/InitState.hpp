@@ -1,5 +1,6 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
+#include "UniqueVulkan.hpp"
+#include "vulkan/vulkan.h"
 #include "TimeHelper.hpp"
 #include "Sprite.hpp"
 #include "DeviceState.hpp"

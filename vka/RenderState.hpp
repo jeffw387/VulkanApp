@@ -1,5 +1,6 @@
 #pragma once
 
+#include "UniqueVulkan.hpp"
 #include "vulkan/vulkan.h"
 #include "Allocator.hpp"
 #include "InitState.hpp"

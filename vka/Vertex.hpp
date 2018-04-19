@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vulkan/vulkan.hpp"
+#include "vulkan/vulkan.h"
 #include "glm/glm.hpp"
 #include <vector>
 #include <array>
@@ -11,21 +11,36 @@ namespace vka
     {
         glm::vec2 Position;
         glm::vec2 UV;
-        static std::vector<vk::VertexInputBindingDescription> vertexBindingDescriptions()
+        static std::vector<VkVertexInputBindingDescription> vertexBindingDescriptions()
         {
-            auto bindingDescriptions = std::vector<vk::VertexInputBindingDescription>
+            VkVertexInputBindingDescription bindingDescription = {};
+            bindingDescription.binding = 0;
+            bindingDescription.stride sizeof(Vertex);
+            bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+            auto bindingDescriptions = std::vector<VkVertexInputBindingDescription>
             { 
-                vk::VertexInputBindingDescription(0U, sizeof(Vertex), vk::VertexInputRate::eVertex) 
+                bindingDescription
             };
             return bindingDescriptions;
         }
 
-        static std::vector<vk::VertexInputAttributeDescription> vertexAttributeDescriptions()
+        static std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions()
         {
             // Binding both attributes to one buffer, interleaving Position and UV
-            auto attrib0 = vk::VertexInputAttributeDescription(0U, 0U, vk::Format::eR32G32Sfloat, offsetof(Vertex, Position));
-            auto attrib1 = vk::VertexInputAttributeDescription(1U, 0U, vk::Format::eR32G32Sfloat, offsetof(Vertex, UV));
-            return std::vector<vk::VertexInputAttributeDescription>{ attrib0, attrib1 };
+            VkVertexInputAttributeDescription attrib0 = {};
+            attrib0.location = 0;
+            attrib0.binding = 0;
+            attrib0.format = VK_FORMAT_R32G32_SFLOAT;
+            attrib0.offset = offsetof(Vertex, Position);
+            
+            VkVertexInputAttributeDescription attrib1 = {};
+            attrib1.location = 1;
+            attrib1.binding = 0;
+            attrib1.format = VK_FORMAT_R32G32_SFLOAT;
+            attrib1.offset = offsetof(Vertex, UV);
+            
+            return std::vector<VkVertexInputAttributeDescription>{ attrib0, attrib1 };
         }
     };
 }

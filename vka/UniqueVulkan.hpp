@@ -214,4 +214,27 @@ namespace vka
     };
     using VkSwapchainKHRUnique = std::unique_ptr<VkSwapchainKHR, VkSwapchainKHRDeleter>;
 
+    struct VkPipelineLayoutDeleter
+    {
+        using pointer = VkPipelineLayout;
+        VkDevice device;
+
+        void operator()(VkPipelineLayout layout)
+        {
+            vkDestroyPipelineLayout(device, layout, nullptr);
+        }
+    };
+    using VkPipelineLayoutUnique = std::unique_ptr<VkPipelineLayout, VkPipelineLayoutDeleter>;
+
+    struct VkPipelineDeleter
+    {
+        using pointer = VkPipeline;
+        VkDevice device;
+
+        void operator()(VkPipeline pipeline)
+        {
+            vkDestroyPipeline(device, pipeline, nullptr);
+        }
+    };
+    using VkPipelineUnique = std::unique_ptr<VkPipeline, VkPipelineDeleter>;
 }

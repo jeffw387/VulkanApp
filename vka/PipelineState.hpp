@@ -2,6 +2,7 @@
 
 #include "UniqueVulkan.hpp"
 #include "vulkan/vulkan.h"
+#include "VulkanFunctions.hpp"
 #include "DeviceState.hpp"
 #include "RenderState.hpp"
 #include <vector>
@@ -36,6 +37,7 @@ namespace vka
 	void CreatePipelineLayout(PipelineState& pipelineState, const DeviceState& deviceState, const ShaderState& shaderState)
 	{
 		auto device = deviceState.device.get();
+		VkDescriptorSetLayout fragmentLayout = shaderState.fragmentDescriptorSetLayout.get();
 		
 		VkPipelineLayout layout;
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
@@ -43,11 +45,11 @@ namespace vka
 		pipelineLayoutInfo.pNext = nullptr;
 		pipelineLayoutInfo.flags = 0;
 		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = &shaderState.fragmentDescriptorSetLayout.get();
+		pipelineLayoutInfo.pSetLayouts = &fragmentLayout;
 		pipelineLayoutInfo.pushConstantRangeCount = 1;
 		pipelineLayoutInfo.pPushConstantRanges = &shaderState.pushConstantRange;
 		vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &layout);
-		VkPipelineDeleter layoutDeleter;
+		VkPipelineLayoutDeleter layoutDeleter;
 		layoutDeleter.device = device;
 		pipelineState.pipelineLayout = VkPipelineLayoutUnique(layout, layoutDeleter);
 	}
@@ -65,7 +67,7 @@ namespace vka
 		pipelineState.fragmentSpecMapEntry.size = sizeof(glm::uint32);
 
 		pipelineState.fragmentSpecializationInfo.mapEntryCount = 1;
-		pipelineState.fragmentSpecializationInfo.pMapEntries &pipelineState.fragmentSpecMapEntry;
+		pipelineState.fragmentSpecializationInfo.pMapEntries = &pipelineState.fragmentSpecMapEntry;
 		pipelineState.fragmentSpecializationInfo.dataSize = sizeof(glm::uint32);
 		pipelineState.fragmentSpecializationInfo.pData = &textureCount;
 
@@ -139,7 +141,7 @@ namespace vka
 		pipelineState.pipelineMultisampleInfo.flags = 0;
 		pipelineState.pipelineMultisampleInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 		pipelineState.pipelineMultisampleInfo.sampleShadingEnable = false;
-		pipelineState.pipelineMultisampleInfo.minSampleShading 0.f;
+		pipelineState.pipelineMultisampleInfo.minSampleShading = 0.f;
 		pipelineState.pipelineMultisampleInfo.pSampleMask = nullptr;
 		pipelineState.pipelineMultisampleInfo.alphaToCoverageEnable = false;
 		pipelineState.pipelineMultisampleInfo.alphaToOneEnable = false;
@@ -177,7 +179,10 @@ namespace vka
 		pipelineState.pipelineBlendStateInfo.logicOp = VK_LOGIC_OP_CLEAR;
 		pipelineState.pipelineBlendStateInfo.attachmentCount = 1;
 		pipelineState.pipelineBlendStateInfo.pAttachments = &pipelineState.pipelineColorBlendAttachmentState;
-		pipelineState.pipelineBlendStateInfo.blendConstants = {1.f, 1.f, 1.f, 1.f};
+		pipelineState.pipelineBlendStateInfo.blendConstants[0] = 1.f;
+		pipelineState.pipelineBlendStateInfo.blendConstants[1] = 1.f;
+		pipelineState.pipelineBlendStateInfo.blendConstants[2] = 1.f;
+		pipelineState.pipelineBlendStateInfo.blendConstants[3] = 1.f;
 
 		pipelineState.dynamicStates = std::vector<VkDynamicState>{ VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 		pipelineState.pipelineDynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
@@ -191,17 +196,17 @@ namespace vka
 		pipelineState.pipelineCreateInfo.flags = 0;
 		pipelineState.pipelineCreateInfo.stageCount = pipelineState.pipelineShaderStageInfo.size();
 		pipelineState.pipelineCreateInfo.pStages = pipelineState.pipelineShaderStageInfo.data();
-		pipelineState.pipelineCreateInfo.pVertexInputState = &pipelineState.pipelineVertexInputInfo,
-		pipelineState.pipelineCreateInfo.pInputAssemblyState = &pipelineState.pipelineInputAssemblyInfo,
-		pipelineState.pipelineCreateInfo.pTessellationState = &pipelineState.pipelineTesselationStateInfo,
-		pipelineState.pipelineCreateInfo.pViewportState = &pipelineState.pipelineViewportInfo,
-		pipelineState.pipelineCreateInfo.pRasterizationState = &pipelineState.pipelineRasterizationInfo,
-		pipelineState.pipelineCreateInfo.pMultisampleState = &pipelineState.pipelineMultisampleInfo,
-		pipelineState.pipelineCreateInfo.pDepthStencilState = &pipelineState.pipelineDepthStencilInfo,
-		pipelineState.pipelineCreateInfo.pColorBlendState = &pipelineState.pipelineBlendStateInfo,
-		pipelineState.pipelineCreateInfo.pDynamicState = &pipelineState.pipelineDynamicStateInfo,
-		pipelineState.pipelineCreateInfo.layout = pipelineState.pipelineLayout.get(),
-		pipelineState.pipelineCreateInfo.renderPass = renderState.renderPass.get()
+		pipelineState.pipelineCreateInfo.pVertexInputState = &pipelineState.pipelineVertexInputInfo;
+		pipelineState.pipelineCreateInfo.pInputAssemblyState = &pipelineState.pipelineInputAssemblyInfo;
+		pipelineState.pipelineCreateInfo.pTessellationState = &pipelineState.pipelineTesselationStateInfo;
+		pipelineState.pipelineCreateInfo.pViewportState = &pipelineState.pipelineViewportInfo;
+		pipelineState.pipelineCreateInfo.pRasterizationState = &pipelineState.pipelineRasterizationInfo;
+		pipelineState.pipelineCreateInfo.pMultisampleState = &pipelineState.pipelineMultisampleInfo;
+		pipelineState.pipelineCreateInfo.pDepthStencilState = &pipelineState.pipelineDepthStencilInfo;
+		pipelineState.pipelineCreateInfo.pColorBlendState = &pipelineState.pipelineBlendStateInfo;
+		pipelineState.pipelineCreateInfo.pDynamicState = &pipelineState.pipelineDynamicStateInfo;
+		pipelineState.pipelineCreateInfo.layout = pipelineState.pipelineLayout.get();
+		pipelineState.pipelineCreateInfo.renderPass = renderState.renderPass.get();
 		pipelineState.pipelineCreateInfo.subpass = 0;
 		pipelineState.pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
 		pipelineState.pipelineCreateInfo.basePipelineIndex = 0;

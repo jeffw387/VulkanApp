@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vulkan/vulkan.h"
+#include "VulkanFunctions.hpp"
 #include "glm/glm.hpp"
 #include "Allocator.hpp"
 #include "UniqueVulkan.hpp"
@@ -86,7 +87,7 @@ namespace vka
 		deviceCreateInfo.pEnabledFeatures = nullptr;
 
 		VkDevice device;
-		auto result = VkCreateDevice(deviceState.physicalDevice, &deviceCreateInfo, nullptr, &device);
+		auto result = vkCreateDevice(deviceState.physicalDevice, &deviceCreateInfo, nullptr, &device);
 		deviceState.device = VkDeviceUnique(device, VkDeviceDeleter());
 	}
 
@@ -100,4 +101,15 @@ namespace vka
 		constexpr auto allocSize = 512000U;
 		deviceState.allocator = Allocator(deviceState.physicalDevice, deviceState.device.get(), VkDeviceSize(allocSize));
 	}
+
+	static void LoadDeviceLevelEntryPoints(const DeviceState& deviceState) 
+	{
+#define VK_DEVICE_LEVEL_FUNCTION( fun )                                                   		\
+		if( !(fun = (PFN_##fun)vkGetDeviceProcAddr( deviceState.device.get(), #fun )) ) 		\
+		{                																		\
+			std::cout << "Could not load device level function: " << #fun << "!" << std::endl;  \
+		}
+
+#include "VulkanFunctions.inl"
+  	}
 }

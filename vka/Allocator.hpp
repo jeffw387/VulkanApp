@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vulkan/vulkan.h"
+#include "VulkanFunctions.hpp"
 #include "UniqueVulkan.hpp"
 #include <memory>
 #include <optional>
@@ -17,14 +18,15 @@ namespace vka
         uint32_t typeID;
     };
 
+    bool operator!=(const AllocationHandle& lhs, const AllocationHandle& rhs);
+
     struct MemoryBlock;
     struct AllocationHandleDeleter
     {
         using pointer = AllocationHandle;
-        void operator()(AllocationHandle allocation);
-        AllocationHandleDeleter(const AllocationHandleDeleter&) noexcept = default;
-        AllocationHandleDeleter() noexcept = default;
         MemoryBlock* block;
+        
+        void operator()(AllocationHandle allocation);
     };
     using UniqueAllocationHandle = std::unique_ptr<AllocationHandle, AllocationHandleDeleter>;
 
@@ -37,7 +39,7 @@ namespace vka
 
     struct MemoryBlock
     {
-        MemoryBlock(VkDeviceMemoryUnique&& memory, const VkMemoryAllocateInfo& allocateInfo);
+        MemoryBlock(const VkDevice& device, const VkMemoryAllocateInfo& allocateInfo);
         std::optional<VkDeviceSize> CanAllocate(const VkMemoryRequirements& requirements);
         VkDeviceSize DivideAllocation(
             const VkDeviceSize allocationOffset,
@@ -45,6 +47,7 @@ namespace vka
         UniqueAllocationHandle CreateHandleFromAllocation(VkDeviceSize allocationOffset);
         void DeallocateMemory(AllocationHandle allocation);
 
+        VkDevice m_Device;
         VkDeviceMemoryUnique m_DeviceMemory;
         VkMemoryAllocateInfo m_AllocateInfo;
         AllocationMap m_Allocations;

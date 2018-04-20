@@ -27,8 +27,8 @@ class ClientApp
 {
     std::vector<const char*> Layers;
     std::vector<const char*> InstanceExtensions;
-    vk::ApplicationInfo appInfo;
-    vk::InstanceCreateInfo instanceCreateInfo;
+    VkApplicationInfo appInfo;
+    VkInstanceCreateInfo instanceCreateInfo;
     std::vector<const char*> deviceExtensions;
     vka::VulkanApp app;
     entt::DefaultRegistry enttRegistry;
@@ -41,7 +41,7 @@ public:
         #ifndef NO_VALIDATION
             "VK_LAYER_LUNARG_standard_validation",
             "VK_LAYER_LUNARG_assistant_layer",
-            //"VK_LAYER_LUNARG_api_dump",
+            // "VK_LAYER_LUNARG_api_dump",
         #endif
         };
 
@@ -54,15 +54,21 @@ public:
         #endif
         };
 
-        appInfo = vk::ApplicationInfo();
-        instanceCreateInfo = vk::InstanceCreateInfo(
-            vk::InstanceCreateFlags(),
-            &appInfo,
-            static_cast<uint32_t>(Layers.size()),
-            Layers.data(),
-            static_cast<uint32_t>(InstanceExtensions.size()),
-            InstanceExtensions.data()
-        );
+        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+        appInfo.pNext = nullptr;
+        appInfo.pApplicationName = nullptr;
+        appInfo.applicationVersion = {};
+        appInfo.pEngineName = nullptr;
+        appInfo.engineVersion = {};
+        appInfo.apiVersion = VK_MAKE_VERSION(1,1,0);
+        instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        instanceCreateInfo.pNext = nullptr;
+        instanceCreateInfo.flags = 0;
+        instanceCreateInfo.pApplicationInfo = &appInfo;
+        instanceCreateInfo.enabledLayerCount = Layers.size();
+        instanceCreateInfo.ppEnabledLayerNames = Layers.data();
+        instanceCreateInfo.enabledExtensionCount = InstanceExtensions.size();
+        instanceCreateInfo.ppEnabledExtensionNames = InstanceExtensions.data();
         deviceExtensions = 
         {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME

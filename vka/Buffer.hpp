@@ -1,6 +1,8 @@
 #pragma once
 #include "vulkan/vulkan.h"
+#include "VulkanFunctions.hpp"
 #include "UniqueVulkan.hpp"
+#include <vector>
 
 namespace vka
 {
@@ -40,8 +42,8 @@ namespace vka
         allocatedBuffer.allocation = allocator.AllocateForBuffer(DedicatedAllocation, buffer, memoryFlags);
 
         vkBindBufferMemory(device, buffer,
-            allocatedBuffer.allocation.memory,
-            allocatedBuffer.allocation.offsetInDeviceMemory)
+            allocatedBuffer.allocation.get().memory,
+            allocatedBuffer.allocation.get().offsetInDeviceMemory);
 
         auto bufferDeleter = VkBufferDeleter();
         bufferDeleter.device = device;
@@ -56,10 +58,8 @@ namespace vka
 			const VkBuffer source, 
 			const VkBuffer destination, 
 			const VkBufferCopy& bufferCopy,
-			const std::optional<VkFence> fence,
-			const std::vector<VkSemaphore> waitSemaphores = {},
-			const std::vector<VkSemaphore> signalSemaphores = {}
-		)
+			const VkFence fence,
+			const std::vector<VkSemaphore> signalSemaphores = {})
 		{
             auto cmdBufferBeginInfo = VkCommandBufferBeginInfo();
             cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -74,14 +74,14 @@ namespace vka
             auto submitInfo = VkSubmitInfo();
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submitInfo.pNext = nullptr;
-            submitInfo.waitSemaphoreCount = waitSemaphores.size();
-            submitInfo.pWaitSemaphores = waitSemaphores.data();
+            submitInfo.waitSemaphoreCount = 0;
+            submitInfo.pWaitSemaphores = nullptr;
             submitInfo.pWaitDstStageMask = nullptr;
             submitInfo.commandBufferCount = 1;
             submitInfo.pCommandBuffers = &commandBuffer;
             submitInfo.signalSemaphoreCount = signalSemaphores.size();
             submitInfo.pSignalSemaphores = signalSemaphores.data();
 
-            vkQueueSubmit(graphicsQueue, 1U, &submitInfo, fence.value_or((VkFence)0));
+            vkQueueSubmit(graphicsQueue, 1U, &submitInfo, fence);
 		}
 }

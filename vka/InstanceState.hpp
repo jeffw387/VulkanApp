@@ -1,7 +1,8 @@
 #pragma once
 
-#include "vulkan/vulkan.h"
 #include "UniqueVulkan.hpp"
+#include "vulkan/vulkan.h"
+#include "VulkanFunctions.hpp"
 #include <iostream>
 
 namespace vka
@@ -12,14 +13,25 @@ namespace vka
 		VkDebugCallbackUnique debugCallback;
     };
 
-    static void CreateInstance(InstanceState& instanceState, const vk::InstanceCreateInfo& instanceCreateInfo)
+    static void CreateInstance(InstanceState& instanceState, const VkInstanceCreateInfo& instanceCreateInfo)
     {
 		VkInstance instance;
 		auto result = vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
 		instanceState.instance = VkInstanceUnique(instance, VkInstanceDeleter());
     }
 
-    static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugBreakCallback(
+	static void LoadInstanceLevelEntryPoints(const InstanceState& instanceState) 
+	{
+#define VK_INSTANCE_LEVEL_FUNCTION( fun )                                                   		\
+		if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( instanceState.instance.get(), #fun )) ) 		\
+		{              																				\
+			std::cout << "Could not load instance level function: " << #fun << "!" << std::endl;  	\
+		}
+
+#include "VulkanFunctions.inl"
+  	}
+
+    static VKAPI_ATTR VkBool32 VKAPI_CALL debugBreakCallback(
 		VkDebugReportFlagsEXT flags, 
 		VkDebugReportObjectTypeEXT objType, 
 		uint64_t obj,
@@ -34,8 +46,8 @@ namespace vka
 		if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 			std::cerr << "(Error Callback)";
 		if (flags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
-			return false;
-			//std::cerr << "(Information Callback)";
+			// return false;
+			std::cerr << "(Information Callback)";
 		if (flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
 			std::cerr << "(Performance Warning Callback)";
 		if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
@@ -58,7 +70,7 @@ namespace vka
 		debugCallbackCreateInfo.pfnCallback = &debugBreakCallback;
 		debugCallbackCreateInfo.pUserData = nullptr;
 
-		VkDebugReportCallbackEXT callback;
+		VkDebugReportCallbackEXT callback = {};
 		auto result = vkCreateDebugReportCallbackEXT(instanceState.instance.get(), &debugCallbackCreateInfo, nullptr, &callback);
 	}
 }

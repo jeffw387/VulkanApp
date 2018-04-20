@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include "vulkan/vulkan.h"
+#include "VulkanFunctions.hpp"
 
 namespace vka
 {
@@ -30,7 +31,7 @@ namespace vka
 		using pointer = VkDevice;
 		void operator()(VkDevice device)
 		{
-			VkDestroyDevice(device, nullptr);
+			vkDestroyDevice(device, nullptr);
 		}
 	};
 	using VkDeviceUnique = std::unique_ptr<VkDevice, VkDeviceDeleter>;
@@ -41,7 +42,7 @@ namespace vka
         VkDevice device;
         void operator()(VkDeviceMemory memory)
         {
-            VkFreeMemory(device, memory, nullptr);
+            vkFreeMemory(device, memory, nullptr);
         }
     };
     using VkDeviceMemoryUnique = std::unique_ptr<VkDeviceMemory, VkDeviceMemoryDeleter>;
@@ -53,7 +54,7 @@ namespace vka
 
         void operator()(VkBuffer buffer)
         {
-            VkDestroyBuffer(device, buffer, nullptr);
+            vkDestroyBuffer(device, buffer, nullptr);
         }
     };
     using VkBufferUnique = std::unique_ptr<VkBuffer, VkBufferDeleter>;

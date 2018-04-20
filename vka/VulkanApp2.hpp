@@ -6,14 +6,15 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
-// #include "VulkanFunctions.hpp"
-#define GLFW_INCLUDE_VULKAN
+#include "VulkanFunctions.hpp"
+#include "windows.h"
 #include "GLFW/glfw3.h"
 #include "ApplicationState.hpp"
 #include "InitState.hpp"
 #include "InstanceState.hpp"
 #include "Input.hpp"
 #include "DeviceState.hpp"
+#include "CopyState.hpp"
 #include "SurfaceState.hpp"
 #include "PipelineState.hpp"
 #include "RenderState.hpp"
@@ -56,10 +57,11 @@ namespace vka
 	struct VulkanApp
 	{
 		ApplicationState m_AppState;
+		InitState m_InitState;
 		InputState m_InputState;
 		InstanceState m_InstanceState;
 		DeviceState m_DeviceState;
-		InitState m_InitState;
+		CopyState m_CopyState;
 		SurfaceState m_SurfaceState;
 		ShaderState m_ShaderState;
 		RenderState m_RenderState;
@@ -74,7 +76,7 @@ namespace vka
 			auto sprite = m_RenderState.sprites.at(spriteIndex);
 			auto& swapchainStruct = m_RenderState.swapchains[m_RenderState.currentSwapchain];
 			auto& supports = swapchainStruct.supports[swapchainStruct.nextImage];
-			auto& commandBuffer = supports.renderCommandBuffer.get();
+			auto& commandBuffer = supports.renderCommandBuffer;
 			auto vp = m_RenderState.camera.getMatrix();
 			auto m = transform;
 			auto mvp = vp * m;
@@ -108,14 +110,14 @@ namespace vka
 			}
 			m_AppState.gameLoop = false;
 			gameLoopThread.join();
-			m_DeviceState.logicalDevice->waitIdle();
+			vkDeviceWaitIdle(m_DeviceState.device.get());
 		}
 
 		void LoadImage2D(const HashType imageID, const Bitmap& bitmap)
 		{
 			m_RenderState.images[imageID] = CreateImage2D(
 				m_DeviceState.device.get(), 
-				m_InitState.copyCommandBuffer, 
+				m_CopyState.copyCommandBuffer, 
 				m_DeviceState.allocator,
 				bitmap,
 				m_DeviceState.graphicsQueueFamilyID,
@@ -134,7 +136,7 @@ namespace vka
 			std::string windowTitle,
 			int width,
 			int height,
-			vk::InstanceCreateInfo instanceCreateInfo,
+			VkInstanceCreateInfo instanceCreateInfo,
 			std::vector<const char*> deviceExtensions,
 			std::string vertexShaderPath,
 			std::string fragmentShaderPath,
@@ -147,18 +149,26 @@ namespace vka
 			m_InitState.renderCallback = renderCallback;
 			m_InitState.imageLoadCallback = imageLoadCallback;
 			m_InitState.windowTitle = windowTitle;
-			m_InitState.width = width;
-			m_InitState.height = height;
 			m_InitState.vertexShaderPath = vertexShaderPath;
 			m_InitState.fragmentShaderPath = fragmentShaderPath;
 			m_InitState.deviceExtensions = deviceExtensions;
+
+			if (!LoadVulkanLibrary(m_AppState))
+			{
+				exit(1);
+			}
+			LoadExportedEntryPoints(m_AppState);
+			LoadGlobalLevelEntryPoints();
+
+			SetDefaultExtent(m_SurfaceState, width, height);
 			auto glfwInitSuccess = glfwInit();
 			if (!glfwInitSuccess)
 			{
 				std::runtime_error("Error initializing GLFW.");
 				exit(1);
 			}
-			// glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+			glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
 			m_AppState.window = glfwCreateWindow(width, height, windowTitle.c_str(), NULL, NULL);
 			if (m_AppState.window == NULL)
 			{
@@ -166,7 +176,7 @@ namespace vka
 				exit(1);
 			}
 			glfwSetWindowUserPointer(m_AppState.window, this);
-			glfwSetWindowSizeCallback(m_AppState.window, ResizeCallback);
+			glfwSetFramebufferSizeCallback(m_AppState.window, ResizeCallback);
 			glfwSetKeyCallback(m_AppState.window, KeyCallback);
 			glfwSetCharCallback(m_AppState.window, CharacterCallback);
 			glfwSetCursorPosCallback(m_AppState.window, CursorPositionCallback);
@@ -174,18 +184,22 @@ namespace vka
 			m_RenderState.camera.setSize({static_cast<float>(width), static_cast<float>(height)});
 
 			CreateInstance(m_InstanceState, instanceCreateInfo);
+			LoadInstanceLevelEntryPoints(m_InstanceState);
+
+			InitDebugCallback(m_InstanceState);
 
 			InitPhysicalDevice(m_DeviceState, m_InstanceState.instance.get());
 
 			SelectGraphicsQueue(m_DeviceState);
 
-			CreateLogicalDevice(m_DeviceState, deviceExtensions, m_Dispatch);
+			CreateLogicalDevice(m_DeviceState, deviceExtensions);
+			LoadDeviceLevelEntryPoints(m_DeviceState);
 			
 			GetGraphicsQueue(m_DeviceState);
 
 			CreateAllocator(m_DeviceState);
 
-			InitCopyStructures(m_InitState, m_DeviceState);
+			InitCopyStructures(m_CopyState, m_DeviceState);
 
 			// allow client app to load images
 			m_InitState.imageLoadCallback();
@@ -197,7 +211,7 @@ namespace vka
 			CreateVertexBuffer(
 				m_RenderState,
 				m_DeviceState,
-				m_InitState);
+				m_CopyState);
 
 			CreateSampler(m_RenderState, m_DeviceState);
 
@@ -209,16 +223,22 @@ namespace vka
 				m_RenderState);
 			CreateAndUpdateFragmentDescriptorSet(m_ShaderState, m_DeviceState, m_RenderState);
 
+			int fbWidth = 0;
+			int fbHeight = 0;
+			glfwGetFramebufferSize(m_AppState.window, &fbWidth, &fbHeight);
+			m_SurfaceState.surfaceExtent.width = fbWidth;
+			m_SurfaceState.surfaceExtent.height = fbHeight;
+
 			CreateSurface(
 				m_SurfaceState, 
 				m_AppState, 
 				m_InstanceState, 
-				m_DeviceState, 
-				GetWindowSize(m_AppState));
+				m_DeviceState);
 			SelectPresentMode(m_SurfaceState);
 			CheckForPresentationSupport(m_DeviceState, m_SurfaceState);
 
 			InitializeSupportStructs(m_RenderState, m_DeviceState, m_ShaderState);
+			SetupImageFencePool(m_RenderState, m_DeviceState);
 			SetClearColor(m_RenderState, 0.f, 0.f, 0.f, 0.f);
 			CreateRenderPass(m_RenderState, m_DeviceState, m_SurfaceState);
 			CreateSwapchain(m_RenderState, m_DeviceState, m_SurfaceState);
@@ -254,23 +274,18 @@ namespace vka
 
 		VkResult AcquireImage()
 		{
-			auto device = deviceState.device.get();
+			auto device = m_DeviceState.device.get();
 			auto& swapchainStruct = m_RenderState.swapchains[m_RenderState.currentSwapchain];
 			auto swapchain = swapchainStruct.swapchain.get();
 
-			VkFence fence;
-			VkFenceDeleter fenceDeleter = {};
-			fenceDeleter.device = device;
-			VkFenceCreateInfo fenceCreateInfo = {};
-			fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-			vkCreateFence(device, &fenceCreateInfo, nullptr, &fence);
+			VkFence imageReadyFence = m_RenderState.fencePool.back();
+			m_RenderState.fencePool.pop_back();
 
 			auto acquireResult = vkAcquireNextImageKHR(device, swapchain, 
 				0, VK_NULL_HANDLE, 
-				fence, &swapchainStruct.nextImage);
+				imageReadyFence, &swapchainStruct.nextImage);
 			
-			swapchainStruct.supports[nextImage].imagePresentCompleteFence = 
-				VkFenceUnique(fence, fenceDeleter);
+			swapchainStruct.supports[swapchainStruct.nextImage].imageReadyFence = imageReadyFence;
 			return acquireResult;
 		}
 
@@ -288,21 +303,14 @@ namespace vka
 			auto nextImage = swapchainStruct.nextImage;
 			auto& supports = swapchainStruct.supports[nextImage];
 			auto commandBuffer = supports.renderCommandBuffer;
-
-			// TODO: determine if both fences are necessary
-			// TODO: store both fences in vector so creating one here isn't necessary
-			std::vector<VkFence> imageFences = 
-			{
-				supports.imagePresentCompleteFence.get(),
-				supports.renderBufferExecuted.get()
-			};
+			auto bufferReadyFence = supports.renderBufferExecuted.get();
 
 			vkWaitForFences(device, 
-				imageFences.size(), 
-				imageFences.data(), 
+				1, 
+				&bufferReadyFence, 
 				true, std::numeric_limits<uint64_t>::max());
 
-			vkResetFences(device, imageFences.size(), imageFences.data());
+			vkResetFences(device, 1, &bufferReadyFence);
 
 			VkViewport viewport = {};
 			viewport.x = 0.f;
@@ -324,7 +332,7 @@ namespace vka
 			beginInfo.pNext = nullptr;
 			beginInfo.flags = (VkCommandBufferUsageFlags)0;
 			beginInfo.pInheritanceInfo = nullptr;
-			vkBeginCommandBuffer(device, commandBuffer, &beginInfo);
+			vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
 			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 			vkCmdSetScissor(commandBuffer, 0, 1, &scissorRect);
@@ -337,13 +345,14 @@ namespace vka
 			renderPassBeginInfo.renderArea = scissorRect;
 			renderPassBeginInfo.clearValueCount = 1;
 			renderPassBeginInfo.pClearValues = &m_RenderState.clearValue;
-			vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 			
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineState.pipeline.get());
 			
 			VkDeviceSize vertexBufferOffset = 0;
+			VkBuffer vertexBuffer = m_RenderState.vertexBuffer.buffer.get();
 			vkCmdBindVertexBuffers(commandBuffer, 0, 1, 
-				&m_RenderState.vertexBuffer.buffer.get(), 
+				&vertexBuffer, 
 				&vertexBufferOffset);
 
 			// bind sampler and images uniforms
@@ -351,7 +360,7 @@ namespace vka
 				VK_PIPELINE_BIND_POINT_GRAPHICS,
 				m_PipelineState.pipelineLayout.get(),
 				0,
-				1, &m_ShaderState.fragmentDescriptorSet.get(),
+				1, &m_ShaderState.fragmentDescriptorSet,
 				0, nullptr);
 
 			return true;
@@ -359,35 +368,46 @@ namespace vka
 
 		void EndRender()
 		{
+			auto device = m_DeviceState.device.get();
 			auto& swapchainStruct = m_RenderState.swapchains[m_RenderState.currentSwapchain];
 			auto& supports = swapchainStruct.supports[swapchainStruct.nextImage];
+			auto imageReadyFence = supports.imageReadyFence;
 
 			// Finish recording draw command buffer
-			vkCmdEndRenderPass(supports.renderCommandBuffer.get());
-			vkEndCommandBuffer(supports.renderCommandBuffer.get());
+			vkCmdEndRenderPass(supports.renderCommandBuffer);
+			vkEndCommandBuffer(supports.renderCommandBuffer);
 
 			// Submit draw command buffer
+			VkSemaphore imageRenderComplete = supports.imageRenderCompleteSemaphore.get();
 			auto stageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			VkSubmitInfo submitInfo = {};
 			submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 			submitInfo.pNext = nullptr;
 			submitInfo.waitSemaphoreCount = 0;
 			submitInfo.pWaitSemaphores = nullptr;
-			submitInfo.pWaitDstStageMask = &stageFlags;
+			submitInfo.pWaitDstStageMask = nullptr;
 			submitInfo.commandBufferCount = 1;
-			submitInfo.pCommandBuffers = &supports.renderCommandBuffer.get();
+			submitInfo.pCommandBuffers = &supports.renderCommandBuffer;
 			submitInfo.signalSemaphoreCount = 1;
-			submitInfo.pSignalSemaphores = &supports.imageRenderCompleteSemaphore.get();
-			vkQueueSubmit(m_DeviceState.graphicsQueue, 1, &submitInfo, supports.renderBufferExecuted.get());
+			submitInfo.pSignalSemaphores = &imageRenderComplete;
+
+			vkWaitForFences(device, 1, &imageReadyFence, true, std::numeric_limits<uint64_t>::max());
+			vkResetFences(device, 1, &imageReadyFence);
+			m_RenderState.fencePool.push_back(imageReadyFence);
+			supports.imageReadyFence = VK_NULL_HANDLE;
+
+			auto drawSubmitResult = vkQueueSubmit(m_DeviceState.graphicsQueue, 1, 
+				&submitInfo, supports.renderBufferExecuted.get());
 
 			// Present image
+			VkSwapchainKHR swapchain = swapchainStruct.swapchain.get();
 			VkPresentInfoKHR presentInfo = {};
 			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 			presentInfo.pNext = nullptr;
 			presentInfo.waitSemaphoreCount = 1;
-			presentInfo.pWaitSemaphores = &supports.imageRenderCompleteSemaphore.get();
+			presentInfo.pWaitSemaphores = &imageRenderComplete;
 			presentInfo.swapchainCount = 1;
-			presentInfo.pSwapchains = &swapchainStruct.swapchain;
+			presentInfo.pSwapchains = &swapchain;
 			presentInfo.pImageIndices = &swapchainStruct.nextImage;
 			presentInfo.pResults = nullptr;
 

@@ -10,14 +10,22 @@ namespace vka
         block->DeallocateMemory(allocation);
     }
 
-    MemoryBlock::MemoryBlock(const VkMemoryAllocateInfo& allocateInfo) :
-        m_AllocateInfo(allocateInfo)
+    bool operator!=(const AllocationHandle& lhs, const AllocationHandle& rhs)
+    {
+        return (lhs.memory != rhs.memory) ||
+            (lhs.size != rhs.size) ||
+            (lhs.offsetInDeviceMemory != rhs.offsetInDeviceMemory) ||
+            (lhs.typeID != rhs.typeID);
+    }
+
+    MemoryBlock::MemoryBlock(const VkDevice& device, const VkMemoryAllocateInfo& allocateInfo) :
+        m_Device(device), m_AllocateInfo(allocateInfo)
     {
         VkDeviceMemory memory;
         auto result = vkAllocateMemory(m_Device, &allocateInfo, nullptr, &memory);
         auto deleter = VkDeviceMemoryDeleter();
         deleter.device = m_Device;
-        m_DeviceMemory = VkDeviceMemoryUnique(memory, deleter)
+        m_DeviceMemory = VkDeviceMemoryUnique(memory, deleter);
 
         Allocation fullBlock = {};
         fullBlock.size = allocateInfo.allocationSize;
@@ -75,15 +83,16 @@ namespace vka
     UniqueAllocationHandle MemoryBlock::CreateHandleFromAllocation(VkDeviceSize allocationOffset)
     {
         auto& alloc = m_Allocations.at(allocationOffset);
+        alloc.allocated = true;
+
         AllocationHandleDeleter deleter;
         deleter.block = this;
-        UniqueAllocationHandle newAllocation = UniqueAllocationHandle(AllocationHandle(), deleter);
-        newAllocation->memory = m_DeviceMemory.get();
-        newAllocation->typeID = m_AllocateInfo.memoryTypeIndex;
-        newAllocation->size = alloc.size;
-        newAllocation->offsetInDeviceMemory = allocationOffset;
-        alloc.allocated = true;
-        return std::move(newAllocation);
+        AllocationHandle handle;
+        handle.memory = m_DeviceMemory.get();
+        handle.typeID = m_AllocateInfo.memoryTypeIndex;
+        handle.size = alloc.size;
+        handle.offsetInDeviceMemory = allocationOffset;
+        return UniqueAllocationHandle(handle, deleter);
     }
 
     void MemoryBlock::DeallocateMemory(AllocationHandle allocation)
@@ -95,9 +104,12 @@ namespace vka
         VkDeviceSize defaultBlockSize) :
         m_PhysicalDevice(physicalDevice), 
         m_Device(device), 
-        m_DefaultBlockSize(defaultBlockSize),
-        m_MemoryProperties(m_PhysicalDevice.getMemoryProperties())
-    {}
+        m_DefaultBlockSize(defaultBlockSize)
+    {
+        vkGetPhysicalDeviceMemoryProperties(
+            physicalDevice,
+            &m_MemoryProperties);
+    }
 
     std::optional<uint32_t> Allocator::ChooseMemoryType(VkMemoryPropertyFlags memoryFlags, 
         const VkMemoryRequirements& requirements)
@@ -116,7 +128,7 @@ namespace vka
     MemoryBlock& Allocator::AllocateNewBlock(const VkMemoryAllocateInfo& allocateInfo)
     {
         
-        m_MemoryBlocks.push_back(MemoryBlock(allocateInfo));
+        m_MemoryBlocks.push_back(MemoryBlock(m_Device, allocateInfo));
             
         return m_MemoryBlocks.back();
     }
@@ -157,7 +169,7 @@ namespace vka
         VkMemoryAllocateInfo allocateInfo = {};
         allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocateInfo.pNext = nullptr;
-        allocateInfo.size = requirements.size;
+        allocateInfo.allocationSize = requirements.size;
         allocateInfo.memoryTypeIndex = typeID.value();
 
         // if no dedicated block is needed, allocate the default block size 
@@ -176,7 +188,8 @@ namespace vka
         const VkImage image, 
         VkMemoryPropertyFlags memoryFlags)
     {
-        auto requirements = m_Device.getImageMemoryRequirements(image);
+        VkMemoryRequirements requirements = {};
+        vkGetImageMemoryRequirements(m_Device, image, &requirements);
         return AllocateMemory(DedicatedAllocation, requirements, memoryFlags);
     }
 
@@ -185,7 +198,8 @@ namespace vka
         const VkBuffer buffer, 
         VkMemoryPropertyFlags memoryFlags)
     {
-        auto requirements = m_Device.getBufferMemoryRequirements(buffer);
+        VkMemoryRequirements requirements = {};
+        vkGetBufferMemoryRequirements(m_Device, buffer, &requirements);
         return AllocateMemory(DedicatedAllocation, requirements, memoryFlags);
     }
 }

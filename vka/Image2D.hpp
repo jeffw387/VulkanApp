@@ -2,6 +2,7 @@
 
 #undef max
 #include "vulkan/vulkan.h"
+#include "VulkanFunctions.hpp"
 #include "Allocator.hpp"
 #include "Buffer.hpp"
 #include "Bitmap.hpp"
@@ -56,28 +57,28 @@ namespace vka
 		imageResult.allocation = allocator.AllocateForImage(true, image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 		vkBindImageMemory(device, image,
-			imageResult.allocation.memory,
-			imageResult.allocation.offsetInDeviceMemory)
+			imageResult.allocation.get().memory,
+			imageResult.allocation.get().offsetInDeviceMemory);
 		
-		auto stagingBufferResult = CreateBuffer(device, allocator, imageResult.allocation.size,
+		auto stagingBufferResult = CreateBuffer(device, allocator, imageResult.allocation.get().size,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			queueFamilyIndex,
-			VK_MEMORY_PROPERTY_FLAG_HOST_COHERENT_BIT |
-			VK_MEMORY_PROPERTY_FLAG_HOST_VISIBLE_BIT,
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
 			true);
 
 		// copy from host to staging buffer
 		void* stagingBufferData = nullptr;
 		vkMapMemory(device, 
-			stagingBufferResult.allocation.memory,
-			stagingBufferResult.allocation.offsetInDeviceMemory,
-			stagingBufferResult.allocation.size,
+			stagingBufferResult.allocation.get().memory,
+			stagingBufferResult.allocation.get().offsetInDeviceMemory,
+			stagingBufferResult.allocation.get().size,
 			VkMemoryMapFlags(0),
 			&stagingBufferData);
 
 		memcpy(stagingBufferData, bitmap.m_Data.data(), bitmap.m_Size);
 		vkUnmapMemory(device, 
-			stagingBufferResult.allocation.memory);
+			stagingBufferResult.allocation.get().memory);
 
 		auto cmdBufferBeginInfo = VkCommandBufferBeginInfo();
 		cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -94,11 +95,10 @@ namespace vka
 		imageMemoryBarrier.srcAccessMask = VkAccessFlags(0);
 		imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageMemoryBarrier.newLayout VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		imageMemoryBarrier.srcQueueFamilyIndex = queueFamilyIndex;
 		imageMemoryBarrier.dstQueueFamilyIndex = queueFamilyIndex;
 		imageMemoryBarrier.image = image;
-		imageMemoryBarrier.subresourceRange = {};
 		imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
 		imageMemoryBarrier.subresourceRange.levelCount = 1;
@@ -144,11 +144,10 @@ namespace vka
 		imageMemoryBarrier2.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		imageMemoryBarrier2.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 		imageMemoryBarrier2.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		imageMemoryBarrier2.newLayout VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageMemoryBarrier2.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		imageMemoryBarrier2.srcQueueFamilyIndex = queueFamilyIndex;
 		imageMemoryBarrier2.dstQueueFamilyIndex = queueFamilyIndex;
 		imageMemoryBarrier2.image = image;
-		imageMemoryBarrier2.subresourceRange = {};
 		imageMemoryBarrier2.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		imageMemoryBarrier2.subresourceRange.baseMipLevel = 0;
 		imageMemoryBarrier2.subresourceRange.levelCount = 1;
@@ -200,7 +199,10 @@ namespace vka
 		viewCreateInfo.image = image;
 		viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		viewCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-		viewCreateInfo.components = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 		viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		viewCreateInfo.subresourceRange.baseMipLevel = 0;
 		viewCreateInfo.subresourceRange.levelCount = 1;
@@ -208,9 +210,12 @@ namespace vka
 		viewCreateInfo.subresourceRange.layerCount = 1;
 
 		vkCreateImageView(device, &viewCreateInfo, nullptr, &imageView);
+		VkImageViewDeleter viewDeleter;
+		viewDeleter.device = device;
+		imageResult.view = VkImageViewUnique(imageView, viewDeleter);
 
-		vkWaitForFences(device, 1, &imageLoadFence.get(), (VkBool32)true, 
-			std::numeric_limits<uint64_t>::max())
+		vkWaitForFences(device, 1, &imageLoadFence, (VkBool32)true, 
+			std::numeric_limits<uint64_t>::max());
 
 		return std::move(imageResult);
 	}

@@ -2,6 +2,7 @@
 
 #include "UniqueVulkan.hpp"
 #include "vulkan/vulkan.h"
+#include "VulkanFunctions.hpp"
 #include "GLFW/glfw3.h"
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include "GLFW/glfw3native.h"
@@ -18,6 +19,7 @@ namespace vka
     struct SurfaceState
     {
 		VkSurfaceKHRUnique surface;
+		VkExtent2D defaultExtent;
 		VkExtent2D surfaceExtent;
 		VkFormat surfaceFormat;
 		VkFormatProperties surfaceFormatProperties;
@@ -27,11 +29,23 @@ namespace vka
         VkPresentModeKHR presentMode;
     };
 
+	static void SetDefaultExtent(SurfaceState& surfaceState, const VkExtent2D& extent)
+	{
+		surfaceState.defaultExtent = extent;
+	}
+
+	static void SetDefaultExtent(SurfaceState& surfaceState, const int width, const int height)
+	{
+		VkExtent2D extent;
+		extent.width = width;
+		extent.height = height;
+		surfaceState.defaultExtent = extent;
+	}
+
 	static void CreateSurface(SurfaceState& surfaceState, 
 		ApplicationState& appState, 
 		const InstanceState& instanceState, 
-		const DeviceState& deviceState, 
-		const VkExtent2D& extent)
+		const DeviceState& deviceState)
 	{
 		// TODO: remove platform dependence here
 		auto win32Window = glfwGetWin32Window(appState.window);
@@ -56,6 +70,7 @@ namespace vka
 		surfaceState.surface = VkSurfaceKHRUnique(surface, surfaceDeleter);
 		
 		// get surface format from supported list
+		uint32_t formatCount = 0;
 		vkGetPhysicalDeviceSurfaceFormatsKHR(deviceState.physicalDevice, 
 			surface, 
 			&formatCount, 
@@ -106,15 +121,7 @@ namespace vka
 			std::runtime_error("Blend not supported by surface format.");
 		}
 		// get surface extent
-		if (surfaceState.surfaceCapabilities.currentExtent.width == -1 ||
-			surfaceState.surfaceCapabilities.currentExtent.height == -1)
-		{
-			surfaceState.surfaceExtent = extent;
-		}
-		else
-		{
-			surfaceState.surfaceExtent = surfaceState.surfaceCapabilities.currentExtent;
-		}
+		surfaceState.surfaceExtent = surfaceState.surfaceCapabilities.currentExtent;
 	}
 
 	static void SelectPresentMode(SurfaceState& surfaceState)

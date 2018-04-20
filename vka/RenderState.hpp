@@ -2,6 +2,7 @@
 
 #include "UniqueVulkan.hpp"
 #include "vulkan/vulkan.h"
+#include "VulkanFunctions.hpp"
 #include "Allocator.hpp"
 #include "InitState.hpp"
 #include "Buffer.hpp"
@@ -9,6 +10,7 @@
 #include "glm/glm.hpp"
 #include "Sprite.hpp"
 #include "Vertex.hpp"
+#include "CopyState.hpp"
 #include "DeviceState.hpp"
 #include "SurfaceState.hpp"
 #include "Image2D.hpp"
@@ -19,29 +21,20 @@
 #include <vector>
 #include <string>
 #include <map>
-
+#include <algorithm>
 
 namespace vka
 {
     static constexpr size_t BufferCount = 3U;
+    static constexpr size_t FenceCount = BufferCount * 2;
 
     struct Supports
     {
         VkCommandPoolUnique renderCommandPool;
         VkCommandBuffer renderCommandBuffer;
         VkFenceUnique renderBufferExecuted;
-        VkFenceUnique imagePresentCompleteFence;
+        VkFence imageReadyFence;
         VkSemaphoreUnique imageRenderCompleteSemaphore;
-    };
-
-    struct Swapchain
-    {
-		VkSwapchainKHRUnique swapchain;
-		std::vector<VkImage> swapImages;
-        std::array<Supports, BufferCount> supports;
-		std::array<VkImageViewUnique, BufferCount> swapViews;
-		std::array<VkFramebufferUnique, BufferCount> framebuffers;
-        uint32_t nextImage;
     };
 
     struct RenderState
@@ -49,9 +42,15 @@ namespace vka
         UniqueAllocatedBuffer vertexBuffer;
         VkRenderPassUnique renderPass;
 		VkSamplerUnique sampler;
-        VkClearValue clearColor;
-        std::array<Swapchain, 2> swapchains;
-        bool currentSwapchain = 0;
+        VkClearValue clearValue;
+        VkSwapchainKHRUnique swapchain;
+		std::vector<VkImage> swapImages;
+        std::array<Supports, BufferCount> supports;
+		std::array<VkImageViewUnique, BufferCount> swapViews;
+		std::array<VkFramebufferUnique, BufferCount> framebuffers;
+        uint32_t nextImage;
+        std::array<VkFenceUnique, BufferCount> imageFences;
+        std::vector<VkFence> fencePool;
         Camera2D camera;
         std::map<uint64_t, UniqueImage2D> images;
 		std::map<uint64_t, Sprite> sprites;
@@ -78,18 +77,18 @@ namespace vka
     static void SetClearColor(RenderState& renderState, float r, float g, float b, float a)
     {
         VkClearColorValue clearColor;
-        clearColor[0] = r;
-        clearColor[1] = g;
-        clearColor[2] = b;
-        clearColor[3] = a;
-        renderState.clearColor = clearColor;
+        clearColor.float32[0] = r;
+        clearColor.float32[1] = g;
+        clearColor.float32[2] = b;
+        clearColor.float32[3] = a;
+        renderState.clearValue.color = clearColor;
     }
 
-    static void CreateShaderModules(ShaderState& shaderState, const DeviceState& deviceState, const InitState& initState)
+    static void CreateShaderModules(ShaderState& shaderState, const DeviceState& deviceState, const InitState& copyState)
 	{
         auto device = deviceState.device.get();
 		// read from file
-		auto vertexShaderBinary = fileIO::readFile(initState.vertexShaderPath);
+		auto vertexShaderBinary = fileIO::readFile(copyState.vertexShaderPath);
 		// create shader module
         VkShaderModuleCreateInfo vertexShaderCreateInfo = {};
         vertexShaderCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -106,7 +105,7 @@ namespace vka
 		shaderState.vertexShader = VkShaderModuleUnique(vertexModule, vertexModuleDeleter);
 
 		// read from file
-		auto fragmentShaderBinary = fileIO::readFile(initState.fragmentShaderPath);
+		auto fragmentShaderBinary = fileIO::readFile(copyState.fragmentShaderPath);
 		// create shader module
         VkShaderModuleCreateInfo fragmentShaderCreateInfo = {};
         fragmentShaderCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -166,11 +165,12 @@ namespace vka
 		auto textureCount = renderState.images.size();
 
         VkDescriptorSetLayoutBinding samplerBinding;
+        VkSampler sampler = renderState.sampler.get();
         samplerBinding.binding = 0;
         samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
         samplerBinding.descriptorCount = 1;
         samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        samplerBinding.pImmutableSamplers = &renderState.sampler.get();
+        samplerBinding.pImmutableSamplers = &sampler;
 
         VkDescriptorSetLayoutBinding imagesBinding;
         imagesBinding.binding = 1;
@@ -197,7 +197,7 @@ namespace vka
             deviceState.device.get(),
             &layoutCreateInfo,
             nullptr,
-            &layout)
+            &layout);
 
         VkDescriptorSetLayoutDeleter layoutDeleter = {};
         layoutDeleter.device = deviceState.device.get();
@@ -221,11 +221,12 @@ namespace vka
 		// create fragment descriptor set
 
         VkDescriptorSetAllocateInfo setAllocInfo = {};
+        VkDescriptorSetLayout layout = shaderState.fragmentDescriptorSetLayout.get();
         setAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         setAllocInfo.pNext = nullptr;
         setAllocInfo.descriptorPool = shaderState.fragmentLayoutDescriptorPool.get();
         setAllocInfo.descriptorSetCount = 1;
-        setAllocInfo.pSetLayouts = &shaderState.fragmentDescriptorSetLayout.get();
+        setAllocInfo.pSetLayouts = &layout;
 
         auto setAllocResult = vkAllocateDescriptorSets(device, &setAllocInfo, &shaderState.fragmentDescriptorSet);
 
@@ -258,7 +259,7 @@ namespace vka
     static void CreateVertexBuffer(
         RenderState& renderState, 
         DeviceState& deviceState, 
-        const InitState& initState)
+        const CopyState& copyState)
     {
         auto& quads = renderState.quads;
         auto device = deviceState.device.get();
@@ -291,14 +292,14 @@ namespace vka
 
         void* vertexStagingData = nullptr;
         auto memoryMapResult = vkMapMemory(device, 
-            vertexStagingBuffer.allocation.memory,
-            vertexStagingBuffer.allocation.offsetInDeviceMemory,
-            vertexStagingBuffer.allocation.size,
+            vertexStagingBuffer.allocation.get().memory,
+            vertexStagingBuffer.allocation.get().offsetInDeviceMemory,
+            vertexStagingBuffer.allocation.get().size,
             VkMemoryMapFlags(0),
             &vertexStagingData);
         
         memcpy(vertexStagingData, quads.data(), vertexBufferSize);
-        vkUnmapMemory(device, vertexStagingBuffer.allocation.memory);
+        vkUnmapMemory(device, vertexStagingBuffer.allocation.get().memory);
 
         VkBufferCopy bufferCopy = {};
         bufferCopy.srcOffset = 0;
@@ -306,17 +307,18 @@ namespace vka
         bufferCopy.size = vertexBufferSize;
 
         CopyToBuffer(
-            initState.copyCommandBuffer,
+            copyState.copyCommandBuffer,
             deviceState.graphicsQueue,
             vertexStagingBuffer.buffer.get(),
             renderState.vertexBuffer.buffer.get(),
             bufferCopy,
-            std::make_optional(initState.copyCommandFence.get()));
+            copyState.copyCommandFence.get());
         
         // wait for vertex buffer copy to finish
-        vkWaitForFences(device, 1, &initState.copyCommandFence.get(), (VkBool32)true, 
+        VkFence copyFence = copyState.copyCommandFence.get();
+        vkWaitForFences(device, 1, &copyFence, (VkBool32)true, 
             std::numeric_limits<uint64_t>::max());
-        vkResetFences(device, 1, &initState.copyCommandFence.get());
+        vkResetFences(device, 1, &copyFence);
     }
 
     static void CreateRenderPass(RenderState& renderState, const DeviceState& deviceState, const SurfaceState& surfaceState)
@@ -381,7 +383,7 @@ namespace vka
         renderPassInfo.attachmentCount = 1;
         renderPassInfo.pAttachments = &colorAttachmentDescription;
         renderPassInfo.subpassCount = 1;
-        renderPassInfo.pSubpasses &subpassDescription;
+        renderPassInfo.pSubpasses = &subpassDescription;
         renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
         renderPassInfo.pDependencies = dependencies.data();
 
@@ -405,7 +407,7 @@ namespace vka
         createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         createInfo.mipLodBias = 0.f;
-        createInfo.anisotropyEnable = true;
+        createInfo.anisotropyEnable = false;
         createInfo.maxAnisotropy = 16.f;
         createInfo.compareEnable = false;
         createInfo.compareOp = VK_COMPARE_OP_NEVER;
@@ -416,6 +418,9 @@ namespace vka
 
         VkSampler sampler;
         vkCreateSampler(deviceState.device.get(), &createInfo, nullptr, &sampler);
+        VkSamplerDeleter deleter;
+        deleter.device = deviceState.device.get();
+        renderState.sampler = VkSamplerUnique(sampler, deleter);
     }
 
     static void CheckForPresentationSupport(const DeviceState& deviceState, const SurfaceState& surfaceState)
@@ -437,10 +442,10 @@ namespace vka
         const SurfaceState& surfaceState)
     {
         auto device = deviceState.device.get();
-        auto oldSwapchainStruct = renderState.swapchains[renderState.currentSwapchain];
+        auto& oldSwapchainStruct = renderState.swapchains[renderState.currentSwapchain];
 
         // switch current swapchain
-        renderState.currentSwapchain = (renderState.currentSwapchain != renderState.currentSwapchain);
+        renderState.currentSwapchain = !(renderState.currentSwapchain);
         auto& newSwapchainStruct = renderState.swapchains[renderState.currentSwapchain];
 
         VkSwapchainCreateInfoKHR swapchainCreateInfo = {};
@@ -451,7 +456,20 @@ namespace vka
         swapchainCreateInfo.minImageCount = BufferCount;
         swapchainCreateInfo.imageFormat = surfaceState.surfaceFormat;
         swapchainCreateInfo.imageColorSpace = surfaceState.surfaceColorSpace;
-        swapchainCreateInfo.imageExtent = surfaceState.surfaceExtent;
+
+        if (surfaceState.surfaceExtent.width == -1 || surfaceState.surfaceExtent.height == -1)
+        {
+            swapchainCreateInfo.imageExtent = surfaceState.defaultExtent;
+        }
+        else
+        {
+            auto& min = surfaceState.surfaceCapabilities.minImageExtent;
+            auto& max = surfaceState.surfaceCapabilities.maxImageExtent;
+            auto& currentWidth = surfaceState.surfaceExtent.width;
+            auto& currentHeight = surfaceState.surfaceExtent.height;
+            swapchainCreateInfo.imageExtent.width = std::clamp(currentWidth, min.width, max.width);
+            swapchainCreateInfo.imageExtent.height = std::clamp(currentHeight, min.height, max.height);
+        }
         swapchainCreateInfo.imageArrayLayers = 1;
         swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -461,18 +479,18 @@ namespace vka
         swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         swapchainCreateInfo.presentMode = surfaceState.presentMode;
         swapchainCreateInfo.clipped = false;
-        swapchainCreateInfo.oldSwapchain = oldSwapchainStruct.swapchain;
+        swapchainCreateInfo.oldSwapchain = oldSwapchainStruct.swapchain.get();
 
-        VkSwapchainKHR newSwapchain;
+        VkSwapchainKHR newSwapchain = {};
         auto swapchainResult = vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &newSwapchain);
         VkSwapchainKHRDeleter swapchainDeleter;
         swapchainDeleter.device = device;
         newSwapchainStruct.swapchain = VkSwapchainKHRUnique(newSwapchain, swapchainDeleter);
         
         uint32_t swapImageCount = 0;
-        vkGetSwapChainImagesKHR(device, newSwapchain, &swapImageCount, nullptr);
+        vkGetSwapchainImagesKHR(device, newSwapchain, &swapImageCount, nullptr);
         newSwapchainStruct.swapImages.resize(swapImageCount);
-        vkGetSwapChainImagesKHR(device, newSwapchain, &swapImageCount, newSwapchainStruct.swapImages.data());
+        vkGetSwapchainImagesKHR(device, newSwapchain, &swapImageCount, newSwapchainStruct.swapImages.data());
         
         for (auto i = 0U; i < BufferCount; i++)
         {
@@ -484,7 +502,10 @@ namespace vka
             viewCreateInfo.image = newSwapchainStruct.swapImages[i];
             viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
             viewCreateInfo.format = surfaceState.surfaceFormat;
-            viewCreateInfo.components = VK_COMPONENT_SWIZZLE_IDENTITY;
+            viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
             viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             viewCreateInfo.subresourceRange.baseMipLevel = 0;
             viewCreateInfo.subresourceRange.levelCount = 1;
@@ -516,47 +537,64 @@ namespace vka
     static void InitializeSupportStructs(RenderState& renderState, const DeviceState& deviceState, const ShaderState& shaderState)
     {
         auto device = deviceState.device.get();
-        for (auto& swapchainStruct : renderState.swapchains)
+        for (auto& support : renderState.supports)
         {
-            for (auto& support : swapchainStruct.supports)
-            {
-                VkCommandPool commandPool;
-                VkCommandPoolCreateInfo poolCreateInfo = {};
-                poolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-                poolCreateInfo.pNext = nullptr;
-                poolCreateInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
-                    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-                poolCreateInfo.queueFamilyIndex = deviceState.graphicsQueueFamilyID;
-                vkCreateCommandPool(device, &poolCreateInfo, nullptr, &commandPool);
-                VkCommandPoolDeleter commandPoolDeleter = {};
-                commandPoolDeleter.device = device;
-                support.renderCommandPool = VkCommandPoolUnique(commandPool, commandPoolDeleter);
+            VkCommandPool commandPool;
+            VkCommandPoolCreateInfo poolCreateInfo = {};
+            poolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            poolCreateInfo.pNext = nullptr;
+            poolCreateInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+                VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            poolCreateInfo.queueFamilyIndex = deviceState.graphicsQueueFamilyID;
+            vkCreateCommandPool(device, &poolCreateInfo, nullptr, &commandPool);
+            VkCommandPoolDeleter commandPoolDeleter = {};
+            commandPoolDeleter.device = device;
+            support.renderCommandPool = VkCommandPoolUnique(commandPool, commandPoolDeleter);
 
-                VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
-                commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-                commandBufferAllocateInfo.pNext = nullptr;
-                commandBufferAllocateInfo.commandPool = commandPool;
-                commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-                commandBufferAllocateInfo.commandBufferCount = 1;
-                vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &support.renderCommandBuffer);
+            VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
+            commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            commandBufferAllocateInfo.pNext = nullptr;
+            commandBufferAllocateInfo.commandPool = commandPool;
+            commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            commandBufferAllocateInfo.commandBufferCount = 1;
+            vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &support.renderCommandBuffer);
 
-                VkFence fence;
-                VkFenceCreateInfo fenceCreateInfo = {};
-                fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-                fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-                vkCreateFence(device, &fenceCreateInfo, nullptr, &fence);
-                VkFenceDeleter fenceDeleter = {};
-                fenceDeleter.device = device;
-                support.renderBufferExecuted = VkFenceUnique(fence, fenceDeleter);
+            VkFence fence = {};
+            VkFenceCreateInfo fenceCreateInfo = {};
+            fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+            vkCreateFence(device, &fenceCreateInfo, nullptr, &fence);
+            VkFenceDeleter fenceDeleter = {};
+            fenceDeleter.device = device;
+            support.renderBufferExecuted = VkFenceUnique(fence, fenceDeleter);
 
-                VkSemaphore semaphore;
-                VkSemaphoreCreateInfo semaphoreCreateInfo = {};
-                semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-                vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &semaphore);
-                VkSemaphoreDeleter semaphoreDeleter = {};
-                semaphoreDeleter.device = device;
-                support.imageRenderCompleteSemaphore = VkSemaphoreUnique(semaphore, semaphoreDeleter);
-            }
+            VkSemaphore semaphore;
+            VkSemaphoreCreateInfo semaphoreCreateInfo = {};
+            semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+            vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &semaphore);
+            VkSemaphoreDeleter semaphoreDeleter = {};
+            semaphoreDeleter.device = device;
+            support.imageRenderCompleteSemaphore = VkSemaphoreUnique(semaphore, semaphoreDeleter);
+        }
+    }
+
+    static void SetupImageFencePool(RenderState& renderState, const DeviceState& deviceState)
+    {
+        auto device = deviceState.device.get();
+
+        VkFenceDeleter deleter;
+        deleter.device = device;
+        VkFenceCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        createInfo.pNext = nullptr;
+        createInfo.flags = 0;
+
+        for (auto& fenceUnique : renderState.imageFences)
+        {
+            VkFence fence = {};
+            auto fenceResult = vkCreateFence(device, &createInfo, nullptr, &fence);
+            renderState.fencePool.push_back(fence);
+            fenceUnique = VkFenceUnique(fence, deleter);
         }
     }
 

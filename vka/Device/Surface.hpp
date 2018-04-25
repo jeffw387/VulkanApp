@@ -4,6 +4,7 @@
 #include "vulkan/vulkan.h"
 #include "GLFW/glfw3.h"
 
+#include <stdexcept>
 #include <vector>
 
 namespace vka
@@ -11,6 +12,8 @@ namespace vka
     class Surface
     {
     public:
+        static constexpr size_t BufferCount = 3U;
+
         Surface(VkInstance instance, VkPhysicalDevice physicalDevice, GLFWwindow* window) : 
             instance(instance), physicalDevice(physicalDevice), window(window)
         {
@@ -22,18 +25,6 @@ namespace vka
         {
             return surfaceUnique.get();
         }
-
-        VkExtent2D GetSurfaceExtent()
-        {
-            VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
-            auto result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-                physicalDevice,
-                get(),
-                &surfaceCapabilities);
-            return surfaceCapabilities.currentExtent;
-        }
-
-        
 
     private:
         VkInstance instance;
@@ -71,6 +62,12 @@ namespace vka
                 &surface);
             surfaceUnique = VkSurfaceKHRUnique(surface, VkSurfaceKHRDeleter(instance));
 #endif
+            VkSurfaceCapabilitiesKHR capabilities = {};
+            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
+            if (capabilities.minImageCount < Surface::BufferCount)
+            {
+                std::runtime_error("Error: surface does not support enough swap images!");
+            }
         }
 
     };

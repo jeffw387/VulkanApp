@@ -25,9 +25,6 @@
 
 namespace vka
 {
-    static constexpr size_t BufferCount = 3U;
-    static constexpr size_t FenceCount = BufferCount * 2;
-
     struct Supports
     {
         VkCommandPoolUnique renderCommandPool;

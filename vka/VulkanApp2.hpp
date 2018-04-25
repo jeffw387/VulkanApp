@@ -43,6 +43,7 @@
 #include <ratio>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #undef max
 #undef min
@@ -67,92 +68,9 @@ namespace vka
 		RenderState m_RenderState;
 		PipelineState m_PipelineState;
 
-		void RenderSpriteInstance(
-			uint64_t spriteIndex,
-			glm::mat4 transform,
-			glm::vec4 color)
+		LoopState Run(const InitState& initState)
 		{
-			// TODO: may need to change sprites.at() access to array index access for performance
-			auto sprite = m_RenderState.sprites.at(spriteIndex);
-			auto& swapchainStruct = m_RenderState.swapchains[m_RenderState.currentSwapchain];
-			auto& supports = swapchainStruct.supports[swapchainStruct.nextImage];
-			auto& commandBuffer = supports.renderCommandBuffer;
-			auto vp = m_RenderState.camera.getMatrix();
-			auto m = transform;
-			auto mvp = vp * m;
-
-			VertexPushConstants pushRange;
-			pushRange.imageOffset = sprite.imageOffset;
-			pushRange.color = color;
-			pushRange.mvp = mvp;
-
-			vkCmdPushConstants(commandBuffer, 
-				m_PipelineState.pipelineLayout.get(),
-				VK_SHADER_STAGE_VERTEX_BIT,
-				0, sizeof(VertexPushConstants), &pushRange);
-
-			// draw the sprite
-			vkCmdDraw(commandBuffer, VerticesPerQuad, 1, sprite.vertexOffset, 0);
-		}
-
-		void Run()
-		{
-			m_AppState.gameLoop = true;
-			m_AppState.startupTimePoint = NowMilliseconds();
-			m_AppState.currentSimulationTime = m_AppState.startupTimePoint;
-
-			std::thread gameLoopThread(&VulkanApp::GameThread, this);
-
-			// Event loop
-			while (!glfwWindowShouldClose(m_AppState.window))
-			{
-				glfwWaitEvents();
-			}
-			m_AppState.gameLoop = false;
-			gameLoopThread.join();
-			vkDeviceWaitIdle(m_DeviceState.device.get());
-		}
-
-		void LoadImage2D(const HashType imageID, const Bitmap& bitmap)
-		{
-			m_RenderState.images[imageID] = CreateImage2D(
-				m_DeviceState.device.get(), 
-				m_CopyState.copyCommandBuffer, 
-				m_DeviceState.allocator,
-				bitmap,
-				m_DeviceState.graphicsQueueFamilyID,
-				m_DeviceState.graphicsQueue);
-		}
-
-		void CreateSprite(const HashType imageID, const HashType spriteName, const Quad quad)
-		{
-			Sprite sprite;
-			sprite.imageID = imageID;
-			sprite.quad = quad;
-			m_RenderState.sprites[spriteName] = sprite;
-		}
-
-		void Init(
-			std::string windowTitle,
-			int width,
-			int height,
-			VkInstanceCreateInfo instanceCreateInfo,
-			std::vector<const char*> deviceExtensions,
-			std::string vertexShaderPath,
-			std::string fragmentShaderPath,
-			ImageLoadFuncPtr imageLoadCallback,
-			UpdateFuncPtr updateCallback,
-			RenderFuncPtr renderCallback
-		)
-		{
-			m_InitState.updateCallback = updateCallback;
-			m_InitState.renderCallback = renderCallback;
-			m_InitState.imageLoadCallback = imageLoadCallback;
-			m_InitState.windowTitle = windowTitle;
-			m_InitState.vertexShaderPath = vertexShaderPath;
-			m_InitState.fragmentShaderPath = fragmentShaderPath;
-			m_InitState.deviceExtensions = deviceExtensions;
-
+			m_InitState = initState;
 			if (!LoadVulkanLibrary(m_AppState))
 			{
 				exit(1);
@@ -160,7 +78,7 @@ namespace vka
 			LoadExportedEntryPoints(m_AppState);
 			LoadGlobalLevelEntryPoints();
 
-			SetDefaultExtent(m_SurfaceState, width, height);
+			SetDefaultExtent(m_SurfaceState, initState.width, initState.height);
 			auto glfwInitSuccess = glfwInit();
 			if (!glfwInitSuccess)
 			{
@@ -169,7 +87,7 @@ namespace vka
 			}
 
 			glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
-			m_AppState.window = glfwCreateWindow(width, height, windowTitle.c_str(), NULL, NULL);
+			m_AppState.window = glfwCreateWindow(initState.width, initState.height, initState.windowTitle.c_str(), NULL, NULL);
 			if (m_AppState.window == NULL)
 			{
 				std::runtime_error("Error creating GLFW window.");
@@ -181,9 +99,10 @@ namespace vka
 			glfwSetCharCallback(m_AppState.window, CharacterCallback);
 			glfwSetCursorPosCallback(m_AppState.window, CursorPositionCallback);
 			glfwSetMouseButtonCallback(m_AppState.window, MouseButtonCallback);
-			m_RenderState.camera.setSize({static_cast<float>(width), static_cast<float>(height)});
+			m_RenderState.camera.setSize({static_cast<float>(initState.width), 
+				static_cast<float>(initState.height)});
 
-			CreateInstance(m_InstanceState, instanceCreateInfo);
+			CreateInstance(m_InstanceState, initState.instanceCreateInfo);
 			LoadInstanceLevelEntryPoints(m_InstanceState);
 
 			InitDebugCallback(m_InstanceState);
@@ -192,7 +111,7 @@ namespace vka
 
 			SelectGraphicsQueue(m_DeviceState);
 
-			CreateLogicalDevice(m_DeviceState, deviceExtensions);
+			CreateLogicalDevice(m_DeviceState, initState.deviceExtensions);
 			LoadDeviceLevelEntryPoints(m_DeviceState);
 			
 			GetGraphicsQueue(m_DeviceState);
@@ -245,12 +164,90 @@ namespace vka
 
 			CreatePipelineLayout(m_PipelineState, m_DeviceState, m_ShaderState);
 			CreatePipeline(m_PipelineState, m_DeviceState, m_RenderState, m_ShaderState);
+
+			SetLoopState(LoopState::Run);
+			m_AppState.startupTimePoint = NowMilliseconds();
+			m_AppState.currentSimulationTime = m_AppState.startupTimePoint;
+
+			std::thread gameLoopThread(&VulkanApp::GameThread, this);
+
+			// Event loop
+			while (!glfwWindowShouldClose(m_AppState.window))
+			{
+				glfwWaitEvents();
+				if (m_AppState.gameLoop == LoopState::DeviceLost)
+				{
+					gameLoopThread.join();
+					return LoopState::DeviceLost;
+				}
+			}
+			SetLoopState(LoopState::Exit);
+			gameLoopThread.join();
+			vkDeviceWaitIdle(m_DeviceState.device.get());
+			return LoopState::Exit;
 		}
 
-	private:
-	void GameThread()
+		void LoadImage2D(const HashType imageID, const Bitmap& bitmap)
 		{
-			while(m_AppState.gameLoop)
+			m_RenderState.images[imageID] = CreateImage2D(
+				m_DeviceState.device.get(), 
+				m_CopyState.copyCommandBuffer, 
+				m_DeviceState.allocator,
+				bitmap,
+				m_DeviceState.graphicsQueueFamilyID,
+				m_DeviceState.graphicsQueue);
+		}
+
+		void CreateSprite(const HashType imageID, const HashType spriteName, const Quad quad)
+		{
+			Sprite sprite;
+			sprite.imageID = imageID;
+			sprite.quad = quad;
+			m_RenderState.sprites[spriteName] = sprite;
+		}
+
+		void RenderSpriteInstance(
+			uint64_t spriteIndex,
+			glm::mat4 transform,
+			glm::vec4 color)
+		{
+			// TODO: may need to change sprites.at() access to array index access for performance
+			auto sprite = m_RenderState.sprites.at(spriteIndex);
+			auto& supports = m_RenderState.supports[m_RenderState.nextImage];
+			auto& commandBuffer = supports.renderCommandBuffer;
+			auto vp = m_RenderState.camera.getMatrix();
+			auto m = transform;
+			auto mvp = vp * m;
+
+			VertexPushConstants pushRange;
+			pushRange.imageOffset = sprite.imageOffset;
+			pushRange.color = color;
+			pushRange.mvp = mvp;
+
+			vkCmdPushConstants(commandBuffer, 
+				m_PipelineState.pipelineLayout.get(),
+				VK_SHADER_STAGE_VERTEX_BIT,
+				0, sizeof(VertexPushConstants), &pushRange);
+
+			// draw the sprite
+			vkCmdDraw(commandBuffer, VerticesPerQuad, 1, sprite.vertexOffset, 0);
+		}
+
+		virtual void LoadImages() = 0;
+		virtual void Update(TimePoint_ms) = 0;
+		virtual void Draw() = 0;
+
+	private:
+	
+		void SetLoopState(LoopState state)
+		{
+			std::scoped_lock<std::mutex> loopStateLock(m_AppState.loopStateMutex);
+			m_AppState.gameLoop = state;
+		}
+
+		void GameThread()
+		{
+			while(m_AppState.gameLoop != LoopState::Exit)
 			{
 				auto currentTime = NowMilliseconds();
 				// Update simulation to be in sync with actual time
@@ -269,23 +266,26 @@ namespace vka
 				}
 				m_InitState.renderCallback();
 				EndRender();
+				if (m_AppState.gameLoop == LoopState::DeviceLost)
+				{
+					break;
+				}
 			}
 		}
 
 		VkResult AcquireImage()
 		{
 			auto device = m_DeviceState.device.get();
-			auto& swapchainStruct = m_RenderState.swapchains[m_RenderState.currentSwapchain];
-			auto swapchain = swapchainStruct.swapchain.get();
+			auto swapchain = m_RenderState.swapchain.get();
 
 			VkFence imageReadyFence = m_RenderState.fencePool.back();
 			m_RenderState.fencePool.pop_back();
 
 			auto acquireResult = vkAcquireNextImageKHR(device, swapchain, 
 				0, VK_NULL_HANDLE, 
-				imageReadyFence, &swapchainStruct.nextImage);
+				imageReadyFence, &m_RenderState.nextImage);
 			
-			swapchainStruct.supports[swapchainStruct.nextImage].imageReadyFence = imageReadyFence;
+			m_RenderState.supports[m_RenderState.nextImage].imageReadyFence = imageReadyFence;
 			return acquireResult;
 		}
 
@@ -299,9 +299,8 @@ namespace vka
 			}
 
 			auto device = m_DeviceState.device.get();
-			auto& swapchainStruct = m_RenderState.swapchains[m_RenderState.currentSwapchain];
-			auto nextImage = swapchainStruct.nextImage;
-			auto& supports = swapchainStruct.supports[nextImage];
+			auto nextImage = m_RenderState.nextImage;
+			auto& supports = m_RenderState.supports[nextImage];
 			auto commandBuffer = supports.renderCommandBuffer;
 			auto bufferReadyFence = supports.renderBufferExecuted.get();
 
@@ -341,7 +340,7 @@ namespace vka
 			renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 			renderPassBeginInfo.pNext = nullptr;
 			renderPassBeginInfo.renderPass = m_RenderState.renderPass.get();
-			renderPassBeginInfo.framebuffer = swapchainStruct.framebuffers[nextImage].get();
+			renderPassBeginInfo.framebuffer = m_RenderState.framebuffers[nextImage].get();
 			renderPassBeginInfo.renderArea = scissorRect;
 			renderPassBeginInfo.clearValueCount = 1;
 			renderPassBeginInfo.pClearValues = &m_RenderState.clearValue;
@@ -369,8 +368,7 @@ namespace vka
 		void EndRender()
 		{
 			auto device = m_DeviceState.device.get();
-			auto& swapchainStruct = m_RenderState.swapchains[m_RenderState.currentSwapchain];
-			auto& supports = swapchainStruct.supports[swapchainStruct.nextImage];
+			auto& supports = m_RenderState.supports[m_RenderState.nextImage];
 			auto imageReadyFence = supports.imageReadyFence;
 
 			// Finish recording draw command buffer
@@ -400,7 +398,7 @@ namespace vka
 				&submitInfo, supports.renderBufferExecuted.get());
 
 			// Present image
-			VkSwapchainKHR swapchain = swapchainStruct.swapchain.get();
+			VkSwapchainKHR swapchain = m_RenderState.swapchain.get();
 			VkPresentInfoKHR presentInfo = {};
 			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 			presentInfo.pNext = nullptr;
@@ -408,7 +406,7 @@ namespace vka
 			presentInfo.pWaitSemaphores = &imageRenderComplete;
 			presentInfo.swapchainCount = 1;
 			presentInfo.pSwapchains = &swapchain;
-			presentInfo.pImageIndices = &swapchainStruct.nextImage;
+			presentInfo.pImageIndices = &m_RenderState.nextImage;
 			presentInfo.pResults = nullptr;
 
 			auto presentResult = vkQueuePresentKHR(
@@ -418,18 +416,22 @@ namespace vka
 			{
 				case VK_SUCCESS:
 					// do nothing
-					break;
+					return;
 				case VK_SUBOPTIMAL_KHR:
 				case VK_ERROR_OUT_OF_DATE_KHR:
 					// recreate swapchain
+					DestroySwapchain(m_RenderState, m_DeviceState);
 					CreateSwapchain(m_RenderState, m_DeviceState, m_SurfaceState);
-					break;
+					return;
 				case VK_ERROR_OUT_OF_HOST_MEMORY:
 					std::runtime_error("Out of host memory! Exiting application.");
+					exit(1);
 				case VK_ERROR_OUT_OF_DEVICE_MEMORY:
 					std::runtime_error("Out of device memory! Exiting application.");
+					exit(1);
 				case VK_ERROR_DEVICE_LOST:
-					std::runtime_error("Device lost! Exiting application.");
+					SetLoopState(LoopState::DeviceLost);
+					return;
 				case VK_ERROR_SURFACE_LOST_KHR:
 					std::runtime_error("Surface lost! Exiting application.");
 					exit(1);

@@ -5,10 +5,7 @@
 #include "mymath.hpp"
 namespace vka
 {
-    void AllocationHandleDeleter::operator()(AllocationHandle allocation)
-    {
-        block->DeallocateMemory(allocation);
-    }
+    
 
     bool operator!=(const AllocationHandle& lhs, const AllocationHandle& rhs)
     {
@@ -23,9 +20,7 @@ namespace vka
     {
         VkDeviceMemory memory;
         auto result = vkAllocateMemory(m_Device, &allocateInfo, nullptr, &memory);
-        auto deleter = VkDeviceMemoryDeleter();
-        deleter.device = m_Device;
-        m_DeviceMemory = VkDeviceMemoryUnique(memory, deleter);
+        m_DeviceMemory = VkDeviceMemoryUnique(memory, VkDeviceMemoryDeleter(device));
 
         Allocation fullBlock = {};
         fullBlock.size = allocateInfo.allocationSize;
@@ -85,14 +80,12 @@ namespace vka
         auto& alloc = m_Allocations.at(allocationOffset);
         alloc.allocated = true;
 
-        AllocationHandleDeleter deleter;
-        deleter.block = this;
         AllocationHandle handle;
         handle.memory = m_DeviceMemory.get();
         handle.typeID = m_AllocateInfo.memoryTypeIndex;
         handle.size = alloc.size;
         handle.offsetInDeviceMemory = allocationOffset;
-        return UniqueAllocationHandle(handle, deleter);
+        return UniqueAllocationHandle(handle, AllocationHandleDeleter(this));
     }
 
     void MemoryBlock::DeallocateMemory(AllocationHandle allocation)

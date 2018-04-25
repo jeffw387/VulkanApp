@@ -106,12 +106,15 @@ namespace vka
         }
     };
 
+    using InputBindMap = std::unordered_map<KeySignature, HashType>;
+    using InputStateMap = std::unordered_map<HashType, StateVariant>;
+
     struct InputState
     {
         CircularQueue<InputMessage, 500> inputBuffer;
         
-        std::unordered_map<KeySignature, HashType> inputBindMap;
-        std::unordered_map<HashType, StateVariant> stateMap;
+        InputBindMap inputBindMap;
+        InputStateMap stateMap;
 
         double cursorX;
         double cursorY;

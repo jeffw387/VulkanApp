@@ -26,7 +26,13 @@ namespace vka
         using pointer = AllocationHandle;
         MemoryBlock* block;
         
-        void operator()(AllocationHandle allocation);
+        void operator()(AllocationHandle allocation)
+        {
+            block->DeallocateMemory(allocation);
+        }
+
+        AllocationHandleDeleter(MemoryBlock* block) : block(block)
+        {}
     };
     using UniqueAllocationHandle = std::unique_ptr<AllocationHandle, AllocationHandleDeleter>;
 

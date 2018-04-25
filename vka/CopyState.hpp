@@ -27,9 +27,7 @@ namespace vka
 			&copyPoolCreateInfo, 
 			nullptr, 
 			&commandPool);
-		VkCommandPoolDeleter poolDeleter;
-		poolDeleter.device = device;
-		copyState.copyCommandPool = VkCommandPoolUnique(commandPool, poolDeleter);
+		copyState.copyCommandPool = VkCommandPoolUnique(commandPool, VkCommandPoolDeleter(device));
 
 		VkCommandBufferAllocateInfo bufferAllocateInfo;
 		bufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -47,8 +45,6 @@ namespace vka
 
 		VkFence fence;
 		auto fenceResult = vkCreateFence(device, &fenceCreateInfo, nullptr, &fence);
-		VkFenceDeleter fenceDeleter;
-		fenceDeleter.device = device;
-		copyState.copyCommandFence = VkFenceUnique(fence, fenceDeleter);
+		copyState.copyCommandFence = VkFenceUnique(fence, VkFenceDeleter(device));
     }
 }

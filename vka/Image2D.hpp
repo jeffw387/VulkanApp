@@ -51,9 +51,7 @@ namespace vka
 		VkImage image;
 		auto result = vkCreateImage(device, &imageResult.imageCreateInfo, nullptr, &image);
 
-		VkImageDeleter imageDeleter;
-		imageDeleter.device = device;
-		imageResult.image = VkImageUnique(image, imageDeleter);
+		imageResult.image = VkImageUnique(image, VkImageDeleter(device));
 		imageResult.allocation = allocator.AllocateForImage(true, image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 		vkBindImageMemory(device, image,
@@ -210,9 +208,7 @@ namespace vka
 		viewCreateInfo.subresourceRange.layerCount = 1;
 
 		vkCreateImageView(device, &viewCreateInfo, nullptr, &imageView);
-		VkImageViewDeleter viewDeleter;
-		viewDeleter.device = device;
-		imageResult.view = VkImageViewUnique(imageView, viewDeleter);
+		imageResult.view = VkImageViewUnique(imageView, VkImageViewDeleter(device));
 
 		vkWaitForFences(device, 1, &imageLoadFence, (VkBool32)true, 
 			std::numeric_limits<uint64_t>::max());

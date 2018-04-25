@@ -45,9 +45,7 @@ namespace vka
             allocatedBuffer.allocation.get().memory,
             allocatedBuffer.allocation.get().offsetInDeviceMemory);
 
-        auto bufferDeleter = VkBufferDeleter();
-        bufferDeleter.device = device;
-        allocatedBuffer.buffer = VkBufferUnique(buffer, bufferDeleter);
+        allocatedBuffer.buffer = VkBufferUnique(buffer, VkBufferDeleter(device));
 
         return std::move(allocatedBuffer);
     }

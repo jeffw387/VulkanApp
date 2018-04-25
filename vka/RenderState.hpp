@@ -437,16 +437,37 @@ namespace vka
         }
     }
 
+    static void DestroySwapchain(RenderState& renderState, const DeviceState& deviceState)
+    {
+        vkDeviceWaitIdle(deviceState.device.get());
+        renderState.swapchain.reset();
+    }
+
+    static VkExtent2D ChooseSwapExtent(const SurfaceState& surfaceState)
+    {
+        if (surfaceState.surfaceExtent.width == -1 || surfaceState.surfaceExtent.height == -1)
+        {
+            return surfaceState.defaultExtent;
+        }
+        else
+        {
+            auto& min = surfaceState.surfaceCapabilities.minImageExtent;
+            auto& max = surfaceState.surfaceCapabilities.maxImageExtent;
+            auto& currentWidth = surfaceState.surfaceExtent.width;
+            auto& currentHeight = surfaceState.surfaceExtent.height;
+
+            VkExtent2D result;
+            result.width = std::clamp(currentWidth, min.width, max.width);
+            result.height = std::clamp(currentHeight, min.height, max.height);
+            return result;
+        }
+    }
+
     static void CreateSwapchain(RenderState& renderState, 
         const DeviceState& deviceState, 
         const SurfaceState& surfaceState)
     {
         auto device = deviceState.device.get();
-        auto& oldSwapchainStruct = renderState.swapchains[renderState.currentSwapchain];
-
-        // switch current swapchain
-        renderState.currentSwapchain = !(renderState.currentSwapchain);
-        auto& newSwapchainStruct = renderState.swapchains[renderState.currentSwapchain];
 
         VkSwapchainCreateInfoKHR swapchainCreateInfo = {};
         swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -456,20 +477,7 @@ namespace vka
         swapchainCreateInfo.minImageCount = BufferCount;
         swapchainCreateInfo.imageFormat = surfaceState.surfaceFormat;
         swapchainCreateInfo.imageColorSpace = surfaceState.surfaceColorSpace;
-
-        if (surfaceState.surfaceExtent.width == -1 || surfaceState.surfaceExtent.height == -1)
-        {
-            swapchainCreateInfo.imageExtent = surfaceState.defaultExtent;
-        }
-        else
-        {
-            auto& min = surfaceState.surfaceCapabilities.minImageExtent;
-            auto& max = surfaceState.surfaceCapabilities.maxImageExtent;
-            auto& currentWidth = surfaceState.surfaceExtent.width;
-            auto& currentHeight = surfaceState.surfaceExtent.height;
-            swapchainCreateInfo.imageExtent.width = std::clamp(currentWidth, min.width, max.width);
-            swapchainCreateInfo.imageExtent.height = std::clamp(currentHeight, min.height, max.height);
-        }
+        swapchainCreateInfo.imageExtent = ChooseSwapExtent(surfaceState);
         swapchainCreateInfo.imageArrayLayers = 1;
         swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -479,42 +487,43 @@ namespace vka
         swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         swapchainCreateInfo.presentMode = surfaceState.presentMode;
         swapchainCreateInfo.clipped = false;
-        swapchainCreateInfo.oldSwapchain = oldSwapchainStruct.swapchain.get();
+        swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
 
-        VkSwapchainKHR newSwapchain = {};
-        auto swapchainResult = vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &newSwapchain);
+        VkSwapchainKHR swapChain = {};
+        auto swapchainResult = vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &swapChain);
         VkSwapchainKHRDeleter swapchainDeleter;
         swapchainDeleter.device = device;
-        newSwapchainStruct.swapchain = VkSwapchainKHRUnique(newSwapchain, swapchainDeleter);
+        renderState.swapchain = VkSwapchainKHRUnique(swapChain, swapchainDeleter);
         
         uint32_t swapImageCount = 0;
-        vkGetSwapchainImagesKHR(device, newSwapchain, &swapImageCount, nullptr);
-        newSwapchainStruct.swapImages.resize(swapImageCount);
-        vkGetSwapchainImagesKHR(device, newSwapchain, &swapImageCount, newSwapchainStruct.swapImages.data());
+        vkGetSwapchainImagesKHR(device, swapChain, &swapImageCount, nullptr);
+        renderState.swapImages.resize(swapImageCount);
+        vkGetSwapchainImagesKHR(device, swapChain, &swapImageCount, renderState.swapImages.data());
         
+        VkImageView view;
+        VkImageViewCreateInfo viewCreateInfo = {};
+        viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewCreateInfo.pNext = nullptr;
+        viewCreateInfo.flags = 0;
+        viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewCreateInfo.format = surfaceState.surfaceFormat;
+        viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewCreateInfo.subresourceRange.baseMipLevel = 0;
+        viewCreateInfo.subresourceRange.levelCount = 1;
+        viewCreateInfo.subresourceRange.baseArrayLayer = 0;
+        viewCreateInfo.subresourceRange.layerCount = 1;
+
         for (auto i = 0U; i < BufferCount; i++)
         {
-            VkImageView view;
-            VkImageViewCreateInfo viewCreateInfo = {};
-            viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            viewCreateInfo.pNext = nullptr;
-            viewCreateInfo.flags = 0;
-            viewCreateInfo.image = newSwapchainStruct.swapImages[i];
-            viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            viewCreateInfo.format = surfaceState.surfaceFormat;
-            viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-            viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-            viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-            viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-            viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            viewCreateInfo.subresourceRange.baseMipLevel = 0;
-            viewCreateInfo.subresourceRange.levelCount = 1;
-            viewCreateInfo.subresourceRange.baseArrayLayer = 0;
-            viewCreateInfo.subresourceRange.layerCount = 1;
+            viewCreateInfo.image = renderState.swapImages[i];
             vkCreateImageView(device, &viewCreateInfo, nullptr, &view);
             VkImageViewDeleter viewDeleter;
             viewDeleter.device = device;
-            newSwapchainStruct.swapViews[i] = VkImageViewUnique(view, viewDeleter);
+            renderState.swapViews[i] = VkImageViewUnique(view, viewDeleter);
 
             VkFramebuffer framebuffer;
             VkFramebufferCreateInfo framebufferCreateInfo = {};
@@ -530,7 +539,7 @@ namespace vka
             vkCreateFramebuffer(device, &framebufferCreateInfo, nullptr, &framebuffer);
             VkFramebufferDeleter framebufferDeleter = {};
             framebufferDeleter.device = device;
-            newSwapchainStruct.framebuffers[i] = VkFramebufferUnique(framebuffer, framebufferDeleter);
+            renderState.framebuffers[i] = VkFramebufferUnique(framebuffer, framebufferDeleter);
         }
     }
 

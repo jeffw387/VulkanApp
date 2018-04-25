@@ -3,6 +3,7 @@
 #include "GLFW/glfw3.h"
 #include "TimeHelper.hpp"
 #include <iostream>
+#include <mutex>
 
 namespace vka
 {
@@ -18,12 +19,20 @@ namespace vka
     #define LoadProcAddress dlsym
 #endif
 
+    enum class LoopState
+    {
+        Run,
+        DeviceLost,
+        Exit
+    };
+
     struct ApplicationState
     {
         GLFWwindow* window;
         TimePoint_ms startupTimePoint;
         TimePoint_ms currentSimulationTime;
-        bool gameLoop = false;
+        LoopState gameLoop = LoopState::Run;
+        std::mutex loopStateMutex;
         LibraryHandle VulkanLibrary;
     };
 

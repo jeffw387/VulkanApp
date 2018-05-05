@@ -3,22 +3,36 @@
 #include "UniqueVulkan.hpp"
 #include "vulkan/vulkan.h"
 
+#include <array>
+
 namespace vka
 {
     class RenderPass
     {
     public:
-        RenderPass(VkDevice device, VkFormat surfaceFormat) : device(device), surfaceFormat(surfaceFormat)
-        {}
+        RenderPass(
+            VkDevice device,
+            VkFormat surfaceFormat)
+            :
+            device(device),
+            surfaceFormat(surfaceFormat)
+        {
+            CreateRenderPass();
+        }
     private:
         VkDevice device;
         VkFormat surfaceFormat;
         VkAttachmentDescription colorAttachmentDescription;
         VkAttachmentReference colorAttachmentRef;
         VkSubpassDescription subpassDescription;
-        std::vector<VkSubpassDependency> dependencies;
+        std::array<VkSubpassDependency, 2> dependencies;
         VkRenderPassCreateInfo createInfo;
         VkRenderPassUnique renderPassUnique;
+
+        VkRenderPass GetRenderPass()
+        {
+            return renderPassUnique.get();
+        }
         
         void CreateRenderPass()
         {
@@ -35,7 +49,6 @@ namespace vka
             colorAttachmentRef.attachment = 0;
             colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-            VkSubpassDescription subpassDescription = {};
             subpassDescription.flags = 0;
             subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpassDescription.inputAttachmentCount = 0;
@@ -47,30 +60,25 @@ namespace vka
             subpassDescription.preserveAttachmentCount = 0;
             subpassDescription.pPreserveAttachments = nullptr;
 
-            VkSubpassDependency dependency0 = {};
-            dependency0.srcSubpass = 0;
-            dependency0.dstSubpass = 0;
-            dependency0.srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-            dependency0.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            dependency0.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-            dependency0.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            dependency0.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+            dependencies[0].srcSubpass = 0;
+            dependencies[0].dstSubpass = 0;
+            dependencies[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+            dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+            dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
-            VkSubpassDependency dependency1 = {};
-            dependency1.srcSubpass = 0;
-            dependency1.dstSubpass = 0;
-            dependency1.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            dependency1.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-            dependency1.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            dependency1.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-            dependency1.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-            dependencies.push_back(dependency0);
-            dependencies.push_back(dependency1);
+            dependencies[1].srcSubpass = 0;
+            dependencies[1].dstSubpass = 0;
+            dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependencies[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+            dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+            dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
             createInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
             createInfo.pNext = nullptr;
-            createInfo.flags = VkRenderPassCreateFlags(0);
+            createInfo.flags = 0;
             createInfo.attachmentCount = 1;
             createInfo.pAttachments = &colorAttachmentDescription;
             createInfo.subpassCount = 1;
@@ -84,3 +92,10 @@ namespace vka
         }
     };
 }
+
+// Instance
+// Surface, Device
+// RenderPass, Swapchain, Descriptor Set Layouts/Pools/Sets, Shader Modules  
+// Framebuffers
+// Pipeline
+// Command Buffer

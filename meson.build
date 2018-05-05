@@ -14,6 +14,8 @@ btree_proj = subproject('btree')
 btree = btree_proj.get_variable('btree_dep')
 vulkan_proj = subproject('vulkan')
 vulkan = vulkan_proj.get_variable('vulkan_dep')
+gsl_proj = subproject('gsl-lite')
+gsl = gsl_proj.get_variable('gsl_dep')
 glm_proj = subproject('glm')
 glm = glm_proj.get_variable('glm_dep')
 entt_proj = subproject('entt')
@@ -40,9 +42,9 @@ endif
 contentroot = '/DCONTENTROOT=' + '"' + meson.source_root() + '\"'
 message(contentroot)
 message(buildtype)
-deps = [freetype, stb, glfw, btree, vulkan, glm, entt, json]
+deps = [freetype, stb, glfw, btree, vulkan, gsl, glm, entt, json]
 executable('VulkanApp', 
-    'main2.cpp',
+    'main.cpp',
     'vka/VulkanFunctions.cpp',
     'vka/Allocator.cpp',
     dependencies : deps,

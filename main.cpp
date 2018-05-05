@@ -3,7 +3,7 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "TimeHelper.hpp"
-#include "vka/VulkanApp2.hpp"
+#include "vka/VulkanApp.hpp"
 #include <algorithm>
 #include <iostream>
 #include <map>

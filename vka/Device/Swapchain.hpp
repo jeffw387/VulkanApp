@@ -12,16 +12,23 @@ namespace vka
     class Swapchain
     {
     public:
-        Swapchain(VkSurfaceKHR surface, 
-            VkPhysicalDevice physicalDevice, 
+        Swapchain(
             VkDevice device,
+            VkSurfaceKHR surface,
+            VkFormat surfaceFormat,
+            VkColorSpaceKHR surfaceColorSpace,
+            VkExtent2D surfaceExtent,
+            VkPresentModeKHR presentMode,
             VkRenderPass renderPass,
             uint32_t graphicsQueueFamilyID, 
             uint32_t presentQueueFamilyID)
              :
-            surface(surface), 
-            physicalDevice(physicalDevice), 
             device(device),
+            surface(surface), 
+            surfaceFormat(surfaceFormat),
+            surfaceColorSpace(surfaceColorSpace),
+            surfaceExtent(surfaceExtent),
+            presentMode(presentMode),
             renderPass(renderPass),
             graphicsQueueFamilyID(graphicsQueueFamilyID),
             presentQueueFamilyID(presentQueueFamilyID)
@@ -32,94 +39,27 @@ namespace vka
             CreateFramebuffers();
         }
 
-        VkSwapchainKHR get()
+        VkSwapchainKHR GetSwapchain()
         {
             return swapchainUnique.get();
         }
         
     private:
-        VkSurfaceKHR surface;
-        VkPhysicalDevice physicalDevice;
         VkDevice device;
+        VkSurfaceKHR surface;
+        VkFormat surfaceFormat;
+        VkColorSpaceKHR surfaceColorSpace;
+        VkExtent2D surfaceExtent;
+        VkPresentModeKHR presentMode;
         VkRenderPass renderPass;
         uint32_t graphicsQueueFamilyID;
         uint32_t presentQueueFamilyID;
-        VkFormat swapFormat;
-        VkExtent2D surfaceExtent;
+
         VkSwapchainCreateInfoKHR swapchainCreateInfo;
         VkSwapchainKHRUnique swapchainUnique;
         std::vector<VkImage> swapImages;
         std::vector<VkImageViewUnique> swapImageViewsUnique;
         std::vector<VkFramebufferUnique> framebuffersUnique;
-
-        VkExtent2D GetSurfaceExtent()
-        {
-            VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
-            auto result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-                physicalDevice,
-                surface,
-                &surfaceCapabilities);
-            return surfaceCapabilities.currentExtent;
-        }
-
-        std::vector<VkSurfaceFormatKHR> GetSurfaceFormats()
-        {
-            uint32_t formatCount = 0;
-            vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, 
-                surface, 
-                &formatCount, 
-                nullptr);
-
-            std::vector<VkSurfaceFormatKHR> surfaceFormats;
-            surfaceFormats.resize(formatCount);
-
-            vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, 
-                surface, 
-                &formatCount, 
-                surfaceFormats.data());
-            return surfaceFormats;
-        }
-
-        VkFormat ChooseSwapFormat(const std::vector<VkSurfaceFormatKHR>& surfaceFormats)
-        {
-            if (surfaceFormats.size() == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED)
-			    return VK_FORMAT_B8G8R8_UNORM;
-            else
-                return surfaceFormats[0].format;
-        }
-
-        VkColorSpaceKHR ChooseSwapColorSpace(const std::vector<VkSurfaceFormatKHR>& surfaceFormats)
-        {
-            return surfaceFormats[0].colorSpace;
-        }
-
-        std::vector<VkPresentMode> GetPresentModes()
-        {
-            uint32_t presentModeCount = 0;
-            vkGetPhysicalDeviceSurfacePresentModesKHR(
-                physicalDevice,
-                surface,
-                &presentModeCount,
-                nullptr);
-
-            std::vector<VkPresentMode> surfacePresentModes;
-            surfacePresentModes.resize(presentModeCount);
-            vkGetPhysicalDeviceSurfacePresentModesKHR(
-                physicalDevice,
-                surface,
-                &presentModeCount,
-                surfacePresentModes.data());
-        }
-
-        VkPresentMode ChoosePresentMode(const std::vector<VkPresentMode>& presentModes)
-        {
-            auto mailboxMode = std::find(presentModes.begin(), presentModes.end(), VK_PRESENT_MODE_MAILBOX_KHR);
-            if (mailboxMode == presentModes.end())
-            {
-                std::runtime_error("Error: mailbox present mode not supported!");
-            }
-            return *mailboxMode;
-        }
 
         void CreateSwapchain()
         {
@@ -136,17 +76,13 @@ namespace vka
                 queueFamilyIndices.push_back(presentQueueFamilyID);
             }
 
-            auto surfaceFormats = GetSurfaceFormats();
-            auto presentModes = GetPresentModes();
-            swapFormat = ChooseSwapFormat(surfaceFormats);
-            surfaceExtent = GetSurfaceExtent();
             swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
             swapchainCreateInfo.pNext = nullptr;
             swapchainCreateInfo.flags = 0;
             swapchainCreateInfo.surface = surface;
             swapchainCreateInfo.minImageCount = Surface::BufferCount;
-            swapchainCreateInfo.imageFormat = swapFormat;
-            swapchainCreateInfo.imageColorSpace = ChooseSwapColorSpace(surfaceFormats);
+            swapchainCreateInfo.imageFormat = surfaceFormat;
+            swapchainCreateInfo.imageColorSpace = surfaceColorSpace;
             swapchainCreateInfo.imageExtent = surfaceExtent;
             swapchainCreateInfo.imageArrayLayers = 1;
             swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -155,7 +91,7 @@ namespace vka
             swapchainCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
             swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
             swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-            swapchainCreateInfo.presentMode = ChoosePresentMode(presentModes);
+            swapchainCreateInfo.presentMode = presentMode;
             swapchainCreateInfo.clipped = false;
             swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
 
@@ -180,7 +116,7 @@ namespace vka
             viewCreateInfo.pNext = nullptr;
             viewCreateInfo.flags = 0;
             viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            viewCreateInfo.format = swapFormat;
+            viewCreateInfo.format = surfaceFormat;
             viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
             viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
             viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;

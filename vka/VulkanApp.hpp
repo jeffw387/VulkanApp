@@ -13,7 +13,6 @@
 #include "InitState.hpp"
 #include "InstanceState.hpp"
 #include "Input.hpp"
-#include "DeviceState.hpp"
 #include "CopyState.hpp"
 #include "SurfaceState.hpp"
 #include "PipelineState.hpp"
@@ -43,6 +42,7 @@
 #include <ratio>
 #include <string>
 #include <vector>
+#include <iostream>
 #include <mutex>
 
 #undef max
@@ -55,10 +55,78 @@ namespace vka
 	
 	static void ResizeCallback(GLFWwindow* window, int width, int height);
 
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+    using LibraryHandle = HMODULE;
+#elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR)
+    using LibraryHandle = void*;
+#endif
+
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+    #define LoadProcAddress GetProcAddress
+#elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR)
+    #define LoadProcAddress dlsym
+#endif
+
+    static LibraryHandle LoadVulkanLibrary() 
+    {
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+        auto library = LoadLibrary("vulkan-1.dll");
+#elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR)
+        auto library = dlopen("libvulkan.so.1", RTLD_NOW);
+#endif
+        if(library == nullptr) 
+        {
+            std::runtime_error("Could not load Vulkan library!\n";
+        }
+		return library;
+    }
+
+    static void LoadExportedEntryPoints(LibraryHandle const library) 
+	{
+#define VK_EXPORTED_FUNCTION( fun )                                                             \
+        if(!(fun = (PFN_##fun)LoadProcAddress(library, #fun)))               					\
+        {                                                                                       \
+            std::cout << "Could not load exported function: " << #fun << "!" << std::endl;      \
+        }
+        #include "VulkanFunctions.inl"
+    }
+
+    static void LoadGlobalLevelEntryPoints() 
+	{
+#define VK_GLOBAL_LEVEL_FUNCTION( fun )                                                     	\
+		if( !(fun = (PFN_##fun)vkGetInstanceProcAddr(nullptr, #fun)) ) 						\
+		{                      																	\
+			std::cout << "Could not load global level function: " << #fun << "!" << std::endl;  \
+		}
+#include "VulkanFunctions.inl"
+  	}
+
+	static void LoadDeviceLevelEntryPoints(const VkDevice& device) 
+	{
+#define VK_DEVICE_LEVEL_FUNCTION( fun )                                                   		\
+		if(!(fun = (PFN_##fun)vkGetDeviceProcAddr(device, #fun))) 							\
+		{                																		\
+			std::cout << "Could not load device level function: " << #fun << "!" << std::endl;  \
+		}
+#include "VulkanFunctions.inl"
+  	}
+
 	struct VulkanApp
 	{
-		ApplicationState m_AppState;
-		InitState m_InitState;
+		VkApplicationInfo applicationInfo = {};
+		VkInstanceCreateInfo instanceCreateInfo = {};
+
+		GLFWwindow* window;
+        TimePoint_ms startupTimePoint;
+        TimePoint_ms currentSimulationTime;
+        LoopState gameLoop = LoopState::Run;
+        std::mutex loopStateMutex;
+        LibraryHandle VulkanLibrary;
+
+		VkCommandPool copyCommandPool;
+		VkCommandBuffer copyCommandBuffer;
+		VkFence copyFence;
+
 		InputState m_InputState;
 		InstanceState m_InstanceState;
 		DeviceState m_DeviceState;
@@ -70,7 +138,6 @@ namespace vka
 
 		LoopState Run(const InitState& initState)
 		{
-			m_InitState = initState;
 			if (!LoadVulkanLibrary(m_AppState))
 			{
 				exit(1);

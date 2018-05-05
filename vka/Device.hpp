@@ -88,13 +88,13 @@ namespace vka
             return presentQueueCreateInfo.queueFamilyIndex;
         }
 
-        VkFence CreateFence(bool Signaled)
+        VkFence CreateFence(bool signaled)
         {
             VkFence fence;
             VkFenceCreateInfo createInfo = {};
             createInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
             createInfo.pNext = nullptr;
-            if (Signaled)
+            if (signaled)
             {
                 createInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
             }
@@ -113,6 +113,20 @@ namespace vka
             semaphores[semaphore] = 
                 VkSemaphoreUnique(semaphore, VkSemaphoreDeleter(GetDevice()));
                 return semaphore;
+        }
+
+        VkCommandPool CreateCommandPool(uint32_t queueFamilyIndex, bool transient, bool poolReset)
+        {
+            VkCommandPool pool;
+            VkCommandPoolCreateInfo createInfo = {};
+            createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            createInfo.pNext = nullptr;
+            createInfo.flags |= transient ? VK_COMMAND_POOL_CREATE_TRANSIENT_BIT : 0;
+            createInfo.flags |= poolReset ? VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT : 0;
+            createInfo.queueFamilyIndex = queueFamilyIndex;
+            vkCreateCommandPool(GetDevice(), &createInfo, nullptr, &pool);
+            commandPools[pool] = VkCommandPoolUnique(pool, VkCommandPoolDeleter(GetDevice()));
+            return pool;
         }
 
         void operator()(Results::ErrorSurfaceLost result)
@@ -154,6 +168,7 @@ namespace vka
         VkQueue graphicsQueue;
         VkQueue presentQueue;
 
+        std::map<VkCommandPool, VkCommandPoolUnique> commandPools;
         std::map<VkFence, VkFenceUnique> fences;
         std::map<VkSemaphore, VkSemaphoreUnique> semaphores;
         std::optional<Surface> surface;

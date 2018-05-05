@@ -102,14 +102,5 @@ namespace vka
 		deviceState.allocator = Allocator(deviceState.physicalDevice, deviceState.device.get(), VkDeviceSize(allocSize));
 	}
 
-	static void LoadDeviceLevelEntryPoints(const DeviceState& deviceState) 
-	{
-#define VK_DEVICE_LEVEL_FUNCTION( fun )                                                   		\
-		if( !(fun = (PFN_##fun)vkGetDeviceProcAddr( deviceState.device.get(), #fun )) ) 		\
-		{                																		\
-			std::cout << "Could not load device level function: " << #fun << "!" << std::endl;  \
-		}
 
-#include "VulkanFunctions.inl"
-  	}
 }

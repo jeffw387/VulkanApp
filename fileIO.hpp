@@ -4,7 +4,7 @@
 
 namespace fileIO
 {
-	static std::vector<char> readFile(const std::string& filename) 
+	static std::vector<uint8_t> readFile(const std::string& filename) 
 	{
 		std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
@@ -14,7 +14,8 @@ namespace fileIO
 		}
 
 		size_t fileSize = (size_t)file.tellg();
-		std::vector<char> buffer(fileSize);
+		std::vector<uint8_t> buffer;
+		buffer.resize(fileSize);
 
 		file.seekg(0);
 		file.read(buffer.data(), fileSize);

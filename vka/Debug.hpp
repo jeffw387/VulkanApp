@@ -1,36 +1,13 @@
 #pragma once
 
-#include "UniqueVulkan.hpp"
 #include "vulkan/vulkan.h"
+#include "UniqueVulkan.hpp"
 #include "VulkanFunctions.hpp"
+
 #include <iostream>
 
 namespace vka
 {
-    struct InstanceState
-    {
-        VkInstanceUnique instance;
-		VkDebugCallbackUnique debugCallback;
-    };
-
-    static void CreateInstance(InstanceState& instanceState, const VkInstanceCreateInfo& instanceCreateInfo)
-    {
-		VkInstance instance;
-		auto result = vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
-		instanceState.instance = VkInstanceUnique(instance, VkInstanceDeleter());
-    }
-
-	static void LoadInstanceLevelEntryPoints(const InstanceState& instanceState) 
-	{
-#define VK_INSTANCE_LEVEL_FUNCTION( fun )                                                   		\
-		if( !(fun = (PFN_##fun)vkGetInstanceProcAddr( instanceState.instance.get(), #fun )) ) 		\
-		{              																				\
-			std::cout << "Could not load instance level function: " << #fun << "!" << std::endl;  	\
-		}
-
-#include "VulkanFunctions.inl"
-  	}
-
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugBreakCallback(
 		VkDebugReportFlagsEXT flags, 
 		VkDebugReportObjectTypeEXT objType, 
@@ -57,7 +34,7 @@ namespace vka
 		return false;
 	}
 
-    static void InitDebugCallback(InstanceState& instanceState)
+    static VkDebugReportCallbackEXTUnique InitDebugCallback(const VkInstance& instance)
 	{
 		auto debugCallbackCreateInfo = VkDebugReportCallbackCreateInfoEXT();
 		debugCallbackCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
@@ -71,6 +48,7 @@ namespace vka
 		debugCallbackCreateInfo.pUserData = nullptr;
 
 		VkDebugReportCallbackEXT callback = {};
-		auto result = vkCreateDebugReportCallbackEXT(instanceState.instance.get(), &debugCallbackCreateInfo, nullptr, &callback);
+		auto result = vkCreateDebugReportCallbackEXT(instance, &debugCallbackCreateInfo, nullptr, &callback);
+        return VkDebugReportCallbackEXTUnique(callback, VkDebugReportCallbackEXTDeleter(instance));
 	}
 }

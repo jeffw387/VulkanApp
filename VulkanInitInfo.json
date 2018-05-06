@@ -16,7 +16,7 @@
         "Minor" : 0,
         "Patch" : 0
     },
-    "Layers" : 
+    "GlobalLayers" : 
     {
         "Debug" : [
             "VK_LAYER_LUNARG_standard_validation",
@@ -42,5 +42,9 @@
         "Constant" : [
             "VK_KHR_swapchain"
         ]
+    },
+    "DefaultWindowSize" : {
+        "Width" : 900,
+        "Height" : 900
     }
 }

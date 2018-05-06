@@ -27,7 +27,7 @@ namespace vka
         VkDebugReportCallbackEXTDeleter(VkInstance instance) : instance(instance)
         {}
 	};
-	using VkDebugCallbackUnique = std::unique_ptr<VkDebugReportCallbackEXT, VkDebugReportCallbackEXTDeleter>;
+	using VkDebugReportCallbackEXTUnique = std::unique_ptr<VkDebugReportCallbackEXT, VkDebugReportCallbackEXTDeleter>;
 
     struct VkDeviceDeleter
 	{

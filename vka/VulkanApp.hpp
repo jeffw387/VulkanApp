@@ -6,17 +6,13 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
-#include "VulkanFunctions.hpp"
+#include "VulkanFunctionLoader.hpp"
 #include "windows.h"
 #include "GLFW/glfw3.h"
-#include "ApplicationState.hpp"
-#include "InitState.hpp"
-#include "InstanceState.hpp"
+#include "fileIO.hpp"
 #include "Input.hpp"
-#include "CopyState.hpp"
-#include "SurfaceState.hpp"
-#include "PipelineState.hpp"
-#include "RenderState.hpp"
+#include "Instance.hpp"
+#include "Device.hpp"
 #include "Image2D.hpp"
 #include "Bitmap.hpp"
 #include "Sprite.hpp"
@@ -44,9 +40,15 @@
 #include <vector>
 #include <iostream>
 #include <mutex>
+#include <optional>
+#include <algorithm>
 
 #undef max
 #undef min
+
+#ifdef NO_VALIDATION
+constexpr bool ReleaseMode = true;
+#endif
 
 namespace vka
 {
@@ -55,97 +57,33 @@ namespace vka
 	
 	static void ResizeCallback(GLFWwindow* window, int width, int height);
 
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
-    using LibraryHandle = HMODULE;
-#elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR)
-    using LibraryHandle = void*;
-#endif
 
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
-    #define LoadProcAddress GetProcAddress
-#elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR)
-    #define LoadProcAddress dlsym
-#endif
-
-    static LibraryHandle LoadVulkanLibrary() 
-    {
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
-        auto library = LoadLibrary("vulkan-1.dll");
-#elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR)
-        auto library = dlopen("libvulkan.so.1", RTLD_NOW);
-#endif
-        if(library == nullptr) 
-        {
-            std::runtime_error("Could not load Vulkan library!\n";
-        }
-		return library;
-    }
-
-    static void LoadExportedEntryPoints(LibraryHandle const library) 
-	{
-#define VK_EXPORTED_FUNCTION( fun )                                                             \
-        if(!(fun = (PFN_##fun)LoadProcAddress(library, #fun)))               					\
-        {                                                                                       \
-            std::cout << "Could not load exported function: " << #fun << "!" << std::endl;      \
-        }
-        #include "VulkanFunctions.inl"
-    }
-
-    static void LoadGlobalLevelEntryPoints() 
-	{
-#define VK_GLOBAL_LEVEL_FUNCTION( fun )                                                     	\
-		if( !(fun = (PFN_##fun)vkGetInstanceProcAddr(nullptr, #fun)) ) 						\
-		{                      																	\
-			std::cout << "Could not load global level function: " << #fun << "!" << std::endl;  \
-		}
-#include "VulkanFunctions.inl"
-  	}
-
-	static void LoadDeviceLevelEntryPoints(const VkDevice& device) 
-	{
-#define VK_DEVICE_LEVEL_FUNCTION( fun )                                                   		\
-		if(!(fun = (PFN_##fun)vkGetDeviceProcAddr(device, #fun))) 							\
-		{                																		\
-			std::cout << "Could not load device level function: " << #fun << "!" << std::endl;  \
-		}
-#include "VulkanFunctions.inl"
-  	}
 
 	struct VulkanApp
 	{
-		VkApplicationInfo applicationInfo = {};
-		VkInstanceCreateInfo instanceCreateInfo = {};
-
 		GLFWwindow* window;
         TimePoint_ms startupTimePoint;
         TimePoint_ms currentSimulationTime;
-        LoopState gameLoop = LoopState::Run;
+        bool gameLoop = true;
         std::mutex loopStateMutex;
         LibraryHandle VulkanLibrary;
+		Camera2D camera;
 
 		VkCommandPool copyCommandPool;
 		VkCommandBuffer copyCommandBuffer;
 		VkFence copyFence;
+		std::optional<Instance> instance;
+		std::optional<Device> device;
 
 		InputState m_InputState;
-		InstanceState m_InstanceState;
-		DeviceState m_DeviceState;
-		CopyState m_CopyState;
-		SurfaceState m_SurfaceState;
-		ShaderState m_ShaderState;
-		RenderState m_RenderState;
-		PipelineState m_PipelineState;
 
-		LoopState Run(const InitState& initState)
+		void Run(std::string vulkanInitJsonPath)
 		{
-			if (!LoadVulkanLibrary(m_AppState))
-			{
-				exit(1);
-			}
-			LoadExportedEntryPoints(m_AppState);
+			json vulkanInitData = json::parse(fileIO::readFile(vulkanInitJsonPath));
+			VulkanLibrary = LoadVulkanLibrary();
+			LoadExportedEntryPoints(VulkanLibrary);
 			LoadGlobalLevelEntryPoints();
 
-			SetDefaultExtent(m_SurfaceState, initState.width, initState.height);
 			auto glfwInitSuccess = glfwInit();
 			if (!glfwInitSuccess)
 			{
@@ -153,23 +91,83 @@ namespace vka
 				exit(1);
 			}
 
-			glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
-			m_AppState.window = glfwCreateWindow(initState.width, initState.height, initState.windowTitle.c_str(), NULL, NULL);
-			if (m_AppState.window == NULL)
+			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+			int width = vulkanInitData["DefaultWindowSize"]["Width"];
+			int height = vulkanInitData[["DefaultWindowSize"]["Height"];
+			std::string appName = vulkanInitData["ApplicationName"];
+			window = glfwCreateWindow(width, height, appName.c_str(), NULL, NULL);
+			if (window == NULL)
 			{
 				std::runtime_error("Error creating GLFW window.");
 				exit(1);
 			}
-			glfwSetWindowUserPointer(m_AppState.window, this);
-			glfwSetFramebufferSizeCallback(m_AppState.window, ResizeCallback);
-			glfwSetKeyCallback(m_AppState.window, KeyCallback);
-			glfwSetCharCallback(m_AppState.window, CharacterCallback);
-			glfwSetCursorPosCallback(m_AppState.window, CursorPositionCallback);
-			glfwSetMouseButtonCallback(m_AppState.window, MouseButtonCallback);
-			m_RenderState.camera.setSize({static_cast<float>(initState.width), 
-				static_cast<float>(initState.height)});
+			glfwSetWindowUserPointer(window, this);
+			glfwSetFramebufferSizeCallback(window, ResizeCallback);
+			glfwSetKeyCallback(window, KeyCallback);
+			glfwSetCharCallback(window, CharacterCallback);
+			glfwSetCursorPosCallback(window, CursorPositionCallback);
+			glfwSetMouseButtonCallback(window, MouseButtonCallback);
+			camera.setSize({static_cast<float>(width), 
+				static_cast<float>(height)});
 
-			CreateInstance(m_InstanceState, initState.instanceCreateInfo);
+
+			std::vector<std::string> globalLayers;
+			std::vector<std::string> instanceExtensions;
+
+			if (!ReleaseMode)
+			{
+				for (const std::string& layer : vulkanInitData["GlobalLayers"]["Debug"])
+				{
+					globalLayers.push_back(layer);
+				}
+				for (const std::string& extension : vulkanInitData["InstanceExtensions"]["Debug"])
+				{
+					instanceExtensions.push_back(extension);
+				}
+			}
+			for (const std::string& layer : vulkanInitData["GlobalLayers"]["Constant"])
+			{
+				globalLayers.push_back(layer);
+			}
+			for (const std::string& extension : vulkanInitData["InstanceExtensions"]["Constant"])
+			{
+				instanceExtensions.push_back(extension);
+			}
+
+			std::vector<const char*> globalLayersCstrings;
+			std::vector<const char*> instanceExtensionsCstrings;
+
+			auto stringConvert = [](const std::string& s){ return s.c_str(); };
+
+			std::transform(globalLayers.begin(),
+				globalLayers.end(),
+				std::back_inserter(globalLayersCstrings),
+				stringConvert);
+
+			std::transform(instanceExtensions.begin(),
+				instanceExtensions.end(),
+				std::back_inserter(instanceExtensionsCstrings),
+				stringConvert);
+
+			int appVersionMajor = vulkanInitData["ApplicationVersion"]["Major"];
+			int appVersionMinor = vulkanInitData["ApplicationVersion"]["Minor"];
+			int appVersionPatch = vulkanInitData["ApplicationVersion"]["Patch"];
+			std::string engineName = vulkanInitData["EngineName"];
+			int engineVersionMajor = vulkanInitData["EngineVersion"]["Major"];
+			int engineVersionMinor = vulkanInitData["EngineVersion"]["Minor"];
+			int engineVersionPatch = vulkanInitData["EngineVersion"]["Patch"];
+			int apiVersionMajor = vulkanInitData["APIVersion"]["Major"];
+			int apiVersionMinor = vulkanInitData["APIVersion"]["Minor"];
+			int apiVersionPatch = vulkanInitData["APIVersion"]["Patch"];
+			VkApplicationInfo applicationInfo = {};
+			applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+			applicationInfo.pApplicationName = appName.c_str();
+			applicationInfo.applicationVersion = VK_MAKE_VERSION(appVersionMajor, appVersionMinor, appVersionPatch);
+			applicationInfo.pEngineName = engineName.c_str();
+			applicationInfo.engineVersion = VK_MAKE_VERSION(engineVersionMajor, engineVersionMinor, engineVersionPatch);
+			applicationInfo.apiVersion = VK_MAKE_VERSION(apiVersionMajor, apiVersionMinor, apiVersionPatch);
+
+			instance = Instance();
 			LoadInstanceLevelEntryPoints(m_InstanceState);
 
 			InitDebugCallback(m_InstanceState);

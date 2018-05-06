@@ -17,9 +17,7 @@
 #define CONTENTROOT
 #endif
 
-#ifdef NO_VALIDATION
-constexpr bool ReleaseMode = true;
-#endif
+
 
 
 #include "SpriteData.hpp"

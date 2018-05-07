@@ -9,10 +9,9 @@ namespace vka
     class Instance
     {
 	public:
-		Instance(VkApplicationInfo&& applicationInfo, VkInstanceCreateInfo&& createInfo)
+		Instance(const VkInstanceCreateInfo& createInfo)
 			:
-			applicationInfo(std::move(applicationInfo)),
-			createInfo(std::move(createInfo))
+			createInfo(createInfo)
 		{
 			CreateInstance();
 		}
@@ -21,24 +20,16 @@ namespace vka
 		{
 			return instanceUnique.get();
 		}
-		
+
 	private:
-		VkApplicationInfo applicationInfo;
 		VkInstanceCreateInfo createInfo;
         VkInstanceUnique instanceUnique;
 		
 		void CreateInstance()
 		{
-			createInfo.pApplicationInfo = &applicationInfo;
-
 			VkInstance instance;
 			auto result = vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
 			instanceUnique = VkInstanceUnique(instance, VkInstanceDeleter());
 		}
     };
-
-
-
-
-    
 }

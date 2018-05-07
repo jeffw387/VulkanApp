@@ -18,7 +18,6 @@ namespace vka
 		VkDeviceQueueCreateInfo queueCreateInfo;
 		VkDeviceUnique device;
 		VkQueue graphicsQueue;
-		Allocator allocator;
     };
 
 	static void InitPhysicalDevice(DeviceState& deviceState, const VkInstance& instance)
@@ -96,10 +95,9 @@ namespace vka
 		vkGetDeviceQueue(deviceState.device.get(), deviceState.graphicsQueueFamilyID, 0U, &deviceState.graphicsQueue);
 	}
 
-	static void CreateAllocator(DeviceState& deviceState)
+	static void CreateAllocator(const VkPhysicalDevice& physicalDevice, const VkDevice& device)
 	{
-		constexpr auto allocSize = 512000U;
-		deviceState.allocator = Allocator(deviceState.physicalDevice, deviceState.device.get(), VkDeviceSize(allocSize));
+		deviceState.allocator = Allocator(physicalDevice, device, VkDeviceSize(allocSize));
 	}
 
 

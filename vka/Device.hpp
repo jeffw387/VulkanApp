@@ -63,9 +63,19 @@ namespace vka
             CreatePipeline();
         }
 
+        VkPhysicalDevice GetPhysicalDevice()
+        {
+            return physicalDevice;
+        }
+
         VkDevice GetDevice()
         {
             return deviceUnique.get();
+        }
+
+        Allocator& GetAllocator()
+        {
+            return allocator;
         }
 
         VkQueue GetGraphicsQueue()
@@ -167,23 +177,26 @@ namespace vka
         VkDeviceUnique deviceUnique;
         VkQueue graphicsQueue;
         VkQueue presentQueue;
+		Allocator allocator;
 
         std::map<VkCommandPool, VkCommandPoolUnique> commandPools;
         std::map<VkFence, VkFenceUnique> fences;
         std::map<VkSemaphore, VkSemaphoreUnique> semaphores;
-        std::optional<Surface> surface;
-        std::optional<RenderPass> renderPass;
-        std::optional<Swapchain> swapchain;
-        std::optional<Shader> vertexShader;
-        std::optional<Shader> fragmentShader;
+        std::optional<Surface> surfaceOptional;
+        std::optional<RenderPass> renderPassOptional;
+        std::optional<Swapchain> swapchainOptional;
+        std::optional<Shader> vertexShaderOptional;
+        std::optional<Shader> fragmentShaderOptional;
         VkSampler sampler;
         VkSamplerUnique samplerUnique;
-        std::optional<DescriptorSet> fragmentDescriptorSet;
+    public:
+        std::optional<DescriptorSet> fragmentDescriptorSetOptional;
+    private:
         std::vector<VkDescriptorSetLayout> setLayouts;
         std::vector<VkPushConstantRange> pushConstantRanges;
         VertexData vertexData;
-        std::optional<PipelineLayout> pipelineLayout;
-        std::optional<Pipeline> pipeline;
+        std::optional<PipelineLayout> pipelineLayoutOptional;
+        std::optional<Pipeline> pipelineOptional;
         
         void SelectPhysicalDevice()
         {
@@ -239,7 +252,7 @@ namespace vka
             for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
             {
                 bool presentSupport = false;
-                vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
+                vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surfaceOptional, &presentSupport);
                 if (presentSupport)
                 {
                     presentQueueFamilyIndex = i;
@@ -286,25 +299,31 @@ namespace vka
             vkGetDeviceQueue(GetDevice(), GetPresentQueueID(), 0, &presentQueue);
         }
 
+        void CreateAllocator()
+        {
+            constexpr auto allocSize = 512000U;
+			allocator = Allocator(physicalDevice, GetDevice(), allocSize);
+        }
+
         void CreateSurface()
         {
-            surface = Surface(instance, physicalDevice, window);
+            surfaceOptional = Surface(instance, physicalDevice, window);
         }
 
         void CreateRenderPass()
         {
-            renderPass = RenderPass(GetDevice(), surface.format());
+            renderPassOptional = RenderPass(GetDevice(), surfaceOptional.format());
         }
 
         void CreateSwapchain()
         {
-            swapchain = Swapchain(GetDevice(), 
-                surface->GetSurface(), 
-                surface->GetFormat(), 
-                surface->GetColorSpace(), 
-                surface->GetExtent(), 
-                surface->GetPresentMode(), 
-                renderPass->GetRenderPass(),
+            swapchainOptional = Swapchain(GetDevice(), 
+                surfaceOptional->GetSurface(), 
+                surfaceOptional->GetFormat(), 
+                surfaceOptional->GetColorSpace(), 
+                surfaceOptional->GetExtent(), 
+                surfaceOptional->GetPresentMode(), 
+                renderPassOptional->GetRenderPass(),
                 GetGraphicsQueueID(),
                 GetPresentQueueID());
         }
@@ -312,7 +331,7 @@ namespace vka
         void CreateVertexShader()
         {
             auto vertexShaderBinary = fileIO::readFile(vertexShaderPath);
-            vertexShader = Shader(GetDevice(), 
+            vertexShaderOptional = Shader(GetDevice(), 
                 vertexShaderBinary, 
                 VK_SHADER_STAGE_VERTEX_BIT);
         }
@@ -320,7 +339,7 @@ namespace vka
         void CreateFragmentShader()
         {
             auto fragmentShaderBinary = fileIO::readFile(fragmentShaderPath);
-            fragmentShader = Shader(GetDevice(), 
+            fragmentShaderOptional = Shader(GetDevice(), 
                 fragmentShaderBinary, 
                 VK_SHADER_STAGE_FRAGMENT_BIT);
         }
@@ -375,7 +394,7 @@ namespace vka
             size1.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
             size1.descriptorCount = Device::ImageCount;
 
-            fragmentDescriptorSet = DescriptorSet(GetDevice(), 
+            fragmentDescriptorSetOptional = DescriptorSet(GetDevice(), 
                 std::vector<VkDescriptorSetLayoutBinding>{binding0, binding1},
                 std::vector<VkDescriptorPoolSize>{size0, size1},
                 1);
@@ -389,7 +408,7 @@ namespace vka
 
         void CreatePipelineLayout()
         {
-            setLayouts.push_back(fragmentDescriptorSet.GetSetLayout());
+            setLayouts.push_back(fragmentDescriptorSetOptional.GetSetLayout());
 
             VkPushConstantRange range = {};
             range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
@@ -397,7 +416,7 @@ namespace vka
             range.size = Device::PushConstantSize;
             pushConstantRanges.push_back(range);
 
-            pipelineLayout = PipelineLayout(GetDevice(),
+            pipelineLayoutOptional = PipelineLayout(GetDevice(),
                 setLayouts,
                 pushConstantRanges);
         }
@@ -409,11 +428,11 @@ namespace vka
             imageArraySize.offset = 0;
             imageArraySize.size = sizeof(uint32_t);
 
-            pipeline = Pipeline(GetDevice(),
-                pipelineLayout->GetPipelineLayout(),
-                renderPass->GetRenderPass(),
-                vertexShader->GetShaderData(),
-                fragmentShader->GetShaderData(
+            pipelineOptional = Pipeline(GetDevice(),
+                pipelineLayoutOptional->GetPipelineLayout(),
+                renderPassOptional->GetRenderPass(),
+                vertexShaderOptional->GetShaderData(),
+                fragmentShaderOptional->GetShaderData(
                     std::vector<VkSpecializationMapEntry>{imageArraySize}, 
                     Device::ImageCount),
                 vertexData);

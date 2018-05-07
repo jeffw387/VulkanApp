@@ -92,9 +92,11 @@ namespace vka
     {
         m_Allocations.at(allocation.offsetInDeviceMemory).allocated = false;
     }
-    Allocator::Allocator(VkPhysicalDevice physicalDevice, 
+    Allocator::Allocator(
+        VkPhysicalDevice physicalDevice, 
         VkDevice device, 
-        VkDeviceSize defaultBlockSize) :
+        VkDeviceSize defaultBlockSize)
+        :
         m_PhysicalDevice(physicalDevice), 
         m_Device(device), 
         m_DefaultBlockSize(defaultBlockSize)

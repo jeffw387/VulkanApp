@@ -27,6 +27,7 @@
 #include "TimeHelper.hpp"
 #include "nlohmann/json.hpp"
 #include "Vertex.hpp"
+#include "Results.hpp"
 
 #include <iostream>
 #include <map>
@@ -42,6 +43,7 @@
 #include <mutex>
 #include <optional>
 #include <algorithm>
+#include <array>
 
 #undef max
 #undef min
@@ -54,26 +56,40 @@ namespace vka
 {
 	using json = nlohmann::json;
 	using HashType = entt::HashedString::hash_type;
+	const char* ConfigPath = "VulkanInitInfo.json";
+
+	struct Supports
+    {
+        VkCommandPool renderCommandPool;
+        VkCommandBuffer renderCommandBuffer;
+        VkFence renderBufferExecuted;
+        VkFence imageReadyFence;
+        VkSemaphore imageRenderCompleteSemaphore;
+    };
 	
-	static void ResizeCallback(GLFWwindow* window, int width, int height);
-
-
-
 	struct VulkanApp
 	{
 		GLFWwindow* window;
         TimePoint_ms startupTimePoint;
         TimePoint_ms currentSimulationTime;
         bool gameLoop = true;
-        std::mutex loopStateMutex;
         LibraryHandle VulkanLibrary;
 		Camera2D camera;
+
+		VkInstance instance;
+		std::optional<Instance> instanceOptional;
+		VkDevice device;
+		std::optional<Device> deviceOptional;
 
 		VkCommandPool copyCommandPool;
 		VkCommandBuffer copyCommandBuffer;
 		VkFence copyFence;
-		std::optional<Instance> instance;
-		std::optional<Device> device;
+
+        UniqueAllocatedBuffer vertexBuffer;
+
+		std::vector<VkFence> fencePool;
+		std::array<Supports, Surface::BufferCount> supportsArray;
+        uint32_t nextImage;
 
 		InputState m_InputState;
 
@@ -102,7 +118,6 @@ namespace vka
 				exit(1);
 			}
 			glfwSetWindowUserPointer(window, this);
-			glfwSetFramebufferSizeCallback(window, ResizeCallback);
 			glfwSetKeyCallback(window, KeyCallback);
 			glfwSetCharCallback(window, CharacterCallback);
 			glfwSetCursorPosCallback(window, CursorPositionCallback);
@@ -110,9 +125,9 @@ namespace vka
 			camera.setSize({static_cast<float>(width), 
 				static_cast<float>(height)});
 
-
 			std::vector<std::string> globalLayers;
 			std::vector<std::string> instanceExtensions;
+			std::vector<std::string> deviceExtensions;
 
 			if (!ReleaseMode)
 			{
@@ -124,6 +139,10 @@ namespace vka
 				{
 					instanceExtensions.push_back(extension);
 				}
+				for (const std::string& extension : vulkanInitData["DeviceExtensions"]["Debug"])
+				{
+					deviceExtensions.push_back(extension);
+				}
 			}
 			for (const std::string& layer : vulkanInitData["GlobalLayers"]["Constant"])
 			{
@@ -133,9 +152,14 @@ namespace vka
 			{
 				instanceExtensions.push_back(extension);
 			}
+			for (const std::string& extension : vulkanInitData["DeviceExtensions"]["Constant"])
+			{
+				deviceExtensions.push_back(extension);
+			}
 
 			std::vector<const char*> globalLayersCstrings;
 			std::vector<const char*> instanceExtensionsCstrings;
+			std::vector<const char*> deviceExtensionsCstrings;
 
 			auto stringConvert = [](const std::string& s){ return s.c_str(); };
 
@@ -147,6 +171,11 @@ namespace vka
 			std::transform(instanceExtensions.begin(),
 				instanceExtensions.end(),
 				std::back_inserter(instanceExtensionsCstrings),
+				stringConvert);
+
+			std::transform(deviceExtensions.begin(),
+				deviceExtensions.end(),
+				std::back_inserter(deviceExtensionsCstrings),
 				stringConvert);
 
 			int appVersionMajor = vulkanInitData["ApplicationVersion"]["Major"];
@@ -167,77 +196,87 @@ namespace vka
 			applicationInfo.engineVersion = VK_MAKE_VERSION(engineVersionMajor, engineVersionMinor, engineVersionPatch);
 			applicationInfo.apiVersion = VK_MAKE_VERSION(apiVersionMajor, apiVersionMinor, apiVersionPatch);
 
-			instance = Instance();
-			LoadInstanceLevelEntryPoints(m_InstanceState);
+			VkInstanceCreateInfo instanceCreateInfo = {};
+			instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+			instanceCreateInfo.pApplicationInfo = &application;
+			instanceCreateInfo.enabledLayerCount = globalLayersCstrings.size();
+			instanceCreateInfo.ppEnabledLayerNames = globalLayersCstrings.data();
+			instanceCreateInfo.enabledExtensionCount = instanceExtensionsCstrings.size();
+			instanceCreateInfo.ppEnabledExtensionNames = instanceExtensionsCstrings.data();
 
-			InitDebugCallback(m_InstanceState);
+			instance = Instance(instanceCreateInfo);
+			LoadInstanceLevelEntryPoints(instance->GetInstance());
 
-			InitPhysicalDevice(m_DeviceState, m_InstanceState.instance.get());
+			InitDebugCallback(instance->GetInstance());
 
-			SelectGraphicsQueue(m_DeviceState);
+			std::string vertexShaderPath = vulkanInitData["VertexShaderPath"];
+			std::string fragmentShaderPath = vulkanInitData["FragmentShaderPath"];
 
-			CreateLogicalDevice(m_DeviceState, initState.deviceExtensions);
-			LoadDeviceLevelEntryPoints(m_DeviceState);
+			deviceOptional = Device(instance->GetInstance(),
+				window,
+				deviceExtensionsCstrings,
+				vertexShaderPath,
+				fragmentShaderPath);
+			device = deviceOptional->GetDevice();
+
+			LoadDeviceLevelEntryPoints(device->GetDevice());
 			
-			GetGraphicsQueue(m_DeviceState);
+			
+			// TODO: init copy structures
+			// InitCopyStructures(m_CopyState, m_DeviceState);
 
-			CreateAllocator(m_DeviceState);
+			// TODO: allow client app to load images
+			// m_InitState.imageLoadCallback();
 
-			InitCopyStructures(m_CopyState, m_DeviceState);
+			// FinalizeImageOrder(m_RenderState);
 
-			// allow client app to load images
-			m_InitState.imageLoadCallback();
-
-			FinalizeImageOrder(m_RenderState);
-
-			FinalizeSpriteOrder(m_RenderState);
+			// FinalizeSpriteOrder(m_RenderState);
 
 			CreateVertexBuffer(
 				m_RenderState,
 				m_DeviceState,
 				m_CopyState);
 
-			CreateSampler(m_RenderState, m_DeviceState);
+			// TODO: update fragment descriptor set
+			auto imageInfos = std::vector<VkDescriptorImageInfo>();
+			imageInfos.reserve(textureCount);
+			for (auto& imagePair : renderState.images)
+			{
+				VkDescriptorImageInfo imageInfo = {};
+				imageInfo.sampler = VK_NULL_HANDLE;
+				imageInfo.imageView = imagePair.second.view.get();
+				imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				imageInfos.push_back(imageInfo);
+			}
 
-			CreateShaderModules(m_ShaderState, m_DeviceState, m_InitState);
-			CreateFragmentSetLayout(m_ShaderState, m_DeviceState, m_RenderState);
-			SetupPushConstants(m_ShaderState);
-			CreateFragmentDescriptorPool(m_ShaderState, 
-				m_DeviceState, 
-				m_RenderState);
+			VkWriteDescriptorSet samplerDescriptorWrite = {};
+			samplerDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			samplerDescriptorWrite.pNext = nullptr;
+			samplerDescriptorWrite.dstSet = shaderState.fragmentDescriptorSet;
+			samplerDescriptorWrite.dstBinding = 1;
+			samplerDescriptorWrite.dstArrayElement = 0;
+			samplerDescriptorWrite.descriptorCount = textureCount;
+			samplerDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+			samplerDescriptorWrite.pImageInfo = imageInfos.data();
+			samplerDescriptorWrite.pBufferInfo = nullptr;
+			samplerDescriptorWrite.pTexelBufferView = nullptr;
+
+			vkUpdateDescriptorSets(device, 1, &samplerDescriptorWrite, 0, nullptr);
 			CreateAndUpdateFragmentDescriptorSet(m_ShaderState, m_DeviceState, m_RenderState);
 
-			int fbWidth = 0;
-			int fbHeight = 0;
-			glfwGetFramebufferSize(m_AppState.window, &fbWidth, &fbHeight);
-			m_SurfaceState.surfaceExtent.width = fbWidth;
-			m_SurfaceState.surfaceExtent.height = fbHeight;
-
-			CreateSurface(
-				m_SurfaceState, 
-				m_AppState, 
-				m_InstanceState, 
-				m_DeviceState);
-			SelectPresentMode(m_SurfaceState);
-			CheckForPresentationSupport(m_DeviceState, m_SurfaceState);
-
-			InitializeSupportStructs(m_RenderState, m_DeviceState, m_ShaderState);
-			SetupImageFencePool(m_RenderState, m_DeviceState);
+			// TODO: initialize support structs
+			// InitializeSupportStructs(m_RenderState, m_DeviceState, m_ShaderState);
+			// TODO: set up fence pool
+			// SetupImageFencePool(m_RenderState, m_DeviceState);
 			SetClearColor(m_RenderState, 0.f, 0.f, 0.f, 0.f);
-			CreateRenderPass(m_RenderState, m_DeviceState, m_SurfaceState);
-			CreateSwapchain(m_RenderState, m_DeviceState, m_SurfaceState);
 
-			CreatePipelineLayout(m_PipelineState, m_DeviceState, m_ShaderState);
-			CreatePipeline(m_PipelineState, m_DeviceState, m_RenderState, m_ShaderState);
-
-			SetLoopState(LoopState::Run);
-			m_AppState.startupTimePoint = NowMilliseconds();
-			m_AppState.currentSimulationTime = m_AppState.startupTimePoint;
+			startupTimePoint = NowMilliseconds();
+			currentSimulationTime = startupTimePoint;
 
 			std::thread gameLoopThread(&VulkanApp::GameThread, this);
 
 			// Event loop
-			while (!glfwWindowShouldClose(m_AppState.window))
+			while (!glfwWindowShouldClose(window))
 			{
 				glfwWaitEvents();
 				if (m_AppState.gameLoop == LoopState::DeviceLost)
@@ -312,29 +351,44 @@ namespace vka
 
 		void GameThread()
 		{
-			while(m_AppState.gameLoop != LoopState::Exit)
+			try
 			{
-				auto currentTime = NowMilliseconds();
-				// Update simulation to be in sync with actual time
-				size_t spriteCount = 0;
-				while (currentTime - m_AppState.currentSimulationTime > UpdateDuration)
+				while(gameLoop != false)
 				{
-					m_AppState.currentSimulationTime += UpdateDuration;
+					auto currentTime = NowMilliseconds();
+					// Update simulation to be in sync with actual time
+					size_t spriteCount = 0;
+					while (currentTime - currentSimulationTime > UpdateDuration)
+					{
+						currentSimulationTime += UpdateDuration;
 
-					m_InitState.updateCallback(m_AppState.currentSimulationTime);
+						m_InitState.updateCallback(currentSimulationTime);
+					}
+					// render a frame
+					if (!BeginRender())
+					{
+						// TODO: probably need to handle some specific errors here
+						continue;
+					}
+					m_InitState.renderCallback();
+					EndRender();
 				}
-				// render a frame
-				if (!BeginRender())
-				{
-					// TODO: probably need to handle some specific errors here
-					continue;
-				}
-				m_InitState.renderCallback();
-				EndRender();
-				if (m_AppState.gameLoop == LoopState::DeviceLost)
-				{
-					break;
-				}
+			}
+			catch (Results::ErrorDeviceLost)
+			{
+
+			}
+			catch (Results::ErrorSurfaceLost result)
+			{
+				device.value()(result);
+			}
+			catch (Results::Suboptimal)
+			{
+				device.value()(result);
+			}
+			catch (Results::ErrorOutOfDate)
+			{
+				device.value()(result);
 			}
 		}
 
@@ -343,14 +397,14 @@ namespace vka
 			auto device = m_DeviceState.device.get();
 			auto swapchain = m_RenderState.swapchain.get();
 
-			VkFence imageReadyFence = m_RenderState.fencePool.back();
-			m_RenderState.fencePool.pop_back();
+			VkFence imageReadyFence = fencePool.back();
+			fencePool.pop_back();
 
 			auto acquireResult = vkAcquireNextImageKHR(device, swapchain, 
 				0, VK_NULL_HANDLE, 
-				imageReadyFence, &m_RenderState.nextImage);
+				imageReadyFence, &nextImage);
 			
-			m_RenderState.supports[m_RenderState.nextImage].imageReadyFence = imageReadyFence;
+			supportsArray[nextImage].imageReadyFence = imageReadyFence;
 			return acquireResult;
 		}
 
@@ -485,21 +539,16 @@ namespace vka
 				case VK_SUBOPTIMAL_KHR:
 				case VK_ERROR_OUT_OF_DATE_KHR:
 					// recreate swapchain
-					DestroySwapchain(m_RenderState, m_DeviceState);
-					CreateSwapchain(m_RenderState, m_DeviceState, m_SurfaceState);
+					throw Results::ErrorOutOfDate;
 					return;
 				case VK_ERROR_OUT_OF_HOST_MEMORY:
-					std::runtime_error("Out of host memory! Exiting application.");
-					exit(1);
+					throw Results::ErrorOutOfHostMemory;
 				case VK_ERROR_OUT_OF_DEVICE_MEMORY:
-					std::runtime_error("Out of device memory! Exiting application.");
-					exit(1);
+					throw Results::ErrorOutOfDeviceMemory;
 				case VK_ERROR_DEVICE_LOST:
-					SetLoopState(LoopState::DeviceLost);
-					return;
+					throw Results::ErrorDeviceLost;
 				case VK_ERROR_SURFACE_LOST_KHR:
-					std::runtime_error("Surface lost! Exiting application.");
-					exit(1);
+					throw Results::ErrorSurfaceLost;
 			}
 		}
 	};
@@ -508,15 +557,6 @@ namespace vka
 	{
 		return reinterpret_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
 	}
-
-	// Window resize callback
-	static void ResizeCallback(GLFWwindow* window, int width, int height)
-	{
-		// TODO: may need to sync access to extent here
-		auto& surfaceExtent = GetUserPointer(window)->m_SurfaceState.surfaceExtent;
-		surfaceExtent.width = static_cast<uint32_t>(width);
-		surfaceExtent.height = static_cast<uint32_t>(height);
-	};
 
 	static void PushBackInput(GLFWwindow* window, InputMessage&& msg)
 	{

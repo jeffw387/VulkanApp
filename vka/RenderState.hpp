@@ -27,11 +27,11 @@ namespace vka
 {
     struct Supports
     {
-        VkCommandPoolUnique renderCommandPool;
+        VkCommandPool renderCommandPool;
         VkCommandBuffer renderCommandBuffer;
-        VkFenceUnique renderBufferExecuted;
+        VkFence renderBufferExecuted;
         VkFence imageReadyFence;
-        VkSemaphoreUnique imageRenderCompleteSemaphore;
+        VkSemaphore imageRenderCompleteSemaphore;
     };
 
     struct RenderState

@@ -19,6 +19,11 @@ namespace vka
         {
             CreateRenderPass();
         }
+
+        VkRenderPass GetRenderPass()
+        {
+            return renderPassUnique.get();
+        }
     private:
         VkDevice device;
         VkFormat surfaceFormat;
@@ -28,11 +33,6 @@ namespace vka
         std::array<VkSubpassDependency, 2> dependencies;
         VkRenderPassCreateInfo createInfo;
         VkRenderPassUnique renderPassUnique;
-
-        VkRenderPass GetRenderPass()
-        {
-            return renderPassUnique.get();
-        }
         
         void CreateRenderPass()
         {

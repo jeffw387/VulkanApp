@@ -2,6 +2,7 @@
 
 #include "vulkan/vulkan.h"
 #include "VulkanFunctions.hpp"
+#include <stdexcept>
 
 namespace vka
 {
@@ -27,7 +28,7 @@ namespace vka
 #endif
         if(library == nullptr) 
         {
-            std::runtime_error("Could not load Vulkan library!\n";
+            std::runtime_error("Could not load Vulkan library!\n");
         }
 		return library;
     }

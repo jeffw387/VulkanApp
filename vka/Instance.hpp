@@ -28,7 +28,7 @@ namespace vka
 		void CreateInstance()
 		{
 			VkInstance instance;
-			auto result = vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
+			auto result = vkCreateInstance(&createInfo, nullptr, &instance);
 			instanceUnique = VkInstanceUnique(instance, VkInstanceDeleter());
 		}
     };

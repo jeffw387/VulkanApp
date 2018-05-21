@@ -31,20 +31,21 @@ namespace vka
         VkDevice device;
         std::vector<VkDescriptorSetLayout> setLayouts;
         std::vector<VkPushConstantRange> pushConstantRanges;
-        VkPipelineLayoutpipelineCreateInfo pipelineLayoutpipelineCreateInfo;
+        VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
         VkPipelineLayoutUnique pipelineLayoutUnique;
 
         void CreatePipelineLayout()
         {
-            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-            pipelineLayoutInfo.pNext = nullptr;
-            pipelineLayoutInfo.flags = 0;
-            pipelineLayoutInfo.setLayoutCount = setLayouts.size();
-            pipelineLayoutInfo.pSetLayouts = setLayouts.data();
-            pipelineLayoutInfo.pushConstantRangeCount = pushConstantRanges.size();
-            pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
-            vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &layout);
-            Layout = VkPipelineLayoutUnique(layout, VkPipelineLayoutDeleter(device));
+            VkPipelineLayout layout;
+            pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutCreateInfo.pNext = nullptr;
+            pipelineLayoutCreateInfo.flags = 0;
+            pipelineLayoutCreateInfo.setLayoutCount = setLayouts.size();
+            pipelineLayoutCreateInfo.pSetLayouts = setLayouts.data();
+            pipelineLayoutCreateInfo.pushConstantRangeCount = pushConstantRanges.size();
+            pipelineLayoutCreateInfo.pPushConstantRanges = pushConstantRanges.data();
+            vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &layout);
+            pipelineLayoutUnique = VkPipelineLayoutUnique(layout, VkPipelineLayoutDeleter(device));
         }
     };
 
@@ -81,14 +82,14 @@ namespace vka
         VertexData vertexData;
 
         std::vector<VkPipelineShaderStageCreateInfo> shaderStageInfo;
-		VkPipelineViewportStatepipelineCreateInfo viewportInfo;
-		VkPipelineRasterizationStatepipelineCreateInfo rasterizationInfo;
-		VkPipelineMultisampleStatepipelineCreateInfo multisampleInfo;
+		VkPipelineViewportStateCreateInfo viewportInfo;
+		VkPipelineRasterizationStateCreateInfo rasterizationInfo;
+		VkPipelineMultisampleStateCreateInfo multisampleInfo;
         VkPipelineColorBlendAttachmentState colorBlendAttachmentState;
-		VkPipelineColorBlendStatepipelineCreateInfo blendStateInfo;
+		VkPipelineColorBlendStateCreateInfo blendStateInfo;
 		std::vector<VkDynamicState> dynamicStates;
-		VkPipelineDynamicStatepipelineCreateInfo dynamicStateInfo;
-        VkPipelinepipelineCreateInfo pipelineCreateInfo;
+		VkPipelineDynamicStateCreateInfo dynamicStateInfo;
+        VkGraphicsPipelineCreateInfo pipelineCreateInfo;
         VkPipelineUnique pipelineUnique;
 
         void CreatePipeline()
@@ -166,8 +167,8 @@ namespace vka
             pipelineCreateInfo.flags = 0;
             pipelineCreateInfo.stageCount = shaderStageInfo.size();
             pipelineCreateInfo.pStages = shaderStageInfo.data();
-            pipelineCreateInfo.pVertexInputState = &vertexData.vertexInputInfo;
-            pipelineCreateInfo.pInputAssemblyState = &vertexData.inputAssemblyInfo;
+            pipelineCreateInfo.pVertexInputState = &vertexData.GetVertexInputInfo();
+            pipelineCreateInfo.pInputAssemblyState = &vertexData.GetInputAssemblyInfo();
             pipelineCreateInfo.pTessellationState = nullptr;
             pipelineCreateInfo.pViewportState = &viewportInfo;
             pipelineCreateInfo.pRasterizationState = &rasterizationInfo;

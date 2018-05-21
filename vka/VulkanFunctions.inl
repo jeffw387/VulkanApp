@@ -1,5 +1,7 @@
 #include "vulkan/vulkan.h"
 
+#include <iostream>
+
 #if !defined(VK_EXPORTED_FUNCTION)
 #define VK_EXPORTED_FUNCTION( fun )
 #endif

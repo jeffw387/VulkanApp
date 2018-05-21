@@ -32,13 +32,13 @@ namespace vka
             auto setsAvailable = maxSets - currentSets;
             auto allocateCount = std::min(count, setsAvailable);
             std::vector<VkDescriptorSet> newSets;
-            std::vector<VkDesriptorSetLayout> newSetLayouts;
+            std::vector<VkDescriptorSetLayout> newSetLayouts;
             newSetLayouts.resize(allocateCount);
             std::fill(newSetLayouts.begin(), newSetLayouts.end(), layoutUnique.get());
             newSets.resize(allocateCount);
             allocateInfo.descriptorSetCount = allocateCount;
             allocateInfo.pSetLayouts = newSetLayouts.data();
-            vkAllocateDescriptorSets(device, &allocateInfo, nullptr, newSets.data());
+            vkAllocateDescriptorSets(device, &allocateInfo, newSets.data());
             std::vector<size_t> setIDs;
             setIDs.resize(allocateCount);
             for (auto newSet : newSets)
@@ -72,7 +72,7 @@ namespace vka
     private:
         VkDevice device;
         std::vector<VkDescriptorSetLayoutBinding> bindings;
-        std::vector<VkDescriptorPoolSizes> poolSizes;
+        std::vector<VkDescriptorPoolSize> poolSizes;
         size_t maxSets;
 
         VkDescriptorSetLayoutCreateInfo layoutCreateInfo;

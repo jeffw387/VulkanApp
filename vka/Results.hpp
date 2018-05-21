@@ -32,8 +32,8 @@ namespace vka
         using EventSet = Result<VK_EVENT_SET>;
         using EventReset = Result<VK_EVENT_RESET>;
         using Incomplete = Result<VK_INCOMPLETE>;
-        using OutOfHostMemory = Result<VK_OUT_OF_HOST_MEMORY>;
-        using OutOfDeviceMemory = Result<VK_OUT_OF_DEVICE_MEMORY>;
+        using ErrorOutOfHostMemory = Result<VK_ERROR_OUT_OF_HOST_MEMORY>;
+        using ErrorOutOfDeviceMemory = Result<VK_ERROR_OUT_OF_DEVICE_MEMORY>;
         using ErrorInitializationFailed = Result<VK_ERROR_INITIALIZATION_FAILED>;
         using ErrorDeviceLost = Result<VK_ERROR_DEVICE_LOST>;
         using ErrorMemoryMapFailed = Result<VK_ERROR_MEMORY_MAP_FAILED>;

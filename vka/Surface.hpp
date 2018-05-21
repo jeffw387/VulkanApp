@@ -3,6 +3,8 @@
 #include "UniqueVulkan.hpp"
 #include "vulkan/vulkan.h"
 #include "GLFW/glfw3.h"
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include "GLFW/glfw3native.h"
 
 #include <stdexcept>
 #include <vector>
@@ -85,7 +87,7 @@ namespace vka
             surfaceCreateInfoWin32.pNext = nullptr;
             surfaceCreateInfoWin32.flags = 0;
             surfaceCreateInfoWin32.hinstance = hinstance;
-            surfaceCreateInfoWin32.hwnd = win32Window;
+            surfaceCreateInfoWin32.hwnd = hwnd;
 
             VkSurfaceKHR surface;
             vkCreateWin32SurfaceKHR(
@@ -104,11 +106,11 @@ namespace vka
         {
             auto result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
                 physicalDevice,
-                get(),
+                GetSurface(),
                 &surfaceCapabilities);
         }
 
-        void BufferSupportCheck();
+        void BufferSupportCheck()
         {
             if (surfaceCapabilities.minImageCount < Surface::BufferCount)
             {
@@ -116,17 +118,11 @@ namespace vka
             }
         }
 
-        std::vector<VkSurfaceFormatKHR> GetSurfaceFormats()
-        {
-            
-            return surfaceFormats;
-        }
-
         void ChooseFormat()
         {
             uint32_t formatCount = 0;
             vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, 
-                surface, 
+                GetSurface(), 
                 &formatCount, 
                 nullptr);
 
@@ -134,7 +130,7 @@ namespace vka
             surfaceFormats.resize(formatCount);
 
             vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, 
-                surface, 
+                GetSurface(), 
                 &formatCount, 
                 surfaceFormats.data());
 
@@ -150,7 +146,7 @@ namespace vka
             uint32_t presentModeCount = 0;
             vkGetPhysicalDeviceSurfacePresentModesKHR(
                 physicalDevice,
-                surface,
+                GetSurface(),
                 &presentModeCount,
                 nullptr);
 
@@ -158,7 +154,7 @@ namespace vka
             presentModes.resize(presentModeCount);
             vkGetPhysicalDeviceSurfacePresentModesKHR(
                 physicalDevice,
-                surface,
+                GetSurface(),
                 &presentModeCount,
                 presentModes.data());
 

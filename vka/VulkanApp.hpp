@@ -28,6 +28,7 @@
 #include "nlohmann/json.hpp"
 #include "Vertex.hpp"
 #include "Results.hpp"
+#include "Debug.hpp"
 
 #include <iostream>
 #include <map>
@@ -49,7 +50,9 @@
 #undef min
 
 #ifdef NO_VALIDATION
-constexpr bool ReleaseMode = true;
+	constexpr bool ReleaseMode = true;
+#else
+	constexpr bool ReleaseMode = false;
 #endif
 
 namespace vka
@@ -76,7 +79,6 @@ namespace vka
         LibraryHandle VulkanLibrary;
 		Camera2D camera;
 
-		VkInstance instance;
 		std::optional<Instance> instanceOptional;
 		VkDevice device;
 		std::optional<Device> deviceOptional;
@@ -109,7 +111,7 @@ namespace vka
 
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 			int width = vulkanInitData["DefaultWindowSize"]["Width"];
-			int height = vulkanInitData[["DefaultWindowSize"]["Height"];
+			int height = vulkanInitData["DefaultWindowSize"]["Height"];
 			std::string appName = vulkanInitData["ApplicationName"];
 			window = glfwCreateWindow(width, height, appName.c_str(), NULL, NULL);
 			if (window == NULL)
@@ -198,21 +200,21 @@ namespace vka
 
 			VkInstanceCreateInfo instanceCreateInfo = {};
 			instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-			instanceCreateInfo.pApplicationInfo = &application;
+			instanceCreateInfo.pApplicationInfo = &applicationInfo;
 			instanceCreateInfo.enabledLayerCount = globalLayersCstrings.size();
 			instanceCreateInfo.ppEnabledLayerNames = globalLayersCstrings.data();
 			instanceCreateInfo.enabledExtensionCount = instanceExtensionsCstrings.size();
 			instanceCreateInfo.ppEnabledExtensionNames = instanceExtensionsCstrings.data();
 
-			instance = Instance(instanceCreateInfo);
-			LoadInstanceLevelEntryPoints(instance->GetInstance());
+			instanceOptional = Instance(instanceCreateInfo);
+			LoadInstanceLevelEntryPoints(instanceOptional->GetInstance());
 
-			InitDebugCallback(instance->GetInstance());
+			InitDebugCallback(instanceOptional->GetInstance());
 
 			std::string vertexShaderPath = vulkanInitData["VertexShaderPath"];
 			std::string fragmentShaderPath = vulkanInitData["FragmentShaderPath"];
 
-			deviceOptional = Device(instance->GetInstance(),
+			deviceOptional = Device(instanceOptional->GetInstance(),
 				window,
 				deviceExtensionsCstrings,
 				vertexShaderPath,
@@ -232,10 +234,10 @@ namespace vka
 
 			// FinalizeSpriteOrder(m_RenderState);
 
-			CreateVertexBuffer(
-				m_RenderState,
-				m_DeviceState,
-				m_CopyState);
+			// CreateVertexBuffer(
+			// 	m_RenderState,
+			// 	m_DeviceState,
+			// 	m_CopyState);
 
 			// TODO: update fragment descriptor set
 			auto imageInfos = std::vector<VkDescriptorImageInfo>();
@@ -343,12 +345,6 @@ namespace vka
 
 	private:
 	
-		void SetLoopState(LoopState state)
-		{
-			std::scoped_lock<std::mutex> loopStateLock(m_AppState.loopStateMutex);
-			m_AppState.gameLoop = state;
-		}
-
 		void GameThread()
 		{
 			try

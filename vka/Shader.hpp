@@ -26,7 +26,7 @@ namespace vka
         std::for_each(
             constantMapEntries.begin(), 
             constantMapEntries.end(),
-            [specialization&](const auto& mapEntry) { specialization.info.dataSize += mapEntry.size; });
+            [&specialization](const auto& mapEntry) { specialization.info.dataSize += mapEntry.size; });
         specialization.info.pData = pConstantData;
         return specialization;
     }
@@ -66,29 +66,29 @@ namespace vka
             ShaderData shaderData;
             shaderData.specialization = MakeSpecialization(
                 std::move(constantMapEntries), (void*)(&constantData));
-            shaderData.info.sType = 
+            shaderData.shaderStageInfo.sType = 
                 VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shaderData.info.pNext = nullptr;
-            shaderData.info.flags = 0;
-            shaderData.info.stage = stage;
-            shaderData.info.module = get();
-            shaderData.info.pName = entryPointName.c_str();
-            shaderData.info.pSpecializationInfo = 
-                &shaderData.specialization.info;
+            shaderData.shaderStageInfo.pNext = nullptr;
+            shaderData.shaderStageInfo.flags = 0;
+            shaderData.shaderStageInfo.stage = stage;
+            shaderData.shaderStageInfo.module = get();
+            shaderData.shaderStageInfo.pName = entryPointName.c_str();
+            shaderData.shaderStageInfo.pSpecializationInfo = 
+                &shaderData.specialization.shaderStageInfo;
             return shaderData;
         }
 
         ShaderData GetShaderData()
         {
             ShaderData shaderData;
-            shaderData.info.sType = 
+            shaderData.shaderStageInfo.sType = 
                 VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shaderData.info.pNext = nullptr;
-            shaderData.info.flags = 0;
-            shaderData.info.stage = stage;
-            shaderData.info.module = get();
-            shaderData.info.pName = entryPointName.c_str();
-            shaderData.info.pSpecializationInfo = nullptr;
+            shaderData.shaderStageInfo.pNext = nullptr;
+            shaderData.shaderStageInfo.flags = 0;
+            shaderData.shaderStageInfo.stage = stage;
+            shaderData.shaderStageInfo.module = GetShaderModule();
+            shaderData.shaderStageInfo.pName = entryPointName.c_str();
+            shaderData.shaderStageInfo.pSpecializationInfo = nullptr;
             return shaderData;
         }
     private:
@@ -99,7 +99,7 @@ namespace vka
         VkShaderModuleCreateInfo shaderCreateInfo;
         VkShaderModuleUnique shaderUnique;
         
-        CreateShaderModule()
+        void CreateShaderModule()
         {
             shaderCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             shaderCreateInfo.pNext = nullptr;

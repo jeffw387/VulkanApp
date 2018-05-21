@@ -25,14 +25,18 @@ namespace vka
     {
         using pointer = AllocationHandle;
         MemoryBlock* block;
+
+        void functor(AllocationHandle allocation);
         
         void operator()(AllocationHandle allocation)
         {
-            block->DeallocateMemory(allocation);
+            functor(allocation);
         }
 
         AllocationHandleDeleter(MemoryBlock* block) : block(block)
         {}
+
+        AllocationHandleDeleter() noexcept = default;
     };
     using UniqueAllocationHandle = std::unique_ptr<AllocationHandle, AllocationHandleDeleter>;
 
@@ -53,10 +57,10 @@ namespace vka
         UniqueAllocationHandle CreateHandleFromAllocation(VkDeviceSize allocationOffset);
         void DeallocateMemory(AllocationHandle allocation);
 
-        VkDevice m_Device;
-        VkDeviceMemoryUnique m_DeviceMemory;
-        VkMemoryAllocateInfo m_AllocateInfo;
-        AllocationMap m_Allocations;
+        VkDevice device;
+        VkDeviceMemoryUnique deviceMemory;
+        VkMemoryAllocateInfo allocateInfo;
+        AllocationMap allocations;
     };
 
     class Allocator
@@ -84,10 +88,10 @@ namespace vka
     private:
         MemoryBlock& AllocateNewBlock(const VkMemoryAllocateInfo& allocateInfo);
 
-        std::list<MemoryBlock> m_MemoryBlocks;
-        VkPhysicalDevice m_PhysicalDevice;
-        VkDevice m_Device;
-        VkDeviceSize m_DefaultBlockSize;
-        VkPhysicalDeviceMemoryProperties m_MemoryProperties;
+        std::list<MemoryBlock> memoryBlocks;
+        VkPhysicalDevice physicalDevice;
+        VkDevice device;
+        VkDeviceSize defaultBlockSize;
+        VkPhysicalDeviceMemoryProperties memoryProperties;
     };
 }// namespace vka

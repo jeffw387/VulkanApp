@@ -26,6 +26,8 @@ namespace vka
 
         VkDebugReportCallbackEXTDeleter(VkInstance instance) : instance(instance)
         {}
+
+        VkDebugReportCallbackEXTDeleter() noexcept = default;
 	};
 	using VkDebugReportCallbackEXTUnique = std::unique_ptr<VkDebugReportCallbackEXT, VkDebugReportCallbackEXTDeleter>;
 
@@ -50,6 +52,8 @@ namespace vka
 
         VkDeviceMemoryDeleter(VkDevice device) : device(device)
         {}
+
+        VkDeviceMemoryDeleter() noexcept = default;
     };
     using VkDeviceMemoryUnique = std::unique_ptr<VkDeviceMemory, VkDeviceMemoryDeleter>;
 
@@ -65,6 +69,8 @@ namespace vka
 
         VkBufferDeleter(VkDevice device) : device(device)
         {}
+
+        VkBufferDeleter() noexcept = default;
     };
     using VkBufferUnique = std::unique_ptr<VkBuffer, VkBufferDeleter>;
 
@@ -80,6 +86,8 @@ namespace vka
 
         VkImageDeleter(VkDevice device) : device(device)
         {}
+
+        VkImageDeleter() noexcept = default;
 	};
 	using VkImageUnique = std::unique_ptr<VkImage, VkImageDeleter>;
 
@@ -95,6 +103,8 @@ namespace vka
 
         VkImageViewDeleter(VkDevice device) : device(device)
         {}
+
+        VkImageViewDeleter() noexcept = default;
 	};
 	using VkImageViewUnique = std::unique_ptr<VkImageView, VkImageViewDeleter>;
 
@@ -110,6 +120,8 @@ namespace vka
 
         VkFenceDeleter(VkDevice device) : device(device)
         {}
+
+        VkFenceDeleter() noexcept = default;
     };
     using VkFenceUnique = std::unique_ptr<VkFence, VkFenceDeleter>;
 
@@ -125,6 +137,8 @@ namespace vka
 
         VkSemaphoreDeleter(VkDevice device) : device(device)
         {}
+
+        VkSemaphoreDeleter() noexcept = default;
     };
     using VkSemaphoreUnique = std::unique_ptr<VkSemaphore, VkSemaphoreDeleter>;
 
@@ -140,6 +154,8 @@ namespace vka
 
         VkCommandPoolDeleter(VkDevice device) : device(device)
         {}
+
+        VkCommandPoolDeleter() noexcept = default;
     };
     using VkCommandPoolUnique = std::unique_ptr<VkCommandPool, VkCommandPoolDeleter>;
     
@@ -155,6 +171,8 @@ namespace vka
 
         VkSurfaceKHRDeleter(VkInstance instance) : instance(instance)
         {}
+
+        VkSurfaceKHRDeleter() noexcept = default;
     };
     using VkSurfaceKHRUnique = std::unique_ptr<VkSurfaceKHR, VkSurfaceKHRDeleter>;
 
@@ -170,6 +188,8 @@ namespace vka
 
         VkFramebufferDeleter(VkDevice device) : device(device)
         {}
+
+        VkFramebufferDeleter() noexcept = default;
     };
     using VkFramebufferUnique = std::unique_ptr<VkFramebuffer, VkFramebufferDeleter>;
 
@@ -185,6 +205,8 @@ namespace vka
 
         VkRenderPassDeleter(VkDevice device) : device(device)
         {}
+
+        VkRenderPassDeleter() noexcept = default;
     };
     using VkRenderPassUnique = std::unique_ptr<VkRenderPass, VkRenderPassDeleter>;
 
@@ -200,6 +222,8 @@ namespace vka
 
         VkSamplerDeleter(VkDevice device) : device(device)
         {}
+
+        VkSamplerDeleter() noexcept = default;
     };
     using VkSamplerUnique = std::unique_ptr<VkSampler, VkSamplerDeleter>;
 
@@ -215,6 +239,8 @@ namespace vka
 
         VkShaderModuleDeleter(VkDevice device) : device(device)
         {}
+
+        VkShaderModuleDeleter() noexcept = default;
     };
     using VkShaderModuleUnique = std::unique_ptr<VkShaderModule, VkShaderModuleDeleter>;
 
@@ -230,6 +256,8 @@ namespace vka
 
         VkDescriptorSetLayoutDeleter(VkDevice device) : device(device)
         {}
+
+        VkDescriptorSetLayoutDeleter() noexcept = default;
     };
     using VkDescriptorSetLayoutUnique = std::unique_ptr<VkDescriptorSetLayout, VkDescriptorSetLayoutDeleter>;
 
@@ -245,6 +273,8 @@ namespace vka
 
         VkDescriptorPoolDeleter(VkDevice device) : device(device)
         {}
+
+        VkDescriptorPoolDeleter() noexcept = default;
     };
     using VkDescriptorPoolUnique = std::unique_ptr<VkDescriptorPool, VkDescriptorPoolDeleter>;
 
@@ -260,6 +290,8 @@ namespace vka
 
         VkSwapchainKHRDeleter(VkDevice device) : device(device)
         {}
+
+        VkSwapchainKHRDeleter() noexcept = default;
     };
     using VkSwapchainKHRUnique = std::unique_ptr<VkSwapchainKHR, VkSwapchainKHRDeleter>;
 
@@ -275,6 +307,8 @@ namespace vka
 
         VkPipelineLayoutDeleter(VkDevice device) : device(device)
         {}
+
+        VkPipelineLayoutDeleter() noexcept = default;
     };
     using VkPipelineLayoutUnique = std::unique_ptr<VkPipelineLayout, VkPipelineLayoutDeleter>;
 
@@ -290,6 +324,8 @@ namespace vka
 
         VkPipelineDeleter(VkDevice device) : device(device)
         {}
+
+        VkPipelineDeleter() noexcept = default;
     };
     using VkPipelineUnique = std::unique_ptr<VkPipeline, VkPipelineDeleter>;
 }

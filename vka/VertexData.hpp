@@ -19,6 +19,8 @@ namespace vka
             CreateInputAssemblyInfo();
         }
 
+        VertexData() noexcept = default;
+
         const VkPipelineVertexInputStateCreateInfo& GetVertexInputInfo()
         {
             return vertexInputInfo;

@@ -10,6 +10,10 @@
 #include "vka/Results.hpp"
 #include "fileIO.hpp"
 #include "Vertex.hpp"
+#include "VertexData.hpp"
+#include "GLFW/glfw3.h"
+#include "Allocator.hpp"
+#include "Pipeline.hpp"
 
 #include <tuple>
 #include <vector>
@@ -35,7 +39,7 @@ namespace vka
         static constexpr uint32_t PushConstantSize = sizeof(VertexPushConstants);
 
         Device(VkInstance instance,
-            GLFWWindow* window,
+            GLFWwindow* window,
             std::vector<const char*> deviceExtensions,
             std::string vertexShaderPath,
             std::string fragmentShaderPath)
@@ -73,7 +77,7 @@ namespace vka
             return deviceUnique.get();
         }
 
-        Allocator& GetAllocator()
+        auto& GetAllocator()
         {
             return allocator;
         }
@@ -161,7 +165,7 @@ namespace vka
         
     private:
         VkInstance instance;
-        GLFWWindow* window;
+        GLFWwindow* window;
         std::vector<const char*> deviceExtensions;
         std::string vertexShaderPath;
         std::string fragmentShaderPath;
@@ -251,8 +255,8 @@ namespace vka
             std::optional<uint32_t> presentQueueFamilyIndex;
             for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
             {
-                bool presentSupport = false;
-                vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surfaceOptional, &presentSupport);
+                VkBool32 presentSupport = false;
+                vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surfaceOptional->GetSurface(), &presentSupport);
                 if (presentSupport)
                 {
                     presentQueueFamilyIndex = i;
@@ -284,7 +288,7 @@ namespace vka
             createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
             createInfo.pNext = nullptr;
             createInfo.flags = 0;
-            createInfo.m_GraphicsQueueCreateInfoCount = queueCreateInfos.size();
+            createInfo.queueCreateInfoCount = queueCreateInfos.size();
             createInfo.pQueueCreateInfos = queueCreateInfos.data();
             createInfo.enabledLayerCount = 0;
             createInfo.ppEnabledLayerNames = nullptr;
@@ -312,7 +316,7 @@ namespace vka
 
         void CreateRenderPass()
         {
-            renderPassOptional = RenderPass(GetDevice(), surfaceOptional.format());
+            renderPassOptional = RenderPass(GetDevice(), surfaceOptional->GetFormat());
         }
 
         void CreateSwapchain()
@@ -332,16 +336,18 @@ namespace vka
         {
             auto vertexShaderBinary = fileIO::readFile(vertexShaderPath);
             vertexShaderOptional = Shader(GetDevice(), 
-                vertexShaderBinary, 
-                VK_SHADER_STAGE_VERTEX_BIT);
+                std::move(vertexShaderBinary), 
+                VK_SHADER_STAGE_VERTEX_BIT,
+                "main");
         }
 
         void CreateFragmentShader()
         {
             auto fragmentShaderBinary = fileIO::readFile(fragmentShaderPath);
             fragmentShaderOptional = Shader(GetDevice(), 
-                fragmentShaderBinary, 
-                VK_SHADER_STAGE_FRAGMENT_BIT);
+                std::move(fragmentShaderBinary), 
+                VK_SHADER_STAGE_FRAGMENT_BIT,
+                "main");
         }
 
         void CreateSampler()
@@ -387,11 +393,11 @@ namespace vka
             binding1.pImmutableSamplers = nullptr;
 
             VkDescriptorPoolSize size0 = {};
-            size0.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+            size0.type = VK_DESCRIPTOR_TYPE_SAMPLER;
             size0.descriptorCount = 1;
 
             VkDescriptorPoolSize size1 = {};
-            size1.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            size1.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
             size1.descriptorCount = Device::ImageCount;
 
             fragmentDescriptorSetOptional = DescriptorSet(GetDevice(), 
@@ -403,12 +409,12 @@ namespace vka
         void SetupVertexData()
         {
             vertexData = VertexData(Vertex::vertexBindingDescriptions(),
-                vertexAttributeDescriptions());
+                Vertex::vertexAttributeDescriptions());
         }
 
         void CreatePipelineLayout()
         {
-            setLayouts.push_back(fragmentDescriptorSetOptional.GetSetLayout());
+            setLayouts.push_back(fragmentDescriptorSetOptional->GetSetLayout());
 
             VkPushConstantRange range = {};
             range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;

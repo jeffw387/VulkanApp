@@ -103,9 +103,9 @@ namespace vka
         void GetSwapImages()
         {
             uint32_t swapImageCount = 0;
-            vkGetSwapchainImagesKHR(device, swapChain, &swapImageCount, nullptr);
+            vkGetSwapchainImagesKHR(device, GetSwapchain(), &swapImageCount, nullptr);
             swapImages.resize(swapImageCount);
-            vkGetSwapchainImagesKHR(device, swapChain, &swapImageCount, swapImages.data());
+            vkGetSwapchainImagesKHR(device, GetSwapchain(), &swapImageCount, swapImages.data());
         }
 
         void CreateSwapImageViews()
@@ -153,7 +153,7 @@ namespace vka
                 auto view = swapImageViewsUnique[i].get();
                 framebufferCreateInfo.pAttachments = &view;
                 vkCreateFramebuffer(device, &framebufferCreateInfo, nullptr, &framebuffer);
-                renderState.framebuffers[i] = VkFramebufferUnique(framebuffer, VkFramebufferDeleter(device));
+                framebuffersUnique[i] = VkFramebufferUnique(framebuffer, VkFramebufferDeleter(device));
             }
         }
     };

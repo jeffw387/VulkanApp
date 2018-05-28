@@ -143,6 +143,20 @@ namespace vka
             return pool;
         }
 
+        std::vector<VkCommandBuffer> AllocateCommandBuffers(VkCommandPool pool, uint32_t count)
+        {
+            std::vector<VkCommandBuffer> commandBuffers;
+            commandBuffers.resize(count);
+            VkCommandBufferAllocateInfo allocateInfo = {};
+			allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+			allocateInfo.pNext = nullptr;
+			allocateInfo.commandPool = pool;
+			allocateInfo.level = 0;
+			allocateInfo.commandBufferCount = count;
+			vkAllocateCommandBuffers(device, &allocateInfo, commandBuffers.data());
+            return commandBuffers;
+        }
+
         void operator()(Results::ErrorSurfaceLost result)
         {
             vkDeviceWaitIdle(GetDevice());

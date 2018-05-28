@@ -61,15 +61,6 @@ namespace vka
 	using HashType = entt::HashedString::hash_type;
 	const char* ConfigPath = "VulkanInitInfo.json";
 
-	struct Supports
-    {
-        VkCommandPool renderCommandPool;
-        VkCommandBuffer renderCommandBuffer;
-        VkFence renderBufferExecuted;
-        VkFence imageReadyFence;
-        VkSemaphore imageRenderCompleteSemaphore;
-    };
-	
 	struct VulkanApp
 	{
 		GLFWwindow* window;
@@ -85,15 +76,28 @@ namespace vka
 
 		VkCommandPool copyCommandPool;
 		VkCommandBuffer copyCommandBuffer;
-		VkFence copyFence;
+		VkFence copyCommandFence;
+
+		std::map<uint64_t, UniqueImage2D> images;
+        std::map<uint64_t, Sprite> sprites;
+        std::vector<Quad> quads;
 
         UniqueAllocatedBuffer vertexBuffer;
 
-		std::vector<VkFence> fencePool;
-		std::array<Supports, Surface::BufferCount> supportsArray;
+		VkCommandPool frameCommandPool;
+		std::array<VkCommandBuffer, Surface::BufferCount> commandBuffers;
+		std::array<VkFence, Surface::BufferCount> renderBufferExecutedFences;
+		std::vector<VkFence> imagePresentedFencePool;
+		std::array<VkFence, Surface::BufferCount> imagePresentedFences;
+		std::array<VkSemaphore, Surface::BufferCount> imageRenderedSemaphores;
         uint32_t nextImage;
 
 		InputState m_InputState;
+
+		virtual void LoadImages() = 0;
+		virtual void Update(TimePoint_ms) = 0;
+		virtual void Draw() = 0;
+
 
 		void Run(std::string vulkanInitJsonPath)
 		{
@@ -221,28 +225,27 @@ namespace vka
 				fragmentShaderPath);
 			device = deviceOptional->GetDevice();
 
-			LoadDeviceLevelEntryPoints(device->GetDevice());
+			LoadDeviceLevelEntryPoints(device);
+
+			auto graphicsQueueID = deviceOptional->GetGraphicsQueueID();
+			copyCommandPool = deviceOptional->CreateCommandPool(graphicsQueueID, true, false);
+			auto commandBuffers = deviceOptional->AllocateCommandBuffers(copyCommandPool, 1);
+			copyCommandBuffer = commandBuffers.at(0);
+
+			copyCommandFence = deviceOptional->CreateFence(false);
+
+			LoadImages();
 			
-			
-			// TODO: init copy structures
-			// InitCopyStructures(m_CopyState, m_DeviceState);
+			FinalizeImageOrder();
+			FinalizeSpriteOrder();
 
-			// TODO: allow client app to load images
-			// m_InitState.imageLoadCallback();
-
-			// FinalizeImageOrder(m_RenderState);
-
-			// FinalizeSpriteOrder(m_RenderState);
-
-			// CreateVertexBuffer(
-			// 	m_RenderState,
-			// 	m_DeviceState,
-			// 	m_CopyState);
+			CreateVertexBuffer();
 
 			// TODO: update fragment descriptor set
 			auto imageInfos = std::vector<VkDescriptorImageInfo>();
+			auto textureCount = images.size();
 			imageInfos.reserve(textureCount);
-			for (auto& imagePair : renderState.images)
+			for (auto& imagePair : images)
 			{
 				VkDescriptorImageInfo imageInfo = {};
 				imageInfo.sampler = VK_NULL_HANDLE;
@@ -251,10 +254,14 @@ namespace vka
 				imageInfos.push_back(imageInfo);
 			}
 
+			auto& fragmentDescriptorSetManager = deviceOptional->fragmentDescriptorSetOptional.get();
+			auto fragmentDescriptorSetIDs = fragmentDescriptorSetManager.AllocateSets(1);
+			auto fragmentDescriptorSet = fragmentDescriptorSetManager.GetSet(fragmentDescriptorSetIDs.at(1));
+
 			VkWriteDescriptorSet samplerDescriptorWrite = {};
 			samplerDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			samplerDescriptorWrite.pNext = nullptr;
-			samplerDescriptorWrite.dstSet = shaderState.fragmentDescriptorSet;
+			samplerDescriptorWrite.dstSet = fragmentDescriptorSet;
 			samplerDescriptorWrite.dstBinding = 1;
 			samplerDescriptorWrite.dstArrayElement = 0;
 			samplerDescriptorWrite.descriptorCount = textureCount;
@@ -264,12 +271,19 @@ namespace vka
 			samplerDescriptorWrite.pTexelBufferView = nullptr;
 
 			vkUpdateDescriptorSets(device, 1, &samplerDescriptorWrite, 0, nullptr);
-			CreateAndUpdateFragmentDescriptorSet(m_ShaderState, m_DeviceState, m_RenderState);
 
 			// TODO: initialize support structs
-			// InitializeSupportStructs(m_RenderState, m_DeviceState, m_ShaderState);
+			frameCommandPool = deviceOptional->CreateCommandPool(graphicsQueueID, false, true);			
+			for (auto i = 0; i < Surface::BufferCount; ++i)
+			{
+				renderBufferExecutedFences[i] = deviceOptional->CreateFence(true);
+				imagePresentedFencePool.push_back(deviceOptional->CreateFence(false));
+				imageRenderedSemaphores[i] = deviceOptional->CreateSemaphore();
+			}			
+
+			InitializeSupportStructs(m_RenderState, m_DeviceState, m_ShaderState);
 			// TODO: set up fence pool
-			// SetupImageFencePool(m_RenderState, m_DeviceState);
+			SetupImageFencePool(m_RenderState, m_DeviceState);
 			SetClearColor(m_RenderState, 0.f, 0.f, 0.f, 0.f);
 
 			startupTimePoint = NowMilliseconds();
@@ -295,13 +309,13 @@ namespace vka
 
 		void LoadImage2D(const HashType imageID, const Bitmap& bitmap)
 		{
-			m_RenderState.images[imageID] = CreateImage2D(
-				m_DeviceState.device.get(), 
-				m_CopyState.copyCommandBuffer, 
-				m_DeviceState.allocator,
+			images[imageID] = CreateImage2D(
+				device, 
+				copyCommandBuffer, 
+				allocator,
 				bitmap,
-				m_DeviceState.graphicsQueueFamilyID,
-				m_DeviceState.graphicsQueue);
+				deviceOptional->GetGraphicsQueueID(),
+				deviceOptional->GetGraphicsQueue());
 		}
 
 		void CreateSprite(const HashType imageID, const HashType spriteName, const Quad quad)
@@ -309,7 +323,7 @@ namespace vka
 			Sprite sprite;
 			sprite.imageID = imageID;
 			sprite.quad = quad;
-			m_RenderState.sprites[spriteName] = sprite;
+			sprites[spriteName] = sprite;
 		}
 
 		void RenderSpriteInstance(
@@ -345,6 +359,90 @@ namespace vka
 
 	private:
 	
+		void FinalizeImageOrder()
+		{
+			auto imageOffset = 0;
+			for (auto& image : images)
+			{
+				image.second.imageOffset = imageOffset;
+				++imageOffset;
+			}
+		}
+
+		void FinalizeSpriteOrder()
+		{
+			auto spriteOffset = 0;
+			for (auto& [spriteID, sprite] : sprites)
+			{
+				quads.push_back(sprite.quad);
+				sprite.vertexOffset = spriteOffset;
+				sprite.imageOffset = images[sprite.imageID].imageOffset;
+				++spriteOffset;
+			}
+		}
+
+		void CreateVertexBuffer()
+		{
+			auto graphicsQueueFamilyID = deviceOptional->GetGraphicsQueueID();
+			auto graphicsQueue = deviceOptional->GetGraphicsQueue();
+
+			if (quads.size() == 0)
+			{
+				std::runtime_error("Error: no vertices loaded.");
+			}
+			// create vertex buffers
+			constexpr auto quadSize = sizeof(Quad);
+			size_t vertexBufferSize = quadSize * quads.size();
+			auto vertexStagingBuffer = CreateBuffer(
+				device,
+				allocator,
+				vertexBufferSize,
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				graphicsQueueFamilyID,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+					VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				true);
+			
+			vertexBuffer = CreateBuffer(
+				device,
+				allocator,
+				vertexBufferSize, 
+				VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+					VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+				graphicsQueueFamilyID,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				true);
+
+			void* vertexStagingData = nullptr;
+			auto memoryMapResult = vkMapMemory(device, 
+				vertexStagingBuffer.allocation.get().memory,
+				vertexStagingBuffer.allocation.get().offsetInDeviceMemory,
+				vertexStagingBuffer.allocation.get().size,
+				0,
+				&vertexStagingData);
+			
+			memcpy(vertexStagingData, quads.data(), vertexBufferSize);
+			vkUnmapMemory(device, vertexStagingBuffer.allocation.get().memory);
+
+			VkBufferCopy bufferCopy = {};
+			bufferCopy.srcOffset = 0;
+			bufferCopy.dstOffset = 0;
+			bufferCopy.size = vertexBufferSize;
+
+			CopyToBuffer(
+				copyCommandBuffer,
+				graphicsQueue,
+				vertexStagingBuffer.buffer.get(),
+				vertexBuffer.buffer.get(),
+				bufferCopy,
+				copyCommandFence);
+			
+			// wait for vertex buffer copy to finish
+			vkWaitForFences(device, 1, &copyCommandFence, (VkBool32)true, 
+				std::numeric_limits<uint64_t>::max());
+			vkResetFences(device, 1, &copyCommandFence);
+		}
+
 		void GameThread()
 		{
 			try

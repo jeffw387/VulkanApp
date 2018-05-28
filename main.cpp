@@ -17,9 +17,6 @@
 #define CONTENTROOT
 #endif
 
-
-
-
 #include "SpriteData.hpp"
 
 namespace Font
@@ -39,8 +36,8 @@ public:
     void LoadImages()
     {
         auto sheet1 = vka::loadImageFromFile(std::string(Sprites::SpriteSheet1::ImagePath));
-        app.LoadImage2D(Sprites::SpriteSheet1::ImagePath, sheet1);
-        app.CreateSprite(Sprites::SpriteSheet1::ImagePath, 
+        LoadImage2D(Sprites::SpriteSheet1::ImagePath, sheet1);
+        CreateSprite(Sprites::SpriteSheet1::ImagePath, 
             Sprites::SpriteSheet1::starpng::Name, 
             Sprites::SpriteSheet1::starpng::SpriteQuad);
     }
@@ -51,8 +48,7 @@ public:
         while (inputToProcess)
         {
             auto messageOptional = inputBuffer.popFirstIf(
-                    [timePoint](vka::InputMessage message){ return message.time < timePoint; }
-                );
+                [timePoint](vka::InputMessage message){ return message.time < timePoint; });
             
             if (messageOptional.has_value())
             {

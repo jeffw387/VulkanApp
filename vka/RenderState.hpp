@@ -50,7 +50,7 @@ namespace vka
         std::vector<VkFence> fencePool;
         Camera2D camera;
         std::map<uint64_t, UniqueImage2D> images;
-		std::map<uint64_t, Sprite> sprites;
+        std::map<uint64_t, Sprite> sprites;
         std::vector<Quad> quads;
     };
 
@@ -253,70 +253,7 @@ namespace vka
         vkUpdateDescriptorSets(device, 1, &samplerDescriptorWrite, 0, nullptr);
 	}
 
-    static void CreateVertexBuffer(
-        RenderState& renderState, 
-        DeviceState& deviceState, 
-        const CopyState& copyState)
-    {
-        auto& quads = renderState.quads;
-        auto device = deviceState.device.get();
-        if (quads.size() == 0)
-        {
-            std::runtime_error("Error: no vertices loaded.");
-        }
-        // create vertex buffers
-        constexpr auto quadSize = sizeof(Quad);
-        size_t vertexBufferSize = quadSize * quads.size();
-        auto vertexStagingBuffer = CreateBuffer(
-            device,
-            deviceState.allocator,
-            vertexBufferSize,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            deviceState.graphicsQueueFamilyID,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            true);
-        
-        renderState.vertexBuffer = CreateBuffer(
-            device,
-            deviceState.allocator,
-            vertexBufferSize, 
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            deviceState.graphicsQueueFamilyID,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            true);
-
-        void* vertexStagingData = nullptr;
-        auto memoryMapResult = vkMapMemory(device, 
-            vertexStagingBuffer.allocation.get().memory,
-            vertexStagingBuffer.allocation.get().offsetInDeviceMemory,
-            vertexStagingBuffer.allocation.get().size,
-            VkMemoryMapFlags(0),
-            &vertexStagingData);
-        
-        memcpy(vertexStagingData, quads.data(), vertexBufferSize);
-        vkUnmapMemory(device, vertexStagingBuffer.allocation.get().memory);
-
-        VkBufferCopy bufferCopy = {};
-        bufferCopy.srcOffset = 0;
-        bufferCopy.dstOffset = 0;
-        bufferCopy.size = vertexBufferSize;
-
-        CopyToBuffer(
-            copyState.copyCommandBuffer,
-            deviceState.graphicsQueue,
-            vertexStagingBuffer.buffer.get(),
-            renderState.vertexBuffer.buffer.get(),
-            bufferCopy,
-            copyState.copyCommandFence.get());
-        
-        // wait for vertex buffer copy to finish
-        VkFence copyFence = copyState.copyCommandFence.get();
-        vkWaitForFences(device, 1, &copyFence, (VkBool32)true, 
-            std::numeric_limits<uint64_t>::max());
-        vkResetFences(device, 1, &copyFence);
-    }
+    
 
     static void CreateRenderPass(RenderState& renderState, const DeviceState& deviceState, const SurfaceState& surfaceState)
     {
@@ -604,25 +541,5 @@ namespace vka
         }
     }
 
-    static void FinalizeImageOrder(RenderState& renderState)
-    {
-        auto imageOffset = 0;
-        for (auto& image : renderState.images)
-        {
-            image.second.imageOffset = imageOffset;
-            ++imageOffset;
-        }
-    }
-
-    static void FinalizeSpriteOrder(RenderState& renderState)
-    {
-        auto spriteOffset = 0;
-        for (auto& [spriteID, sprite] : renderState.sprites)
-        {
-            renderState.quads.push_back(sprite.quad);
-            sprite.vertexOffset = spriteOffset;
-            sprite.imageOffset = renderState.images[sprite.imageID].imageOffset;
-            ++spriteOffset;
-        }
-    }
+    
 }

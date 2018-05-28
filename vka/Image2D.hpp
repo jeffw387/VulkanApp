@@ -28,37 +28,37 @@ namespace vka
 			uint32_t queueFamilyIndex,
 			VkQueue graphicsQueue)
 	{
-		auto imageResult = UniqueImage2D();
-		imageResult.imageCreateInfo = {};
-		imageResult.imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		imageResult.imageCreateInfo.pNext = nullptr;
-		imageResult.imageCreateInfo.flags = VkImageCreateFlags(0);
-		imageResult.imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-		imageResult.imageCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-		imageResult.imageCreateInfo.extent.width = bitmap.m_Width;
-		imageResult.imageCreateInfo.extent.height = bitmap.m_Height;
-		imageResult.imageCreateInfo.extent.depth = 1;
-		imageResult.imageCreateInfo.mipLevels = 1;
-		imageResult.imageCreateInfo.arrayLayers = 1;
-		imageResult.imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-		imageResult.imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-		imageResult.imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-		imageResult.imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		imageResult.imageCreateInfo.queueFamilyIndexCount = 1;
-		imageResult.imageCreateInfo.pQueueFamilyIndices = &queueFamilyIndex;
-		imageResult.imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		auto uniqueImage = UniqueImage2D();
+		uniqueImage.imageCreateInfo = {};
+		uniqueImage.imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		uniqueImage.imageCreateInfo.pNext = nullptr;
+		uniqueImage.imageCreateInfo.flags = VkImageCreateFlags(0);
+		uniqueImage.imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+		uniqueImage.imageCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+		uniqueImage.imageCreateInfo.extent.width = bitmap.m_Width;
+		uniqueImage.imageCreateInfo.extent.height = bitmap.m_Height;
+		uniqueImage.imageCreateInfo.extent.depth = 1;
+		uniqueImage.imageCreateInfo.mipLevels = 1;
+		uniqueImage.imageCreateInfo.arrayLayers = 1;
+		uniqueImage.imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		uniqueImage.imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		uniqueImage.imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		uniqueImage.imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		uniqueImage.imageCreateInfo.queueFamilyIndexCount = 1;
+		uniqueImage.imageCreateInfo.pQueueFamilyIndices = &queueFamilyIndex;
+		uniqueImage.imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 		VkImage image;
-		auto result = vkCreateImage(device, &imageResult.imageCreateInfo, nullptr, &image);
+		auto result = vkCreateImage(device, &uniqueImage.imageCreateInfo, nullptr, &image);
 
-		imageResult.image = VkImageUnique(image, VkImageDeleter(device));
-		imageResult.allocation = allocator.AllocateForImage(true, image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		uniqueImage.image = VkImageUnique(image, VkImageDeleter(device));
+		uniqueImage.allocation = allocator.AllocateForImage(true, image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 		vkBindImageMemory(device, image,
-			imageResult.allocation.get().memory,
-			imageResult.allocation.get().offsetInDeviceMemory);
+			uniqueImage.allocation.get().memory,
+			uniqueImage.allocation.get().offsetInDeviceMemory);
 		
-		auto stagingBufferResult = CreateBuffer(device, allocator, imageResult.allocation.get().size,
+		auto stagingBufferResult = CreateBuffer(device, allocator, uniqueImage.allocation.get().size,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			queueFamilyIndex,
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
@@ -208,11 +208,11 @@ namespace vka
 		viewCreateInfo.subresourceRange.layerCount = 1;
 
 		vkCreateImageView(device, &viewCreateInfo, nullptr, &imageView);
-		imageResult.view = VkImageViewUnique(imageView, VkImageViewDeleter(device));
+		uniqueImage.view = VkImageViewUnique(imageView, VkImageViewDeleter(device));
 
 		vkWaitForFences(device, 1, &imageLoadFence, (VkBool32)true, 
 			std::numeric_limits<uint64_t>::max());
 
-		return std::move(imageResult);
+		return std::move(uniqueImage);
 	}
 }

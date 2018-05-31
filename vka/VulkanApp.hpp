@@ -21,7 +21,6 @@
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
 #include "Allocator.hpp"
-// #include "profiler.hpp"
 #include "mymath.hpp"
 #include "CircularQueue.hpp"
 #include "TimeHelper.hpp"
@@ -29,6 +28,8 @@
 #include "Vertex.hpp"
 #include "Results.hpp"
 #include "Debug.hpp"
+#include "Pool.hpp"
+#include "entt.hpp"
 
 #include <iostream>
 #include <map>
@@ -59,7 +60,6 @@ namespace vka
 {
 	using json = nlohmann::json;
 	using HashType = entt::HashedString::hash_type;
-	const char* ConfigPath = "VulkanInitInfo.json";
 
 	struct VulkanApp
 	{
@@ -82,22 +82,30 @@ namespace vka
         std::map<uint64_t, Sprite> sprites;
         std::vector<Quad> quads;
 
-        UniqueAllocatedBuffer vertexBuffer;
+        UniqueAllocatedBuffer vertexBufferUnique;
+		VkDescriptorSet fragmentDescriptorSet;
 
-		VkCommandPool frameCommandPool;
-		std::array<VkCommandBuffer, Surface::BufferCount> commandBuffers;
-		std::array<VkFence, Surface::BufferCount> renderBufferExecutedFences;
-		std::vector<VkFence> imagePresentedFencePool;
+		VkCommandPool renderCommandPool;
+		std::vector<VkCommandBuffer> renderCommandBuffers;
+		std::array<VkFence, Surface::BufferCount> renderCommandBufferExecutedFences;
+		Pool<VkFence> imagePresentedFencePool;
 		std::array<VkFence, Surface::BufferCount> imagePresentedFences;
 		std::array<VkSemaphore, Surface::BufferCount> imageRenderedSemaphores;
         uint32_t nextImage;
 
-		InputState m_InputState;
+        VkClearValue clearValue;
+
+		CircularQueue<InputMessage, 500> inputBuffer;
+        
+        InputBindMap inputBindMap;
+        InputStateMap inputStateMap;
+
+        double cursorX;
+        double cursorY;
 
 		virtual void LoadImages() = 0;
 		virtual void Update(TimePoint_ms) = 0;
 		virtual void Draw() = 0;
-
 
 		void Run(std::string vulkanInitJsonPath)
 		{
@@ -218,19 +226,19 @@ namespace vka
 			std::string vertexShaderPath = vulkanInitData["VertexShaderPath"];
 			std::string fragmentShaderPath = vulkanInitData["FragmentShaderPath"];
 
-			deviceOptional = Device(instanceOptional->GetInstance(),
+			deviceOptional = std::move(Device(instanceOptional->GetInstance(),
 				window,
 				deviceExtensionsCstrings,
 				vertexShaderPath,
-				fragmentShaderPath);
+				fragmentShaderPath));
 			device = deviceOptional->GetDevice();
 
 			LoadDeviceLevelEntryPoints(device);
 
 			auto graphicsQueueID = deviceOptional->GetGraphicsQueueID();
 			copyCommandPool = deviceOptional->CreateCommandPool(graphicsQueueID, true, false);
-			auto commandBuffers = deviceOptional->AllocateCommandBuffers(copyCommandPool, 1);
-			copyCommandBuffer = commandBuffers.at(0);
+			auto renderCommandBuffers = deviceOptional->AllocateCommandBuffers(copyCommandPool, 1);
+			copyCommandBuffer = renderCommandBuffers.at(0);
 
 			copyCommandFence = deviceOptional->CreateFence(false);
 
@@ -241,10 +249,9 @@ namespace vka
 
 			CreateVertexBuffer();
 
-			// TODO: update fragment descriptor set
 			auto imageInfos = std::vector<VkDescriptorImageInfo>();
-			auto textureCount = images.size();
-			imageInfos.reserve(textureCount);
+			auto imageCount = images.size();
+			imageInfos.reserve(imageCount);
 			for (auto& imagePair : images)
 			{
 				VkDescriptorImageInfo imageInfo = {};
@@ -254,9 +261,9 @@ namespace vka
 				imageInfos.push_back(imageInfo);
 			}
 
-			auto& fragmentDescriptorSetManager = deviceOptional->fragmentDescriptorSetOptional.get();
-			auto fragmentDescriptorSetIDs = fragmentDescriptorSetManager.AllocateSets(1);
-			auto fragmentDescriptorSet = fragmentDescriptorSetManager.GetSet(fragmentDescriptorSetIDs.at(1));
+			auto& fragmentDescriptorSetManager = deviceOptional.value().fragmentDescriptorSetOptional.value();
+			auto fragmentDescriptorSets = fragmentDescriptorSetManager.AllocateSets(1);
+			fragmentDescriptorSet = fragmentDescriptorSets.at(1);
 
 			VkWriteDescriptorSet samplerDescriptorWrite = {};
 			samplerDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -264,7 +271,7 @@ namespace vka
 			samplerDescriptorWrite.dstSet = fragmentDescriptorSet;
 			samplerDescriptorWrite.dstBinding = 1;
 			samplerDescriptorWrite.dstArrayElement = 0;
-			samplerDescriptorWrite.descriptorCount = textureCount;
+			samplerDescriptorWrite.descriptorCount = imageCount;
 			samplerDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
 			samplerDescriptorWrite.pImageInfo = imageInfos.data();
 			samplerDescriptorWrite.pBufferInfo = nullptr;
@@ -272,19 +279,16 @@ namespace vka
 
 			vkUpdateDescriptorSets(device, 1, &samplerDescriptorWrite, 0, nullptr);
 
-			// TODO: initialize support structs
-			frameCommandPool = deviceOptional->CreateCommandPool(graphicsQueueID, false, true);			
+			renderCommandPool = deviceOptional->CreateCommandPool(graphicsQueueID, false, true);	
+			renderCommandBuffers = deviceOptional->AllocateCommandBuffers(renderCommandPool, Surface::BufferCount);		
 			for (auto i = 0; i < Surface::BufferCount; ++i)
 			{
-				renderBufferExecutedFences[i] = deviceOptional->CreateFence(true);
-				imagePresentedFencePool.push_back(deviceOptional->CreateFence(false));
+				renderCommandBufferExecutedFences[i] = deviceOptional->CreateFence(true);
+				imagePresentedFencePool.pool(deviceOptional->CreateFence(false));
 				imageRenderedSemaphores[i] = deviceOptional->CreateSemaphore();
 			}			
 
-			InitializeSupportStructs(m_RenderState, m_DeviceState, m_ShaderState);
-			// TODO: set up fence pool
-			SetupImageFencePool(m_RenderState, m_DeviceState);
-			SetClearColor(m_RenderState, 0.f, 0.f, 0.f, 0.f);
+			SetClearColor(0.f, 0.f, 0.f, 0.f);
 
 			startupTimePoint = NowMilliseconds();
 			currentSimulationTime = startupTimePoint;
@@ -295,16 +299,10 @@ namespace vka
 			while (!glfwWindowShouldClose(window))
 			{
 				glfwWaitEvents();
-				if (m_AppState.gameLoop == LoopState::DeviceLost)
-				{
-					gameLoopThread.join();
-					return LoopState::DeviceLost;
-				}
 			}
-			SetLoopState(LoopState::Exit);
+			gameLoop = false;
 			gameLoopThread.join();
-			vkDeviceWaitIdle(m_DeviceState.device.get());
-			return LoopState::Exit;
+			vkDeviceWaitIdle(device);
 		}
 
 		void LoadImage2D(const HashType imageID, const Bitmap& bitmap)
@@ -312,7 +310,7 @@ namespace vka
 			images[imageID] = CreateImage2D(
 				device, 
 				copyCommandBuffer, 
-				allocator,
+				deviceOptional->GetAllocator(),
 				bitmap,
 				deviceOptional->GetGraphicsQueueID(),
 				deviceOptional->GetGraphicsQueue());
@@ -332,10 +330,9 @@ namespace vka
 			glm::vec4 color)
 		{
 			// TODO: may need to change sprites.at() access to array index access for performance
-			auto sprite = m_RenderState.sprites.at(spriteIndex);
-			auto& supports = m_RenderState.supports[m_RenderState.nextImage];
-			auto& commandBuffer = supports.renderCommandBuffer;
-			auto vp = m_RenderState.camera.getMatrix();
+			auto sprite = sprites.at(spriteIndex);
+			auto& renderCommandBuffer = renderCommandBuffers.at(nextImage);
+			auto vp = camera.getMatrix();
 			auto m = transform;
 			auto mvp = vp * m;
 
@@ -344,18 +341,14 @@ namespace vka
 			pushRange.color = color;
 			pushRange.mvp = mvp;
 
-			vkCmdPushConstants(commandBuffer, 
-				m_PipelineState.pipelineLayout.get(),
+			vkCmdPushConstants(renderCommandBuffer, 
+				deviceOptional->GetPipelineLayout(),
 				VK_SHADER_STAGE_VERTEX_BIT,
 				0, sizeof(VertexPushConstants), &pushRange);
 
 			// draw the sprite
-			vkCmdDraw(commandBuffer, VerticesPerQuad, 1, sprite.vertexOffset, 0);
+			vkCmdDraw(renderCommandBuffer, VerticesPerQuad, 1, sprite.vertexOffset, 0);
 		}
-
-		virtual void LoadImages() = 0;
-		virtual void Update(TimePoint_ms) = 0;
-		virtual void Draw() = 0;
 
 	private:
 	
@@ -393,9 +386,9 @@ namespace vka
 			// create vertex buffers
 			constexpr auto quadSize = sizeof(Quad);
 			size_t vertexBufferSize = quadSize * quads.size();
-			auto vertexStagingBuffer = CreateBuffer(
+			auto vertexStagingBufferUnique = CreateBufferUnique(
 				device,
-				allocator,
+				deviceOptional->GetAllocator(),
 				vertexBufferSize,
 				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 				graphicsQueueFamilyID,
@@ -403,9 +396,9 @@ namespace vka
 					VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 				true);
 			
-			vertexBuffer = CreateBuffer(
+			vertexBufferUnique = CreateBufferUnique(
 				device,
-				allocator,
+				deviceOptional->GetAllocator(),
 				vertexBufferSize, 
 				VK_BUFFER_USAGE_TRANSFER_DST_BIT |
 					VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
@@ -415,14 +408,14 @@ namespace vka
 
 			void* vertexStagingData = nullptr;
 			auto memoryMapResult = vkMapMemory(device, 
-				vertexStagingBuffer.allocation.get().memory,
-				vertexStagingBuffer.allocation.get().offsetInDeviceMemory,
-				vertexStagingBuffer.allocation.get().size,
+				vertexStagingBufferUnique.allocation.get().memory,
+				vertexStagingBufferUnique.allocation.get().offsetInDeviceMemory,
+				vertexStagingBufferUnique.allocation.get().size,
 				0,
 				&vertexStagingData);
 			
 			memcpy(vertexStagingData, quads.data(), vertexBufferSize);
-			vkUnmapMemory(device, vertexStagingBuffer.allocation.get().memory);
+			vkUnmapMemory(device, vertexStagingBufferUnique.allocation.get().memory);
 
 			VkBufferCopy bufferCopy = {};
 			bufferCopy.srcOffset = 0;
@@ -432,8 +425,8 @@ namespace vka
 			CopyToBuffer(
 				copyCommandBuffer,
 				graphicsQueue,
-				vertexStagingBuffer.buffer.get(),
-				vertexBuffer.buffer.get(),
+				vertexStagingBufferUnique.buffer.get(),
+				vertexBufferUnique.buffer.get(),
 				bufferCopy,
 				copyCommandFence);
 			
@@ -442,6 +435,16 @@ namespace vka
 				std::numeric_limits<uint64_t>::max());
 			vkResetFences(device, 1, &copyCommandFence);
 		}
+
+		void SetClearColor(float r, float g, float b, float a)
+    {
+        VkClearColorValue clearColor;
+        clearColor.float32[0] = r;
+        clearColor.float32[1] = g;
+        clearColor.float32[2] = b;
+        clearColor.float32[3] = a;
+        clearValue.color = clearColor;
+    }
 
 		void GameThread()
 		{
@@ -456,7 +459,7 @@ namespace vka
 					{
 						currentSimulationTime += UpdateDuration;
 
-						m_InitState.updateCallback(currentSimulationTime);
+						Update(currentSimulationTime);
 					}
 					// render a frame
 					if (!BeginRender())
@@ -464,115 +467,107 @@ namespace vka
 						// TODO: probably need to handle some specific errors here
 						continue;
 					}
-					m_InitState.renderCallback();
+					Draw();
 					EndRender();
 				}
 			}
 			catch (Results::ErrorDeviceLost)
 			{
-
 			}
 			catch (Results::ErrorSurfaceLost result)
 			{
-				device.value()(result);
 			}
 			catch (Results::Suboptimal)
 			{
-				device.value()(result);
 			}
 			catch (Results::ErrorOutOfDate)
 			{
-				device.value()(result);
 			}
 		}
 
 		VkResult AcquireImage()
 		{
-			auto device = m_DeviceState.device.get();
-			auto swapchain = m_RenderState.swapchain.get();
+			auto swapchain = deviceOptional->GetSwapchain();
 
-			VkFence imageReadyFence = fencePool.back();
-			fencePool.pop_back();
+			auto imagePresentedFenceOptional = imagePresentedFencePool.unpool();
 
 			auto acquireResult = vkAcquireNextImageKHR(device, swapchain, 
 				0, VK_NULL_HANDLE, 
-				imageReadyFence, &nextImage);
+				imagePresentedFenceOptional.value(), &nextImage);
 			
-			supportsArray[nextImage].imageReadyFence = imageReadyFence;
+			imagePresentedFences[nextImage] = imagePresentedFenceOptional.value();
 			return acquireResult;
 		}
 
 		bool BeginRender()
 		{
-			// try to acquire an image from the swapchain
 			auto acquireResult = AcquireImage();
 			if (acquireResult != VK_SUCCESS)
 			{
 				return false;
 			}
 
-			auto device = m_DeviceState.device.get();
-			auto nextImage = m_RenderState.nextImage;
-			auto& supports = m_RenderState.supports[nextImage];
-			auto commandBuffer = supports.renderCommandBuffer;
-			auto bufferReadyFence = supports.renderBufferExecuted.get();
+			auto renderCommandBuffer = renderCommandBuffers[nextImage];
+			auto renderCommandBufferExecutedFence = renderCommandBufferExecutedFences[nextImage];
 
-			vkWaitForFences(device, 
-				1, 
-				&bufferReadyFence, 
-				true, std::numeric_limits<uint64_t>::max());
-
-			vkResetFences(device, 1, &bufferReadyFence);
+			auto extent = deviceOptional->GetExtent();
 
 			VkViewport viewport = {};
 			viewport.x = 0.f;
 			viewport.y = 0.f;
-			viewport.width = static_cast<float>(m_SurfaceState.surfaceExtent.width);
-			viewport.height = static_cast<float>(m_SurfaceState.surfaceExtent.height);
+			viewport.width = static_cast<float>(extent.width);
+			viewport.height = static_cast<float>(extent.height);
 			viewport.minDepth = 0.f;
 			viewport.maxDepth = 1.f;
 
 			VkRect2D scissorRect = {};
 			scissorRect.offset.x = 0;
 			scissorRect.offset.y = 0;
-			scissorRect.extent = m_SurfaceState.surfaceExtent;
+			scissorRect.extent = extent;
+
+			// Wait for this frame's render command buffer to finish executing
+			vkWaitForFences(device,
+				1,
+				&renderCommandBufferExecutedFence,
+				true, std::numeric_limits<uint64_t>::max());
+
+			vkResetFences(device, 1, &renderCommandBufferExecutedFence);
 			
 			// record the command buffer
-			vkResetCommandBuffer(commandBuffer, (VkCommandBufferResetFlags)0);
 			VkCommandBufferBeginInfo beginInfo = {};
 			beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 			beginInfo.pNext = nullptr;
-			beginInfo.flags = (VkCommandBufferUsageFlags)0;
+			beginInfo.flags = 0;
 			beginInfo.pInheritanceInfo = nullptr;
-			vkBeginCommandBuffer(commandBuffer, &beginInfo);
+			vkBeginCommandBuffer(renderCommandBuffer, &beginInfo);
 
-			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-			vkCmdSetScissor(commandBuffer, 0, 1, &scissorRect);
+			vkCmdSetViewport(renderCommandBuffer, 0, 1, &viewport);
+			vkCmdSetScissor(renderCommandBuffer, 0, 1, &scissorRect);
 			
 			VkRenderPassBeginInfo renderPassBeginInfo = {};
 			renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 			renderPassBeginInfo.pNext = nullptr;
-			renderPassBeginInfo.renderPass = m_RenderState.renderPass.get();
-			renderPassBeginInfo.framebuffer = m_RenderState.framebuffers[nextImage].get();
+			renderPassBeginInfo.renderPass = deviceOptional->GetRenderPass();
+			renderPassBeginInfo.framebuffer = deviceOptional->GetFramebuffer(nextImage);
 			renderPassBeginInfo.renderArea = scissorRect;
 			renderPassBeginInfo.clearValueCount = 1;
-			renderPassBeginInfo.pClearValues = &m_RenderState.clearValue;
-			vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+			renderPassBeginInfo.pClearValues = &clearValue;
+			vkCmdBeginRenderPass(renderCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 			
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineState.pipeline.get());
+			vkCmdBindPipeline(renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, deviceOptional->GetPipeline());
 			
 			VkDeviceSize vertexBufferOffset = 0;
-			VkBuffer vertexBuffer = m_RenderState.vertexBuffer.buffer.get();
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, 
+			VkBuffer vertexBuffer = vertexBufferUnique.buffer.get();
+			vkCmdBindVertexBuffers(renderCommandBuffer, 0, 1, 
 				&vertexBuffer, 
 				&vertexBufferOffset);
 
 			// bind sampler and images uniforms
-			vkCmdBindDescriptorSets(commandBuffer,
+			vkCmdBindDescriptorSets(renderCommandBuffer,
 				VK_PIPELINE_BIND_POINT_GRAPHICS,
-				m_PipelineState.pipelineLayout.get(),
+				deviceOptional->GetPipelineLayout(),
 				0,
-				1, &m_ShaderState.fragmentDescriptorSet,
+				1, &fragmentDescriptorSet,
 				0, nullptr);
 
 			return true;
@@ -580,16 +575,17 @@ namespace vka
 
 		void EndRender()
 		{
-			auto device = m_DeviceState.device.get();
-			auto& supports = m_RenderState.supports[m_RenderState.nextImage];
-			auto imageReadyFence = supports.imageReadyFence;
+			auto& renderCommandBuffer = renderCommandBuffers[nextImage];
+			auto& renderBufferExecuted = renderCommandBufferExecutedFences[nextImage];
+			auto& imagePresentedFence = imagePresentedFences[nextImage];
+			auto& imageRenderedSemaphore = imageRenderedSemaphores[nextImage];
+			auto graphicsQueue = deviceOptional->GetGraphicsQueue();
 
 			// Finish recording draw command buffer
-			vkCmdEndRenderPass(supports.renderCommandBuffer);
-			vkEndCommandBuffer(supports.renderCommandBuffer);
+			vkCmdEndRenderPass(renderCommandBuffer);
+			vkEndCommandBuffer(renderCommandBuffer);
 
 			// Submit draw command buffer
-			VkSemaphore imageRenderComplete = supports.imageRenderCompleteSemaphore.get();
 			auto stageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			VkSubmitInfo submitInfo = {};
 			submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -598,32 +594,32 @@ namespace vka
 			submitInfo.pWaitSemaphores = nullptr;
 			submitInfo.pWaitDstStageMask = nullptr;
 			submitInfo.commandBufferCount = 1;
-			submitInfo.pCommandBuffers = &supports.renderCommandBuffer;
+			submitInfo.pCommandBuffers = &renderCommandBuffer;
 			submitInfo.signalSemaphoreCount = 1;
-			submitInfo.pSignalSemaphores = &imageRenderComplete;
+			submitInfo.pSignalSemaphores = &imageRenderedSemaphore;
 
-			vkWaitForFences(device, 1, &imageReadyFence, true, std::numeric_limits<uint64_t>::max());
-			vkResetFences(device, 1, &imageReadyFence);
-			m_RenderState.fencePool.push_back(imageReadyFence);
-			supports.imageReadyFence = VK_NULL_HANDLE;
+			vkWaitForFences(device, 1, &imagePresentedFence, true, std::numeric_limits<uint64_t>::max());
+			vkResetFences(device, 1, &imagePresentedFence);
+			imagePresentedFencePool.pool(imagePresentedFence);
+			imagePresentedFence = VK_NULL_HANDLE;
 
-			auto drawSubmitResult = vkQueueSubmit(m_DeviceState.graphicsQueue, 1, 
-				&submitInfo, supports.renderBufferExecuted.get());
+			auto drawSubmitResult = vkQueueSubmit(graphicsQueue, 1, 
+				&submitInfo, renderBufferExecuted);
 
 			// Present image
-			VkSwapchainKHR swapchain = m_RenderState.swapchain.get();
+			VkSwapchainKHR swapchain = deviceOptional->GetSwapchain();
 			VkPresentInfoKHR presentInfo = {};
 			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 			presentInfo.pNext = nullptr;
 			presentInfo.waitSemaphoreCount = 1;
-			presentInfo.pWaitSemaphores = &imageRenderComplete;
+			presentInfo.pWaitSemaphores = &imageRenderedSemaphore;
 			presentInfo.swapchainCount = 1;
 			presentInfo.pSwapchains = &swapchain;
-			presentInfo.pImageIndices = &m_RenderState.nextImage;
+			presentInfo.pImageIndices = &nextImage;
 			presentInfo.pResults = nullptr;
 
 			auto presentResult = vkQueuePresentKHR(
-				m_DeviceState.graphicsQueue, 
+				graphicsQueue, 
 				&presentInfo);
 			switch (presentResult)
 			{
@@ -633,16 +629,16 @@ namespace vka
 				case VK_SUBOPTIMAL_KHR:
 				case VK_ERROR_OUT_OF_DATE_KHR:
 					// recreate swapchain
-					throw Results::ErrorOutOfDate;
+					throw Results::ErrorOutOfDate();
 					return;
 				case VK_ERROR_OUT_OF_HOST_MEMORY:
-					throw Results::ErrorOutOfHostMemory;
+					throw Results::ErrorOutOfHostMemory();
 				case VK_ERROR_OUT_OF_DEVICE_MEMORY:
-					throw Results::ErrorOutOfDeviceMemory;
+					throw Results::ErrorOutOfDeviceMemory();
 				case VK_ERROR_DEVICE_LOST:
-					throw Results::ErrorDeviceLost;
+					throw Results::ErrorDeviceLost();
 				case VK_ERROR_SURFACE_LOST_KHR:
-					throw Results::ErrorSurfaceLost;
+					throw Results::ErrorSurfaceLost();
 			}
 		}
 	};
@@ -656,14 +652,14 @@ namespace vka
 	{
 		auto& app = *GetUserPointer(window);
 		msg.time = NowMilliseconds();
-		app.m_InputState.inputBuffer.pushLast(std::move(msg));
+		app.inputBuffer.pushLast(std::move(msg));
 	}
 
 	static void SetCursorPosition(GLFWwindow* window, double x, double y)
 	{
 		auto& app = *GetUserPointer(window);
-		app.m_InputState.cursorX = x;
-		app.m_InputState.cursorY = y;
+		app.cursorX = x;
+		app.cursorY = y;
 	}
 
 	// class Text

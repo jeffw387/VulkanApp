@@ -20,6 +20,10 @@ namespace vka
         }
 
         VertexData() noexcept = default;
+        VertexData(VertexData&&) = default;
+        VertexData& operator =(VertexData&&) = default;
+        VertexData(const VertexData&) = default;
+        VertexData& operator =(const VertexData&) = default;
 
         const VkPipelineVertexInputStateCreateInfo& GetVertexInputInfo()
         {

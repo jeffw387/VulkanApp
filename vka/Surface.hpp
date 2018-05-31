@@ -27,6 +27,9 @@ namespace vka
             ChoosePresentMode();
         }
 
+        Surface(Surface&&) = default;
+        Surface& operator =(Surface&&) = default;
+
         VkSurfaceKHR GetSurface()
         {
             return surfaceUnique.get();

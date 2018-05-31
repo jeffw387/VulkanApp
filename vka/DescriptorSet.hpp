@@ -26,7 +26,10 @@ namespace vka
             SetupAllocation();            
         }
 
-        std::vector<size_t> AllocateSets(size_t count)
+        DescriptorSet(DescriptorSet&&) = default;
+        DescriptorSet& operator =(DescriptorSet&&) = default;
+
+        std::vector<VkDescriptorSet> AllocateSets(size_t count)
         {
             auto currentSets = sets.size();
             auto setsAvailable = maxSets - currentSets;
@@ -34,24 +37,16 @@ namespace vka
             std::vector<VkDescriptorSet> newSets;
             std::vector<VkDescriptorSetLayout> newSetLayouts;
             newSetLayouts.resize(allocateCount);
-            std::fill(newSetLayouts.begin(), newSetLayouts.end(), layoutUnique.get());
             newSets.resize(allocateCount);
+            std::fill(newSetLayouts.begin(), newSetLayouts.end(), layoutUnique.get());
             allocateInfo.descriptorSetCount = allocateCount;
             allocateInfo.pSetLayouts = newSetLayouts.data();
             vkAllocateDescriptorSets(device, &allocateInfo, newSets.data());
-            std::vector<size_t> setIDs;
-            setIDs.resize(allocateCount);
             for (auto newSet : newSets)
             {
-                setIDs.push_back(currentSets);
                 sets.push_back(newSet);
             }
-            return setIDs;
-        }
-
-        VkDescriptorSet GetSet(size_t setID)
-        {
-            return sets[setID];
+            return newSets;
         }
 
         VkDescriptorPool GetPool()

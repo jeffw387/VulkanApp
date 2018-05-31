@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <iostream>
 #include <map>
+#include <optional>
 
 #include "ECSComponents.hpp"
 #include "entt.hpp"
@@ -18,6 +19,7 @@
 #endif
 
 #include "SpriteData.hpp"
+const char* ConfigPath = "VulkanInitInfo.json";
 
 namespace Font
 {
@@ -48,12 +50,12 @@ public:
         while (inputToProcess)
         {
             auto messageOptional = inputBuffer.popFirstIf(
-                [timePoint](vka::InputMessage message){ return message.time < timePoint; });
+                [updateTime](vka::InputMessage message){ return message.time < updateTime; });
             
             if (messageOptional.has_value())
             {
                 auto& message = *messageOptional;
-                auto bindHash = bindMap[message.signature];
+                auto bindHash = inputBindMap[message.signature];
                 auto stateVariant = inputStateMap[bindHash];
                 vka::StateVisitor visitor;
                 visitor.signature = message.signature;
@@ -99,41 +101,18 @@ public:
 
 int main()
 {
+    ClientApp app;
+    entt::DefaultRegistry enttRegistry;
 
-    VkApplicationInfo appInfo = {};
-    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pNext = nullptr;
-    appInfo.pApplicationName = nullptr;
-    appInfo.applicationVersion = {};
-    appInfo.pEngineName = nullptr;
-    appInfo.engineVersion = {};
-    appInfo.apiVersion = VK_MAKE_VERSION(1,0,0);
+    app.inputBindMap[vka::MakeSignature(GLFW_KEY_LEFT, GLFW_PRESS)]  = 	Bindings::Left;
+    app.inputBindMap[vka::MakeSignature(GLFW_KEY_RIGHT, GLFW_PRESS)] = 	Bindings::Right;
+    app.inputBindMap[vka::MakeSignature(GLFW_KEY_UP, GLFW_PRESS)]    = 	Bindings::Up;
+    app.inputBindMap[vka::MakeSignature(GLFW_KEY_DOWN, GLFW_PRESS)]  = 	Bindings::Down;
 
-    VkInstanceCreateInfo instanceCreateInfo = {};
-    instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instanceCreateInfo.pNext = nullptr;
-    instanceCreateInfo.flags = 0;
-    instanceCreateInfo.pApplicationInfo = &appInfo;
-    instanceCreateInfo.enabledLayerCount = Layers.size();
-    instanceCreateInfo.ppEnabledLayerNames = Layers.data();
-    instanceCreateInfo.enabledExtensionCount = InstanceExtensions.size();
-    instanceCreateInfo.ppEnabledExtensionNames = InstanceExtensions.data();
-
-
-    vka::InputBindMap bindMap;
-    bindMap[vka::MakeSignature(GLFW_KEY_LEFT, GLFW_PRESS)]  = 	Bindings::Left;
-    bindMap[vka::MakeSignature(GLFW_KEY_RIGHT, GLFW_PRESS)] = 	Bindings::Right;
-    bindMap[vka::MakeSignature(GLFW_KEY_UP, GLFW_PRESS)]    = 	Bindings::Up;
-    bindMap[vka::MakeSignature(GLFW_KEY_DOWN, GLFW_PRESS)]  = 	Bindings::Down;
-
-    vka::InputStateMap inputStateMap;
-    inputStateMap[Bindings::Left] =  vka::MakeAction([](){ std::cout << "Left Pressed.\n"; });
-    inputStateMap[Bindings::Right] = vka::MakeAction([](){ std::cout << "Right Pressed.\n"; });
-    inputStateMap[Bindings::Up] =  vka::MakeAction([](){ std::cout << "Up Pressed.\n"; });
-    inputStateMap[Bindings::Down] =  vka::MakeAction([](){ std::cout << "Down Pressed.\n"; });
-
-    auto& inputBuffer = m_InputState.inputBuffer;
-
+    app.inputStateMap[Bindings::Left] =  vka::MakeAction([](){ std::cout << "Left Pressed.\n"; });
+    app.inputStateMap[Bindings::Right] = vka::MakeAction([](){ std::cout << "Right Pressed.\n"; });
+    app.inputStateMap[Bindings::Up] =  vka::MakeAction([](){ std::cout << "Up Pressed.\n"; });
+    app.inputStateMap[Bindings::Down] =  vka::MakeAction([](){ std::cout << "Down Pressed.\n"; });
 
     enttRegistry.prepare<cmp::Sprite, cmp::PositionMatrix, cmp::Color>();
     enttRegistry.prepare<cmp::Position, cmp::PositionMatrix, cmp::Velocity>();
@@ -148,25 +127,5 @@ int main()
             cmp::RectSize());
     }
 
-    vka::InitState initState = {};
-    initState.windowTitle = std::string("Vulkan App");
-    initState.width = 900;
-    initState.height = 900;
-    initState.instanceCreateInfo = instanceCreateInfo;
-    initState.DeviceExtensions = DeviceExtensions;
-    initState.vertexShaderPath = std::string(CONTENTROOT "Shaders/vert.spv");
-    initState.fragmentShaderPath = std::string(CONTENTROOT "Shaders/frag.spv");
-    
-    while (true)
-    {
-        ClientApp clientApp;
-        
-        auto runResult = clientApp.Run(initState);
-        switch (runResult)
-        {
-            case vka::LoopState::DeviceLost: break;
-            case vka::LoopState::Exit: return 0;
-            default: return 0;
-        }
-    }
+    app.Run(std::string(ConfigPath));
 }

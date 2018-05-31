@@ -2,8 +2,6 @@
 
 #include "vulkan/vulkan.h"
 
-#include <type_traits>
-
 namespace vka
 {
     namespace Results

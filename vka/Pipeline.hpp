@@ -23,6 +23,9 @@ namespace vka
             CreatePipelineLayout();
         }
 
+        PipelineLayout(PipelineLayout&&) = default;
+        PipelineLayout& operator =(PipelineLayout&&) = default;
+
         VkPipelineLayout GetPipelineLayout()
         {
             return pipelineLayoutUnique.get();
@@ -68,6 +71,9 @@ namespace vka
         {
             CreatePipeline();
         }
+
+        Pipeline(Pipeline&&) = default;
+        Pipeline& operator =(Pipeline&&) = default;
 
         VkPipeline GetPipeline()
         {

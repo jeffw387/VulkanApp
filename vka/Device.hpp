@@ -67,6 +67,79 @@ namespace vka
             CreatePipeline();
         }
 
+        Device(Device&& other) : 
+            instance(std::move(other.instance)),
+            window(std::move(other.window)),
+            deviceExtensions(std::move(other.deviceExtensions)),
+            vertexShaderPath(std::move(other.vertexShaderPath)),
+            fragmentShaderPath(std::move(other.fragmentShaderPath)),
+            physicalDevice(std::move(other.physicalDevice)),
+            queueFamilyProperties(std::move(other.queueFamilyProperties)),
+            graphicsQueuePriority(std::move(other.graphicsQueuePriority)),
+            graphicsQueueCreateInfo(std::move(other.graphicsQueueCreateInfo)),
+            presentQueuePriority(std::move(other.presentQueuePriority)),
+            presentQueueCreateInfo(std::move(other.presentQueueCreateInfo)),
+            queueCreateInfos(std::move(other.queueCreateInfos)),
+            createInfo(std::move(other.createInfo)),
+            deviceUnique(std::move(other.deviceUnique)),
+            graphicsQueue(std::move(other.graphicsQueue)),
+            presentQueue(std::move(other.presentQueue)),
+            allocator(std::move(other.allocator)),
+            commandPools(std::move(other.commandPools)),
+            fences(std::move(other.fences)),
+            semaphores(std::move(other.semaphores)),
+            surfaceOptional(std::move(other.surfaceOptional)),
+            renderPassOptional(std::move(other.renderPassOptional)),
+            swapchainOptional(std::move(other.swapchainOptional)),
+            vertexShaderOptional(std::move(other.vertexShaderOptional)),
+            fragmentShaderOptional(std::move(other.fragmentShaderOptional)),
+            sampler(std::move(sampler)),
+            samplerUnique(std::move(other.samplerUnique)),
+            fragmentDescriptorSetOptional(std::move(other.fragmentDescriptorSetOptional)),
+            setLayouts(std::move(other.setLayouts)),
+            pushConstantRanges(std::move(other.pushConstantRanges)),
+            vertexData(std::move(other.vertexData)),
+            pipelineLayoutOptional(std::move(other.pipelineLayoutOptional)),
+            pipelineOptional(std::move(other.pipelineOptional))
+        {}
+        Device& operator =(Device&& other)
+        {
+            instance = std::move(other.instance);
+            window = std::move(other.window);
+            deviceExtensions = std::move(other.deviceExtensions);
+            vertexShaderPath = std::move(other.vertexShaderPath);
+            fragmentShaderPath = std::move(other.fragmentShaderPath);
+            physicalDevice = std::move(other.physicalDevice);
+            queueFamilyProperties = std::move(other.queueFamilyProperties);
+            // graphicsQueuePriority = std::move(other.graphicsQueuePriority);
+            graphicsQueueCreateInfo = std::move(other.graphicsQueueCreateInfo);
+            // presentQueuePriority = std::move(other.presentQueuePriority);
+            presentQueueCreateInfo = std::move(other.presentQueueCreateInfo);
+            queueCreateInfos = std::move(other.queueCreateInfos);
+            createInfo = std::move(other.createInfo);
+            deviceUnique = std::move(other.deviceUnique);
+            graphicsQueue = std::move(other.graphicsQueue);
+            presentQueue = std::move(other.presentQueue);
+            allocator = std::move(other.allocator);
+            commandPools = std::move(other.commandPools);
+            fences = std::move(other.fences);
+            semaphores = std::move(other.semaphores);
+            surfaceOptional = std::move(other.surfaceOptional);
+            renderPassOptional = std::move(other.renderPassOptional);
+            swapchainOptional = std::move(other.swapchainOptional);
+            vertexShaderOptional = std::move(other.vertexShaderOptional);
+            fragmentShaderOptional = std::move(other.fragmentShaderOptional);
+            sampler = std::move(sampler);
+            samplerUnique = std::move(other.samplerUnique);
+            fragmentDescriptorSetOptional = std::move(other.fragmentDescriptorSetOptional);
+            setLayouts = std::move(other.setLayouts);
+            pushConstantRanges = std::move(other.pushConstantRanges);
+            vertexData = std::move(other.vertexData);
+            pipelineLayoutOptional = std::move(other.pipelineLayoutOptional);
+            pipelineOptional = std::move(other.pipelineOptional);
+            return *this;
+        }
+
         VkPhysicalDevice GetPhysicalDevice()
         {
             return physicalDevice;
@@ -100,6 +173,36 @@ namespace vka
         uint32_t GetPresentQueueID()
         {
             return presentQueueCreateInfo.queueFamilyIndex;
+        }
+
+        VkSwapchainKHR GetSwapchain()
+        {
+            return swapchainOptional.value().GetSwapchain();
+        }
+
+        VkRenderPass GetRenderPass()
+        {
+            return renderPassOptional->GetRenderPass();
+        }
+
+        VkPipelineLayout GetPipelineLayout()
+        {
+            return pipelineLayoutOptional->GetPipelineLayout();
+        }
+
+        VkPipeline GetPipeline()
+        {
+            return pipelineOptional->GetPipeline();
+        }
+
+        VkExtent2D GetExtent()
+        {
+            return surfaceOptional->GetExtent();
+        }
+
+        VkFramebuffer GetFramebuffer(size_t i)
+        {
+            return swapchainOptional->GetFramebuffer(i);
         }
 
         VkFence CreateFence(bool signaled)
@@ -151,9 +254,9 @@ namespace vka
 			allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 			allocateInfo.pNext = nullptr;
 			allocateInfo.commandPool = pool;
-			allocateInfo.level = 0;
+			allocateInfo.level = (VkCommandBufferLevel)0;
 			allocateInfo.commandBufferCount = count;
-			vkAllocateCommandBuffers(device, &allocateInfo, commandBuffers.data());
+			vkAllocateCommandBuffers(GetDevice(), &allocateInfo, commandBuffers.data());
             return commandBuffers;
         }
 
@@ -215,7 +318,7 @@ namespace vka
         VertexData vertexData;
         std::optional<PipelineLayout> pipelineLayoutOptional;
         std::optional<Pipeline> pipelineOptional;
-        
+
         void SelectPhysicalDevice()
         {
             std::vector<VkPhysicalDevice> physicalDevices;

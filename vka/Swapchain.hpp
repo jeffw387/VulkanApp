@@ -39,9 +39,17 @@ namespace vka
             CreateFramebuffers();
         }
 
+        Swapchain(Swapchain&&) = default;
+        Swapchain& operator =(Swapchain&&) = default;
+
         VkSwapchainKHR GetSwapchain()
         {
             return swapchainUnique.get();
+        }
+
+        VkFramebuffer GetFramebuffer(size_t i)
+        {
+            return framebuffersUnique[i].get();
         }
         
     private:

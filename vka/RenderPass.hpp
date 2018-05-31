@@ -20,6 +20,9 @@ namespace vka
             CreateRenderPass();
         }
 
+        RenderPass(RenderPass&&) = default;
+        RenderPass& operator =(RenderPass&&) = default;
+
         VkRenderPass GetRenderPass()
         {
             return renderPassUnique.get();

@@ -53,6 +53,9 @@ namespace vka
             CreateShaderModule();
         }
 
+        Shader(Shader&&) = default;
+        Shader& operator =(Shader&&) = default;
+
         VkShaderModule GetShaderModule()
         {
             return shaderUnique.get();
@@ -71,10 +74,10 @@ namespace vka
             shaderData.shaderStageInfo.pNext = nullptr;
             shaderData.shaderStageInfo.flags = 0;
             shaderData.shaderStageInfo.stage = stage;
-            shaderData.shaderStageInfo.module = get();
+            shaderData.shaderStageInfo.module = GetShaderModule();
             shaderData.shaderStageInfo.pName = entryPointName.c_str();
             shaderData.shaderStageInfo.pSpecializationInfo = 
-                &shaderData.specialization.shaderStageInfo;
+                &shaderData.specialization.info;
             return shaderData;
         }
 

@@ -50,6 +50,8 @@ namespace vka
     struct MemoryBlock
     {
         MemoryBlock(const VkDevice& device, const VkMemoryAllocateInfo& allocateInfo);
+        MemoryBlock(MemoryBlock&& other) = default;
+        MemoryBlock& operator =(MemoryBlock&& other) = default;
         std::optional<VkDeviceSize> CanAllocate(const VkMemoryRequirements& requirements);
         VkDeviceSize DivideAllocation(
             const VkDeviceSize allocationOffset,
@@ -68,6 +70,8 @@ namespace vka
     public:
         static const VkDeviceSize DefaultMemoryBlockSize = 1000000U;
         Allocator() = default;
+        Allocator(Allocator&& other) = default;
+        Allocator& operator =(Allocator&& other) = default;
         Allocator(VkPhysicalDevice physicalDevice, 
             VkDevice device, 
             VkDeviceSize defaultBlockSize = DefaultMemoryBlockSize);

@@ -13,7 +13,7 @@ namespace vka
         VkBufferCreateInfo bufferCreateInfo;
     };
 
-    UniqueAllocatedBuffer CreateBuffer(VkDevice device, 
+    UniqueAllocatedBuffer CreateBufferUnique(VkDevice device, 
         Allocator& allocator, 
         VkDeviceSize size,
         VkBufferUsageFlags usageFlags,

@@ -58,7 +58,7 @@ namespace vka
 			uniqueImage.allocation.get().memory,
 			uniqueImage.allocation.get().offsetInDeviceMemory);
 		
-		auto stagingBufferResult = CreateBuffer(device, allocator, uniqueImage.allocation.get().size,
+		auto stagingBufferResult = CreateBufferUnique(device, allocator, uniqueImage.allocation.get().size,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			queueFamilyIndex,
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |

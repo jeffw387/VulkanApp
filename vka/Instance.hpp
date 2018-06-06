@@ -2,7 +2,7 @@
 
 #include "UniqueVulkan.hpp"
 #include "vulkan/vulkan.h"
-#include "VulkanFunctions.hpp"
+#include "VulkanFunctionLoader.hpp"
 
 namespace vka
 {
@@ -30,6 +30,7 @@ namespace vka
 			VkInstance instance;
 			auto result = vkCreateInstance(&createInfo, nullptr, &instance);
 			instanceUnique = VkInstanceUnique(instance, VkInstanceDeleter());
+			LoadInstanceLevelEntryPoints(instance);
 		}
     };
 }

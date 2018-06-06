@@ -22,8 +22,9 @@
             "VK_LAYER_LUNARG_standard_validation",
             "VK_LAYER_LUNARG_assistant_layer"
         ],
-        "Constant" : [
-
+        "Constant" : [],
+        "Unused" : [
+            "VK_LAYER_LUNARG_api_dump"
         ]
     },
     "InstanceExtensions" : {
@@ -36,9 +37,7 @@
         ]
     },
     "DeviceExtensions" : {
-        "Debug" : [
-
-        ],
+        "Debug" : [],
         "Constant" : [
             "VK_KHR_swapchain"
         ]
@@ -46,7 +45,6 @@
     "DefaultWindowSize" : {
         "Width" : 900,
         "Height" : 900
-    },
-    "VertexShaderPath" : "Shaders/vert.spv",
-    "FragmentShaderPath" : "Shaders/frag.spv"
+    }
+    
 }

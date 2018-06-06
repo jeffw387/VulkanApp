@@ -161,12 +161,17 @@ namespace vka
                 &presentModeCount,
                 presentModes.data());
 
-            auto mailboxMode = std::find(presentModes.begin(), presentModes.end(), VK_PRESENT_MODE_MAILBOX_KHR);
-            if (mailboxMode == presentModes.end())
+            auto presentIterator = presentModes.begin();
+            auto presentEnd = presentModes.end();
+            presentIterator = std::find(presentModes.begin(), presentModes.end(), VK_PRESENT_MODE_MAILBOX_KHR);
+            if (presentIterator == presentModes.end())
             {
-                std::runtime_error("Error: mailbox present mode not supported!");
+                presentMode = VK_PRESENT_MODE_FIFO_KHR;
             }
-            presentMode = *mailboxMode;
+            else
+            {
+                presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+            }
         }
     };
 }

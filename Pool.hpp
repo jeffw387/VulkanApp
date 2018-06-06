@@ -8,20 +8,20 @@ template <typename T>
 class Pool
 {
 public:
-    size_t size()
+    size_t size() const noexcept
     {
         return storage.size();
     }
 
     std::optional<T> unpool()
     {
+        auto result = std::optional<T>();
         if (size() > 0)
         {
-            auto result = std::make_optional<T>(storage.back());
+            result = storage.back();
             storage.pop_back();
-            return result;
         }
-        return std::make_optional<T>();
+        return result;
     }
 
     void pool(const T& value)

@@ -58,22 +58,19 @@ namespace vka
         Pipeline(VkDevice device, 
             VkPipelineLayout pipelineLayout,
             VkRenderPass renderPass,
-            ShaderData vertexShaderData,
-            ShaderData fragmentShaderData,
+            VkPipelineShaderStageCreateInfo vertexShaderStageInfo,
+            VkPipelineShaderStageCreateInfo fragmentShaderStageInfo,
             VertexData vertexData)
             :
             device(device),
             pipelineLayout(pipelineLayout),
             renderPass(renderPass),
-            vertexShaderData(vertexShaderData),
-            fragmentShaderData(fragmentShaderData),
+            vertexShaderStageInfo(vertexShaderStageInfo),
+            fragmentShaderStageInfo(fragmentShaderStageInfo),
             vertexData(vertexData)
         {
             CreatePipeline();
         }
-
-        Pipeline(Pipeline&&) = default;
-        Pipeline& operator =(Pipeline&&) = default;
 
         VkPipeline GetPipeline()
         {
@@ -83,8 +80,8 @@ namespace vka
         VkDevice device;
         VkPipelineLayout pipelineLayout;
         VkRenderPass renderPass;
-        ShaderData vertexShaderData;
-        ShaderData fragmentShaderData;
+        VkPipelineShaderStageCreateInfo vertexShaderStageInfo;
+        VkPipelineShaderStageCreateInfo fragmentShaderStageInfo;
         VertexData vertexData;
 
         std::vector<VkPipelineShaderStageCreateInfo> shaderStageInfo;
@@ -100,8 +97,8 @@ namespace vka
 
         void CreatePipeline()
         {
-            shaderStageInfo.push_back(vertexShaderData.shaderStageInfo);
-            shaderStageInfo.push_back(fragmentShaderData.shaderStageInfo);
+            shaderStageInfo.push_back(vertexShaderStageInfo);
+            shaderStageInfo.push_back(fragmentShaderStageInfo);
 
             viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
             viewportInfo.pNext = nullptr;
@@ -168,13 +165,16 @@ namespace vka
             dynamicStateInfo.dynamicStateCount = dynamicStates.size();
             dynamicStateInfo.pDynamicStates = dynamicStates.data();
 
+            auto vertexInputInfo = vertexData.GetVertexInputInfo();
+            auto vertexInputAssemblyInfo = vertexData.GetInputAssemblyInfo();
+
             pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
             pipelineCreateInfo.pNext = nullptr;
             pipelineCreateInfo.flags = 0;
             pipelineCreateInfo.stageCount = shaderStageInfo.size();
             pipelineCreateInfo.pStages = shaderStageInfo.data();
-            pipelineCreateInfo.pVertexInputState = &vertexData.GetVertexInputInfo();
-            pipelineCreateInfo.pInputAssemblyState = &vertexData.GetInputAssemblyInfo();
+            pipelineCreateInfo.pVertexInputState = &vertexInputInfo;
+            pipelineCreateInfo.pInputAssemblyState = &vertexInputAssemblyInfo;
             pipelineCreateInfo.pTessellationState = nullptr;
             pipelineCreateInfo.pViewportState = &viewportInfo;
             pipelineCreateInfo.pRasterizationState = &rasterizationInfo;

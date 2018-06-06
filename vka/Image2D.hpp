@@ -21,8 +21,9 @@ namespace vka
 		uint64_t imageOffset;
 	};
 
-	UniqueImage2D CreateImage2D(VkDevice device,
+	static UniqueImage2D CreateImage2D(VkDevice device,
 			VkCommandBuffer commandBuffer,
+			VkFence fence,
 			Allocator& allocator,
 			const Bitmap& bitmap,
 			uint32_t queueFamilyIndex,
@@ -165,15 +166,6 @@ namespace vka
 
 		vkEndCommandBuffer(commandBuffer);
 
-		// create fence, submit command buffer
-		VkFenceCreateInfo fenceCreateInfo = {};
-		fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-		fenceCreateInfo.pNext = nullptr;
-		fenceCreateInfo.flags = VkFenceCreateFlags(0);
-
-		VkFence imageLoadFence;
-		vkCreateFence(device, &fenceCreateInfo, nullptr, &imageLoadFence);
-
 		VkSubmitInfo submitInfo = {};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submitInfo.pNext = nullptr;
@@ -184,12 +176,9 @@ namespace vka
 		submitInfo.pCommandBuffers = &commandBuffer;
 		submitInfo.signalSemaphoreCount = 0;
 		submitInfo.pSignalSemaphores = nullptr;
+		vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence);
 
-		vkQueueSubmit(graphicsQueue, 1, &submitInfo, imageLoadFence);
-
-		// create image view
 		VkImageView imageView;
-
 		VkImageViewCreateInfo viewCreateInfo = {};
 		viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewCreateInfo.pNext = nullptr;
@@ -206,12 +195,13 @@ namespace vka
 		viewCreateInfo.subresourceRange.levelCount = 1;
 		viewCreateInfo.subresourceRange.baseArrayLayer = 0;
 		viewCreateInfo.subresourceRange.layerCount = 1;
-
 		vkCreateImageView(device, &viewCreateInfo, nullptr, &imageView);
 		uniqueImage.view = VkImageViewUnique(imageView, VkImageViewDeleter(device));
 
-		vkWaitForFences(device, 1, &imageLoadFence, (VkBool32)true, 
+		vkWaitForFences(device, 1, &fence, (VkBool32)true, 
 			std::numeric_limits<uint64_t>::max());
+
+		vkResetFences(device, 1, &fence);
 
 		return std::move(uniqueImage);
 	}

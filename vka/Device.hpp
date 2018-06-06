@@ -7,13 +7,15 @@
 #include "RenderPass.hpp"
 #include "Shader.hpp"
 #include "DescriptorSet.hpp"
-#include "vka/Results.hpp"
+#include "Results.hpp"
 #include "fileIO.hpp"
 #include "Vertex.hpp"
 #include "VertexData.hpp"
 #include "GLFW/glfw3.h"
 #include "Allocator.hpp"
 #include "Pipeline.hpp"
+#include "VulkanFunctionLoader.hpp"
+#include "gsl.hpp"
 
 #include <tuple>
 #include <vector>
@@ -27,16 +29,30 @@ namespace vka
 {
     struct VertexPushConstants
 	{
-		glm::uint32 imageOffset;
-        glm::vec4 color;
         glm::mat4 mvp;
 	};
+
+    struct FragmentPushConstants
+    {
+		glm::uint32 imageOffset;
+        glm::vec3 padding;
+        glm::vec4 color;
+    };
+
+    struct PushConstants
+    {
+        VertexPushConstants vertexPushConstants;
+        FragmentPushConstants fragmentPushConstants;
+    };
+
+    constexpr float graphicsQueuePriority = 0.f;
+    constexpr float presentQueuePriority = 0.f;
 
     class Device
     {
     public:
         static constexpr uint32_t ImageCount = 1;
-        static constexpr uint32_t PushConstantSize = sizeof(VertexPushConstants);
+        static constexpr uint32_t PushConstantSize = sizeof(PushConstants);
 
         Device(VkInstance instance,
             GLFWwindow* window,
@@ -52,10 +68,11 @@ namespace vka
         {
             SelectPhysicalDevice();
             GetQueueFamilyProperties();
+            CreateSurface();
             SelectGraphicsQueue();
             SelectPresentQueue();
             CreateDevice();
-            CreateSurface();
+            CreateAllocator();
             CreateRenderPass();
             CreateSwapchain();
             CreateVertexShader();
@@ -67,78 +84,78 @@ namespace vka
             CreatePipeline();
         }
 
-        Device(Device&& other) : 
-            instance(std::move(other.instance)),
-            window(std::move(other.window)),
-            deviceExtensions(std::move(other.deviceExtensions)),
-            vertexShaderPath(std::move(other.vertexShaderPath)),
-            fragmentShaderPath(std::move(other.fragmentShaderPath)),
-            physicalDevice(std::move(other.physicalDevice)),
-            queueFamilyProperties(std::move(other.queueFamilyProperties)),
-            // graphicsQueuePriority(std::move(other.graphicsQueuePriority)),
-            graphicsQueueCreateInfo(std::move(other.graphicsQueueCreateInfo)),
-            // presentQueuePriority(std::move(other.presentQueuePriority)),
-            presentQueueCreateInfo(std::move(other.presentQueueCreateInfo)),
-            queueCreateInfos(std::move(other.queueCreateInfos)),
-            createInfo(std::move(other.createInfo)),
-            deviceUnique(std::move(other.deviceUnique)),
-            graphicsQueue(std::move(other.graphicsQueue)),
-            presentQueue(std::move(other.presentQueue)),
-            allocator(std::move(other.allocator)),
-            commandPools(std::move(other.commandPools)),
-            fences(std::move(other.fences)),
-            semaphores(std::move(other.semaphores)),
-            surfaceOptional(std::move(other.surfaceOptional)),
-            renderPassOptional(std::move(other.renderPassOptional)),
-            swapchainOptional(std::move(other.swapchainOptional)),
-            vertexShaderOptional(std::move(other.vertexShaderOptional)),
-            fragmentShaderOptional(std::move(other.fragmentShaderOptional)),
-            sampler(std::move(sampler)),
-            samplerUnique(std::move(other.samplerUnique)),
-            fragmentDescriptorSetOptional(std::move(other.fragmentDescriptorSetOptional)),
-            setLayouts(std::move(other.setLayouts)),
-            pushConstantRanges(std::move(other.pushConstantRanges)),
-            vertexData(std::move(other.vertexData)),
-            pipelineLayoutOptional(std::move(other.pipelineLayoutOptional)),
-            pipelineOptional(std::move(other.pipelineOptional))
-        {}
-        Device& operator =(Device&& other)
-        {
-            instance = std::move(other.instance);
-            window = std::move(other.window);
-            deviceExtensions = std::move(other.deviceExtensions);
-            vertexShaderPath = std::move(other.vertexShaderPath);
-            fragmentShaderPath = std::move(other.fragmentShaderPath);
-            physicalDevice = std::move(other.physicalDevice);
-            queueFamilyProperties = std::move(other.queueFamilyProperties);
-            // graphicsQueuePriority = std::move(other.graphicsQueuePriority);
-            graphicsQueueCreateInfo = std::move(other.graphicsQueueCreateInfo);
-            // presentQueuePriority = std::move(other.presentQueuePriority);
-            presentQueueCreateInfo = std::move(other.presentQueueCreateInfo);
-            queueCreateInfos = std::move(other.queueCreateInfos);
-            createInfo = std::move(other.createInfo);
-            deviceUnique = std::move(other.deviceUnique);
-            graphicsQueue = std::move(other.graphicsQueue);
-            presentQueue = std::move(other.presentQueue);
-            allocator = std::move(other.allocator);
-            commandPools = std::move(other.commandPools);
-            fences = std::move(other.fences);
-            semaphores = std::move(other.semaphores);
-            surfaceOptional = std::move(other.surfaceOptional);
-            renderPassOptional = std::move(other.renderPassOptional);
-            swapchainOptional = std::move(other.swapchainOptional);
-            vertexShaderOptional = std::move(other.vertexShaderOptional);
-            fragmentShaderOptional = std::move(other.fragmentShaderOptional);
-            sampler = std::move(sampler);
-            samplerUnique = std::move(other.samplerUnique);
-            fragmentDescriptorSetOptional = std::move(other.fragmentDescriptorSetOptional);
-            setLayouts = std::move(other.setLayouts);
-            pushConstantRanges = std::move(other.pushConstantRanges);
-            vertexData = std::move(other.vertexData);
-            pipelineLayoutOptional = std::move(other.pipelineLayoutOptional);
-            pipelineOptional = std::move(other.pipelineOptional);
-            return *this;
-        }
+        // Device(Device&& other) : 
+        //     instance(std::move(other.instance)),
+        //     window(std::move(other.window)),
+        //     deviceExtensions(std::move(other.deviceExtensions)),
+        //     vertexShaderPath(std::move(other.vertexShaderPath)),
+        //     fragmentShaderPath(std::move(other.fragmentShaderPath)),
+        //     physicalDevice(std::move(other.physicalDevice)),
+        //     queueFamilyProperties(std::move(other.queueFamilyProperties)),
+        //     // graphicsQueuePriority(std::move(other.graphicsQueuePriority)),
+        //     graphicsQueueCreateInfo(std::move(other.graphicsQueueCreateInfo)),
+        //     // presentQueuePriority(std::move(other.presentQueuePriority)),
+        //     presentQueueCreateInfo(std::move(other.presentQueueCreateInfo)),
+        //     queueCreateInfos(std::move(other.queueCreateInfos)),
+        //     createInfo(std::move(other.createInfo)),
+        //     deviceUnique(std::move(other.deviceUnique)),
+        //     graphicsQueue(std::move(other.graphicsQueue)),
+        //     presentQueue(std::move(other.presentQueue)),
+        //     allocator(std::move(other.allocator)),
+        //     commandPools(std::move(other.commandPools)),
+        //     fences(std::move(other.fences)),
+        //     semaphores(std::move(other.semaphores)),
+        //     surfaceOptional(std::move(other.surfaceOptional)),
+        //     renderPassOptional(std::move(other.renderPassOptional)),
+        //     swapchainOptional(std::move(other.swapchainOptional)),
+        //     vertexShaderOptional(std::move(other.vertexShaderOptional)),
+        //     fragmentShaderOptional(std::move(other.fragmentShaderOptional)),
+        //     sampler(std::move(sampler)),
+        //     samplerUnique(std::move(other.samplerUnique)),
+        //     fragmentDescriptorSetOptional(std::move(other.fragmentDescriptorSetOptional)),
+        //     setLayouts(std::move(other.setLayouts)),
+        //     pushConstantRanges(std::move(other.pushConstantRanges)),
+        //     vertexData(std::move(other.vertexData)),
+        //     pipelineLayoutOptional(std::move(other.pipelineLayoutOptional)),
+        //     pipelineOptional(std::move(other.pipelineOptional))
+        // {}
+        // Device& operator =(Device&& other)
+        // {
+        //     instance = std::move(other.instance);
+        //     window = std::move(other.window);
+        //     deviceExtensions = std::move(other.deviceExtensions);
+        //     vertexShaderPath = std::move(other.vertexShaderPath);
+        //     fragmentShaderPath = std::move(other.fragmentShaderPath);
+        //     physicalDevice = std::move(other.physicalDevice);
+        //     queueFamilyProperties = std::move(other.queueFamilyProperties);
+        //     // graphicsQueuePriority = std::move(other.graphicsQueuePriority);
+        //     graphicsQueueCreateInfo = std::move(other.graphicsQueueCreateInfo);
+        //     // presentQueuePriority = std::move(other.presentQueuePriority);
+        //     presentQueueCreateInfo = std::move(other.presentQueueCreateInfo);
+        //     queueCreateInfos = std::move(other.queueCreateInfos);
+        //     createInfo = std::move(other.createInfo);
+        //     deviceUnique = std::move(other.deviceUnique);
+        //     graphicsQueue = std::move(other.graphicsQueue);
+        //     presentQueue = std::move(other.presentQueue);
+        //     allocator = std::move(other.allocator);
+        //     commandPools = std::move(other.commandPools);
+        //     fences = std::move(other.fences);
+        //     semaphores = std::move(other.semaphores);
+        //     surfaceOptional = std::move(other.surfaceOptional);
+        //     renderPassOptional = std::move(other.renderPassOptional);
+        //     swapchainOptional = std::move(other.swapchainOptional);
+        //     vertexShaderOptional = std::move(other.vertexShaderOptional);
+        //     fragmentShaderOptional = std::move(other.fragmentShaderOptional);
+        //     sampler = std::move(sampler);
+        //     samplerUnique = std::move(other.samplerUnique);
+        //     fragmentDescriptorSetOptional = std::move(other.fragmentDescriptorSetOptional);
+        //     setLayouts = std::move(other.setLayouts);
+        //     pushConstantRanges = std::move(other.pushConstantRanges);
+        //     vertexData = std::move(other.vertexData);
+        //     pipelineLayoutOptional = std::move(other.pipelineLayoutOptional);
+        //     pipelineOptional = std::move(other.pipelineOptional);
+        //     return *this;
+        // }
 
         VkPhysicalDevice GetPhysicalDevice()
         {
@@ -268,16 +285,20 @@ namespace vka
             CreateSwapchain();
         }
 
-        void operator()(Results::Suboptimal result)
+        void recreateSwapchain()
         {
             vkDeviceWaitIdle(GetDevice());
             CreateSwapchain();
         }
 
+        void operator()(Results::Suboptimal result)
+        {
+            recreateSwapchain();
+        }
+
         void operator()(Results::ErrorOutOfDate result)
         {
-            vkDeviceWaitIdle(GetDevice());
-            CreateSwapchain();
+            recreateSwapchain();
         }
         
     private:
@@ -289,9 +310,8 @@ namespace vka
 
         VkPhysicalDevice physicalDevice;
         std::vector<VkQueueFamilyProperties> queueFamilyProperties;
-        const float graphicsQueuePriority = 0.f;
+
         VkDeviceQueueCreateInfo graphicsQueueCreateInfo;
-        const float presentQueuePriority = 0.f;
         VkDeviceQueueCreateInfo presentQueueCreateInfo;
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
         VkDeviceCreateInfo createInfo;
@@ -373,6 +393,7 @@ namespace vka
             for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
             {
                 VkBool32 presentSupport = false;
+                auto surface = surfaceOptional->GetSurface();
                 vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surfaceOptional->GetSurface(), &presentSupport);
                 if (presentSupport)
                 {
@@ -397,7 +418,10 @@ namespace vka
         void CreateDevice()
         {
             queueCreateInfos.push_back(graphicsQueueCreateInfo);
-            if (graphicsQueueCreateInfo.queueFamilyIndex != presentQueueCreateInfo.queueFamilyIndex)
+            auto graphicsQueueID = GetGraphicsQueueID();
+            auto presentQueueID = GetPresentQueueID();
+            auto singleQueue = (graphicsQueueID == presentQueueID);
+            if (!singleQueue)
             {
                 queueCreateInfos.push_back(presentQueueCreateInfo);
             }
@@ -415,9 +439,13 @@ namespace vka
             VkDevice device;
             vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
             deviceUnique = VkDeviceUnique(device, VkDeviceDeleter());
+			LoadDeviceLevelEntryPoints(device);
 
-            vkGetDeviceQueue(GetDevice(), GetGraphicsQueueID(), 0, &graphicsQueue);
-            vkGetDeviceQueue(GetDevice(), GetPresentQueueID(), 0, &presentQueue);
+            vkGetDeviceQueue(device, graphicsQueueID, 0, &graphicsQueue);
+            if (!singleQueue)
+            {
+                vkGetDeviceQueue(device, presentQueueID, 0, &presentQueue);
+            }
         }
 
         void CreateAllocator()
@@ -428,16 +456,19 @@ namespace vka
 
         void CreateSurface()
         {
+            surfaceOptional.reset();
             surfaceOptional = Surface(instance, physicalDevice, window);
         }
 
         void CreateRenderPass()
         {
+            renderPassOptional.reset();
             renderPassOptional = RenderPass(GetDevice(), surfaceOptional->GetFormat());
         }
 
         void CreateSwapchain()
         {
+            swapchainOptional.reset();
             swapchainOptional = Swapchain(GetDevice(), 
                 surfaceOptional->GetSurface(), 
                 surfaceOptional->GetFormat(), 
@@ -533,11 +564,23 @@ namespace vka
         {
             setLayouts.push_back(fragmentDescriptorSetOptional->GetSetLayout());
 
-            VkPushConstantRange range = {};
-            range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-            range.offset = 0;
-            range.size = Device::PushConstantSize;
-            pushConstantRanges.push_back(range);
+            // VkPushConstantRange vertexRange = {};
+            // vertexRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            // vertexRange.offset = offsetof(PushConstants, vertexPushConstants);
+            // vertexRange.size = sizeof(VertexPushConstants);
+            // pushConstantRanges.push_back(vertexRange);
+
+            // VkPushConstantRange fragmentRange = {};
+            // fragmentRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            // fragmentRange.offset = offsetof(PushConstants, fragmentPushConstants);
+            // fragmentRange.size = sizeof(FragmentPushConstants);
+            // pushConstantRanges.push_back(fragmentRange);
+
+            VkPushConstantRange pushRange = {};
+            pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            pushRange.offset = 0;
+            pushRange.size = sizeof(PushConstants);
+            pushConstantRanges.push_back(pushRange);
 
             pipelineLayoutOptional = PipelineLayout(GetDevice(),
                 setLayouts,
@@ -550,14 +593,27 @@ namespace vka
             imageArraySize.constantID = 0;
             imageArraySize.offset = 0;
             imageArraySize.size = sizeof(uint32_t);
+            
+            auto vertexSpecializationMapEntries = std::vector<VkSpecializationMapEntry>();
+            auto fragmentSpecializationMapEntries = std::vector<VkSpecializationMapEntry>{imageArraySize};
+            auto vertexSpecialization = MakeSpecialization(
+                gsl::span<VkSpecializationMapEntry>(nullptr, 0), 
+                nullptr);
+
+            auto fragmentSpecialization = MakeSpecialization(
+                gsl::span<VkSpecializationMapEntry>(
+                    fragmentSpecializationMapEntries.data(),
+                    fragmentSpecializationMapEntries.size()),
+                &Device::ImageCount);
+
+            auto vertexShaderStageInfo = vertexShaderOptional->GetShaderStageInfo(&vertexSpecialization);
+            auto fragmentShaderStageInfo = fragmentShaderOptional->GetShaderStageInfo(&fragmentSpecialization);
 
             pipelineOptional = Pipeline(GetDevice(),
                 pipelineLayoutOptional->GetPipelineLayout(),
                 renderPassOptional->GetRenderPass(),
-                vertexShaderOptional->GetShaderData(),
-                fragmentShaderOptional->GetShaderData(
-                    std::vector<VkSpecializationMapEntry>{imageArraySize}, 
-                    Device::ImageCount),
+                vertexShaderStageInfo,
+                fragmentShaderStageInfo,
                 vertexData);
         }
     };

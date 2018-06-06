@@ -139,7 +139,7 @@ namespace vka
             {
                 viewCreateInfo.image = swapImages[i];
                 vkCreateImageView(device, &viewCreateInfo, nullptr, &view);
-                swapImageViewsUnique[i] = VkImageViewUnique(view, VkImageViewDeleter(device));
+                swapImageViewsUnique.push_back(VkImageViewUnique(view, VkImageViewDeleter(device)));
             }
         }
 
@@ -161,7 +161,7 @@ namespace vka
                 auto view = swapImageViewsUnique[i].get();
                 framebufferCreateInfo.pAttachments = &view;
                 vkCreateFramebuffer(device, &framebufferCreateInfo, nullptr, &framebuffer);
-                framebuffersUnique[i] = VkFramebufferUnique(framebuffer, VkFramebufferDeleter(device));
+                framebuffersUnique.push_back(VkFramebufferUnique(framebuffer, VkFramebufferDeleter(device)));
             }
         }
     };

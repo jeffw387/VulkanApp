@@ -29,8 +29,16 @@ with open(jsonPath) as spritesheetfile:
         fileName = frameStruct["filename"]
         left = frame["x"]
         top = frame["y"]
-        right = left + frame["w"]
-        bottom = top + frame["h"]
+        spriteWidth = frame["w"]
+        spriteHeight = frame["h"]
+        right = left + spriteWidth
+        bottom = top + spriteHeight
+        pivotX = spriteWidth * 0.5
+        pivotY = spriteHeight * 0.5
+        vertLeft = -pivotX
+        vertRight = pivotX
+        vertTop = -pivotY
+        vertBottom = pivotY
         leftUV = left / imageWidth
         topUV = top / imageHeight
         rightUV = right / imageWidth
@@ -38,7 +46,7 @@ with open(jsonPath) as spritesheetfile:
         cog.outl("        struct {0}".format(structName))
         cog.outl("        {")
         cog.outl("            static constexpr auto Name = entt::HashedString(\"{0}\");".format(fileName))
-        cog.outl("            static inline vka::Quad SpriteQuad = vka::MakeQuad({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7});".format(left, top, right, bottom, leftUV, topUV, rightUV, bottomUV))
+        cog.outl("            static inline vka::Quad SpriteQuad = vka::MakeQuad({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7});".format(vertLeft, vertTop, vertRight, vertBottom, leftUV, topUV, rightUV, bottomUV))
         cog.outl("        };")
     cog.outl("    };")
 
@@ -49,12 +57,12 @@ struct SpriteSheet1
     struct starpng
     {
         static constexpr auto Name = entt::HashedString("star.png");
-        static inline vka::Quad SpriteQuad = vka::MakeQuad(0, 0, 512, 512, 0.0, 0.0, 0.5, 1.0);
+        static inline vka::Quad SpriteQuad = vka::MakeQuad(-256.0, -256.0, 256.0, 256.0, 0.0, 0.0, 0.5, 1.0);
     };
     struct texturejpg
     {
         static constexpr auto Name = entt::HashedString("texture.jpg");
-        static inline vka::Quad SpriteQuad = vka::MakeQuad(512, 0, 1024, 512, 0.5, 0.0, 1.0, 1.0);
+        static inline vka::Quad SpriteQuad = vka::MakeQuad(-256.0, -256.0, 256.0, 256.0, 0.5, 0.0, 1.0, 1.0);
     };
 };
 //[[[end]]]

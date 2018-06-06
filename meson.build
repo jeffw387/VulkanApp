@@ -45,6 +45,7 @@ message(buildtype)
 deps = [freetype, stb, glfw, btree, vulkan, gsl, glm, entt, json]
 executable('VulkanApp', 
     'main.cpp',
+    'vka/VulkanApp.cpp',
     'vka/VulkanFunctions.cpp',
     'vka/Allocator.cpp',
     dependencies : deps,

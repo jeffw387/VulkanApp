@@ -14,7 +14,7 @@ namespace vka
         int action = 0;
     };
 
-    KeySignature MakeSignature(int code, int action)
+    static KeySignature MakeSignature(int code, int action)
     {
         KeySignature signature;
         signature.code = code;
@@ -22,12 +22,12 @@ namespace vka
         return signature;
     }
 
-    bool operator <(const KeySignature& a, const KeySignature& b)
+    static bool operator <(const KeySignature& a, const KeySignature& b)
     {
         return (a.code < b.code) && (a.action < b.action);
     }
 
-    bool operator ==(const KeySignature& a, const KeySignature& b)
+    static bool operator ==(const KeySignature& a, const KeySignature& b)
     {
         return (a.code == b.code) && (a.action == b.action);
     }
@@ -59,7 +59,7 @@ namespace vka
         std::function<void()> func = nullptr;
     };
 
-    Action MakeAction(std::function<void()> func)
+    static Action MakeAction(std::function<void()> func)
     {
         Action action;
         action.func = func;

@@ -13,7 +13,7 @@ namespace vka
         VkBufferCreateInfo bufferCreateInfo;
     };
 
-    UniqueAllocatedBuffer CreateBufferUnique(VkDevice device, 
+    static UniqueAllocatedBuffer CreateBufferUnique(VkDevice device, 
         Allocator& allocator, 
         VkDeviceSize size,
         VkBufferUsageFlags usageFlags,
@@ -50,7 +50,7 @@ namespace vka
         return std::move(allocatedBuffer);
     }
 
-    void CopyToBuffer(
+    static void CopyToBuffer(
 			const VkCommandBuffer commandBuffer,
             const VkQueue graphicsQueue,
 			const VkBuffer source, 

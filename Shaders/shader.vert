@@ -3,17 +3,15 @@
 
 layout(push_constant) uniform PushConstants
 {
-    uint imageIndex;
-    vec4 color;
     mat4 mvp;
+    uint imageOffset;
+    vec4 color;
 } pushConstants;
 
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inTexCoord;
 
 layout(location = 0) out vec2 outTexCoord;
-layout(location = 1) flat out uint outImageOffset;
-layout(location = 2) flat out vec4 outColor;
 
 out gl_PerVertex
 {
@@ -23,8 +21,6 @@ out gl_PerVertex
 void main()
 {
     outTexCoord = inTexCoord;
-    outImageOffset = pushConstants.imageIndex;
-    outColor = pushConstants.color;
 
     gl_Position = pushConstants.mvp * vec4(inPosition, 0.0, 1.0);
 }

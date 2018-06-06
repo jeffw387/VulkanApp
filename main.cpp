@@ -19,7 +19,9 @@
 #endif
 
 #include "SpriteData.hpp"
-const char* ConfigPath = "VulkanInitInfo.json";
+const char* ConfigPath = CONTENTROOT "VulkanInitInfo.json";
+const char* VertexShaderPath = CONTENTROOT "Shaders/vert.spv";
+const char* FragmentShaderPath = CONTENTROOT "Shaders/frag.spv";
 
 namespace Font
 {
@@ -28,13 +30,9 @@ namespace Font
 
 class ClientApp : public vka::VulkanApp
 {
-    std::vector<const char*> Layers;
-    std::vector<const char*> InstanceExtensions;
-    std::vector<const char*> DeviceExtensions;
-    
+public:
     entt::DefaultRegistry enttRegistry;
 
-public:
     void LoadImages()
     {
         auto sheet1 = vka::loadImageFromFile(std::string(Sprites::SpriteSheet1::ImagePath));
@@ -102,8 +100,7 @@ public:
 int main()
 {
     ClientApp app;
-    entt::DefaultRegistry enttRegistry;
-
+    
     app.inputBindMap[vka::MakeSignature(GLFW_KEY_LEFT, GLFW_PRESS)]  = 	Bindings::Left;
     app.inputBindMap[vka::MakeSignature(GLFW_KEY_RIGHT, GLFW_PRESS)] = 	Bindings::Right;
     app.inputBindMap[vka::MakeSignature(GLFW_KEY_UP, GLFW_PRESS)]    = 	Bindings::Up;
@@ -114,11 +111,11 @@ int main()
     app.inputStateMap[Bindings::Up] =  vka::MakeAction([](){ std::cout << "Up Pressed.\n"; });
     app.inputStateMap[Bindings::Down] =  vka::MakeAction([](){ std::cout << "Down Pressed.\n"; });
 
-    enttRegistry.prepare<cmp::Sprite, cmp::PositionMatrix, cmp::Color>();
-    enttRegistry.prepare<cmp::Position, cmp::PositionMatrix, cmp::Velocity>();
+    app.enttRegistry.prepare<cmp::Sprite, cmp::PositionMatrix, cmp::Color>();
+    app.enttRegistry.prepare<cmp::Position, cmp::Velocity, cmp::PositionMatrix>();
     for (auto i = 0.f; i < 3.f; i++)
     {
-        auto entity = enttRegistry.create(
+        auto entity = app.enttRegistry.create(
             cmp::Sprite(Sprites::SpriteSheet1::starpng::Name), 
             cmp::Position(glm::vec2(i*2.f, i*2.f)),
             cmp::PositionMatrix(),
@@ -127,5 +124,5 @@ int main()
             cmp::RectSize());
     }
 
-    app.Run(std::string(ConfigPath));
+    app.Run(std::string(ConfigPath), std::string(VertexShaderPath), std::string(FragmentShaderPath));
 }

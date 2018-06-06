@@ -11,31 +11,20 @@
 
 namespace vka
 {
-    struct ShaderSpecialization
+    static VkSpecializationInfo MakeSpecialization(
+        const gsl::span<VkSpecializationMapEntry> constantMapEntries, 
+        const void* pConstantData)
     {
-        std::vector<VkSpecializationMapEntry> constantMapEntries;
-        VkSpecializationInfo info;
-    };
-    
-    static ShaderSpecialization MakeSpecialization(std::vector<VkSpecializationMapEntry>&& constantMapEntries, void* pConstantData)
-    {
-        ShaderSpecialization specialization;
-        specialization.constantMapEntries = std::move(constantMapEntries);
-        specialization.info.mapEntryCount = constantMapEntries.size();
-        specialization.info.pMapEntries = constantMapEntries.data();
+        VkSpecializationInfo specialization = {};
+        specialization.mapEntryCount = constantMapEntries.size();
+        specialization.pMapEntries = constantMapEntries.data();
         std::for_each(
             constantMapEntries.begin(), 
             constantMapEntries.end(),
-            [&specialization](const auto& mapEntry) { specialization.info.dataSize += mapEntry.size; });
-        specialization.info.pData = pConstantData;
+            [&specialization](const auto& mapEntry) { specialization.dataSize += mapEntry.size; });
+        specialization.pData = pConstantData;
         return specialization;
     }
-
-    struct ShaderData
-    {
-        ShaderSpecialization specialization;
-        VkPipelineShaderStageCreateInfo shaderStageInfo;
-    };
 
     class Shader
     {
@@ -61,39 +50,21 @@ namespace vka
             return shaderUnique.get();
         }
 
-        template <typename T>
-        ShaderData GetShaderData(
-            std::vector<VkSpecializationMapEntry>&& constantMapEntries, 
-            T& constantData)
+        VkPipelineShaderStageCreateInfo GetShaderStageInfo(
+            const VkSpecializationInfo* pSpecializationInfo)
         {
-            ShaderData shaderData;
-            shaderData.specialization = MakeSpecialization(
-                std::move(constantMapEntries), (void*)(&constantData));
-            shaderData.shaderStageInfo.sType = 
+            VkPipelineShaderStageCreateInfo shaderStageInfo;
+            shaderStageInfo.sType = 
                 VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shaderData.shaderStageInfo.pNext = nullptr;
-            shaderData.shaderStageInfo.flags = 0;
-            shaderData.shaderStageInfo.stage = stage;
-            shaderData.shaderStageInfo.module = GetShaderModule();
-            shaderData.shaderStageInfo.pName = entryPointName.c_str();
-            shaderData.shaderStageInfo.pSpecializationInfo = 
-                &shaderData.specialization.info;
-            return shaderData;
+            shaderStageInfo.pNext = nullptr;
+            shaderStageInfo.flags = 0;
+            shaderStageInfo.stage = stage;
+            shaderStageInfo.module = GetShaderModule();
+            shaderStageInfo.pName = entryPointName.c_str();
+            shaderStageInfo.pSpecializationInfo = pSpecializationInfo;
+            return shaderStageInfo;
         }
 
-        ShaderData GetShaderData()
-        {
-            ShaderData shaderData;
-            shaderData.shaderStageInfo.sType = 
-                VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shaderData.shaderStageInfo.pNext = nullptr;
-            shaderData.shaderStageInfo.flags = 0;
-            shaderData.shaderStageInfo.stage = stage;
-            shaderData.shaderStageInfo.module = GetShaderModule();
-            shaderData.shaderStageInfo.pName = entryPointName.c_str();
-            shaderData.shaderStageInfo.pSpecializationInfo = nullptr;
-            return shaderData;
-        }
     private:
         VkDevice device;
         std::vector<char> shaderBinary;

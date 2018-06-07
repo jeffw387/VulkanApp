@@ -234,10 +234,17 @@ namespace vka
 
         vkCmdPushConstants(renderCommandBuffer, 
             deviceOptional->GetPipelineLayout(),
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0, 
-            sizeof(PushConstants), 
-            &pushConstants);
+            VK_SHADER_STAGE_VERTEX_BIT,
+            offsetof(PushConstants, vertexPushConstants), 
+            sizeof(VertexPushConstants), 
+            &pushConstants.vertexPushConstants);
+
+            vkCmdPushConstants(renderCommandBuffer, 
+            deviceOptional->GetPipelineLayout(),
+            VK_SHADER_STAGE_FRAGMENT_BIT,
+            offsetof(PushConstants, fragmentPushConstants), 
+            sizeof(FragmentPushConstants), 
+            &pushConstants.fragmentPushConstants);
 
         // draw the sprite
         vkCmdDraw(renderCommandBuffer, VerticesPerQuad, 1, sprite.vertexOffset, 0);

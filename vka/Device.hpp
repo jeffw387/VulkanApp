@@ -492,11 +492,17 @@ namespace vka
         {
             setLayouts.push_back(fragmentDescriptorSetOptional->GetSetLayout());
 
-            VkPushConstantRange pushRange = {};
-            pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-            pushRange.offset = 0;
-            pushRange.size = sizeof(PushConstants);
-            pushConstantRanges.push_back(pushRange);
+            VkPushConstantRange vertexPushRange = {};
+            vertexPushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+            vertexPushRange.offset = offsetof(PushConstants, vertexPushConstants);
+            vertexPushRange.size = sizeof(VertexPushConstants);
+            pushConstantRanges.push_back(vertexPushRange);
+
+            VkPushConstantRange fragmentPushRange = {};
+            fragmentPushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            fragmentPushRange.offset = offsetof(PushConstants, fragmentPushConstants);
+            fragmentPushRange.size = sizeof(FragmentPushConstants);
+            pushConstantRanges.push_back(fragmentPushRange);
 
             pipelineLayoutOptional = PipelineLayout(GetDevice(),
                 setLayouts,

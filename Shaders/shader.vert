@@ -1,12 +1,10 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(push_constant) uniform PushConstants
+layout(push_constant) uniform VertexPushConstants
 {
-    mat4 mvp;
-    uint imageOffset;
-    vec4 color;
-} pushConstants;
+    layout(offset = 0) mat4 mvp;
+} vertexPushConstants;
 
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inTexCoord;
@@ -22,5 +20,5 @@ void main()
 {
     outTexCoord = inTexCoord;
 
-    gl_Position = pushConstants.mvp * vec4(inPosition, 0.0, 1.0);
+    gl_Position = vertexPushConstants.mvp * vec4(inPosition, 0.0, 1.0);
 }

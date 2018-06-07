@@ -6,12 +6,11 @@ layout(constant_id = 0) const uint TextureCount = 1;
 layout(set = 0, binding = 0) uniform sampler samp;
 layout(set = 0, binding = 1) uniform texture2D tex[TextureCount];
 
-layout(push_constant) uniform PushConstants
+layout(push_constant) uniform FragmentPushConstants
 {
-    mat4 mvp;
-    uint imageOffset;
-    vec4 color;
-} pushConstants;
+    layout(offset = 64) uint imageOffset;
+    layout(offset = 80) vec4 color;
+} fragmentPushConstants;
 
 layout(location = 0) in vec2 inTexCoord;
 
@@ -19,6 +18,6 @@ layout(location = 0) out vec4 outColor;
 
 void main()
 {
-    vec4 sampledColor = texture(sampler2D(tex[pushConstants.imageOffset], samp), inTexCoord);
-    outColor = pushConstants.color * sampledColor;
+    vec4 sampledColor = texture(sampler2D(tex[fragmentPushConstants.imageOffset], samp), inTexCoord);
+    outColor = fragmentPushConstants.color * sampledColor;
 }

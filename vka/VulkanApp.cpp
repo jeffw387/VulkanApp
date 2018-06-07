@@ -339,38 +339,37 @@ namespace vka
 
     void VulkanApp::GameThread()
     {
-        try
+        while(gameLoop != false)
         {
-            while(gameLoop != false)
+            auto currentTime = NowMilliseconds();
+            // Update simulation to be in sync with actual time
+            size_t spriteCount = 0;
+            while (currentTime - currentSimulationTime > UpdateDuration)
             {
-                auto currentTime = NowMilliseconds();
-                // Update simulation to be in sync with actual time
-                size_t spriteCount = 0;
-                while (currentTime - currentSimulationTime > UpdateDuration)
-                {
-                    currentSimulationTime += UpdateDuration;
+                currentSimulationTime += UpdateDuration;
 
-                    Update(currentSimulationTime);
-                }
-
+                Update(currentSimulationTime);
+            }
+            try
+            {
                 Render();
             }
-        }
-        catch (Results::ErrorDeviceLost result)
-        {
-            return;
-        }
-        catch (Results::ErrorSurfaceLost result)
-        {
-            (*deviceOptional)(result);
-        }
-        catch (Results::Suboptimal result)
-        {
-            (*deviceOptional)(result);
-        }
-        catch (Results::ErrorOutOfDate result)
-        {
-            (*deviceOptional)(result);
+            catch (Results::ErrorDeviceLost result)
+            {
+                return;
+            }
+            catch (Results::ErrorSurfaceLost result)
+            {
+                (*deviceOptional)(result);
+            }
+            catch (Results::Suboptimal result)
+            {
+                (*deviceOptional)(result);
+            }
+            catch (Results::ErrorOutOfDate result)
+            {
+                (*deviceOptional)(result);
+            }
         }
     }
 

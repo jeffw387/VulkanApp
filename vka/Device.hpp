@@ -84,79 +84,6 @@ namespace vka
             CreatePipeline();
         }
 
-        // Device(Device&& other) : 
-        //     instance(std::move(other.instance)),
-        //     window(std::move(other.window)),
-        //     deviceExtensions(std::move(other.deviceExtensions)),
-        //     vertexShaderPath(std::move(other.vertexShaderPath)),
-        //     fragmentShaderPath(std::move(other.fragmentShaderPath)),
-        //     physicalDevice(std::move(other.physicalDevice)),
-        //     queueFamilyProperties(std::move(other.queueFamilyProperties)),
-        //     // graphicsQueuePriority(std::move(other.graphicsQueuePriority)),
-        //     graphicsQueueCreateInfo(std::move(other.graphicsQueueCreateInfo)),
-        //     // presentQueuePriority(std::move(other.presentQueuePriority)),
-        //     presentQueueCreateInfo(std::move(other.presentQueueCreateInfo)),
-        //     queueCreateInfos(std::move(other.queueCreateInfos)),
-        //     createInfo(std::move(other.createInfo)),
-        //     deviceUnique(std::move(other.deviceUnique)),
-        //     graphicsQueue(std::move(other.graphicsQueue)),
-        //     presentQueue(std::move(other.presentQueue)),
-        //     allocator(std::move(other.allocator)),
-        //     commandPools(std::move(other.commandPools)),
-        //     fences(std::move(other.fences)),
-        //     semaphores(std::move(other.semaphores)),
-        //     surfaceOptional(std::move(other.surfaceOptional)),
-        //     renderPassOptional(std::move(other.renderPassOptional)),
-        //     swapchainOptional(std::move(other.swapchainOptional)),
-        //     vertexShaderOptional(std::move(other.vertexShaderOptional)),
-        //     fragmentShaderOptional(std::move(other.fragmentShaderOptional)),
-        //     sampler(std::move(sampler)),
-        //     samplerUnique(std::move(other.samplerUnique)),
-        //     fragmentDescriptorSetOptional(std::move(other.fragmentDescriptorSetOptional)),
-        //     setLayouts(std::move(other.setLayouts)),
-        //     pushConstantRanges(std::move(other.pushConstantRanges)),
-        //     vertexData(std::move(other.vertexData)),
-        //     pipelineLayoutOptional(std::move(other.pipelineLayoutOptional)),
-        //     pipelineOptional(std::move(other.pipelineOptional))
-        // {}
-        // Device& operator =(Device&& other)
-        // {
-        //     instance = std::move(other.instance);
-        //     window = std::move(other.window);
-        //     deviceExtensions = std::move(other.deviceExtensions);
-        //     vertexShaderPath = std::move(other.vertexShaderPath);
-        //     fragmentShaderPath = std::move(other.fragmentShaderPath);
-        //     physicalDevice = std::move(other.physicalDevice);
-        //     queueFamilyProperties = std::move(other.queueFamilyProperties);
-        //     // graphicsQueuePriority = std::move(other.graphicsQueuePriority);
-        //     graphicsQueueCreateInfo = std::move(other.graphicsQueueCreateInfo);
-        //     // presentQueuePriority = std::move(other.presentQueuePriority);
-        //     presentQueueCreateInfo = std::move(other.presentQueueCreateInfo);
-        //     queueCreateInfos = std::move(other.queueCreateInfos);
-        //     createInfo = std::move(other.createInfo);
-        //     deviceUnique = std::move(other.deviceUnique);
-        //     graphicsQueue = std::move(other.graphicsQueue);
-        //     presentQueue = std::move(other.presentQueue);
-        //     allocator = std::move(other.allocator);
-        //     commandPools = std::move(other.commandPools);
-        //     fences = std::move(other.fences);
-        //     semaphores = std::move(other.semaphores);
-        //     surfaceOptional = std::move(other.surfaceOptional);
-        //     renderPassOptional = std::move(other.renderPassOptional);
-        //     swapchainOptional = std::move(other.swapchainOptional);
-        //     vertexShaderOptional = std::move(other.vertexShaderOptional);
-        //     fragmentShaderOptional = std::move(other.fragmentShaderOptional);
-        //     sampler = std::move(sampler);
-        //     samplerUnique = std::move(other.samplerUnique);
-        //     fragmentDescriptorSetOptional = std::move(other.fragmentDescriptorSetOptional);
-        //     setLayouts = std::move(other.setLayouts);
-        //     pushConstantRanges = std::move(other.pushConstantRanges);
-        //     vertexData = std::move(other.vertexData);
-        //     pipelineLayoutOptional = std::move(other.pipelineLayoutOptional);
-        //     pipelineOptional = std::move(other.pipelineOptional);
-        //     return *this;
-        // }
-
         VkPhysicalDevice GetPhysicalDevice()
         {
             return physicalDevice;
@@ -469,6 +396,7 @@ namespace vka
         void CreateSwapchain()
         {
             swapchainOptional.reset();
+            surfaceOptional->UpdateCapabilities();
             swapchainOptional = Swapchain(GetDevice(), 
                 surfaceOptional->GetSurface(), 
                 surfaceOptional->GetFormat(), 
@@ -563,18 +491,6 @@ namespace vka
         void CreatePipelineLayout()
         {
             setLayouts.push_back(fragmentDescriptorSetOptional->GetSetLayout());
-
-            // VkPushConstantRange vertexRange = {};
-            // vertexRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-            // vertexRange.offset = offsetof(PushConstants, vertexPushConstants);
-            // vertexRange.size = sizeof(VertexPushConstants);
-            // pushConstantRanges.push_back(vertexRange);
-
-            // VkPushConstantRange fragmentRange = {};
-            // fragmentRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-            // fragmentRange.offset = offsetof(PushConstants, fragmentPushConstants);
-            // fragmentRange.size = sizeof(FragmentPushConstants);
-            // pushConstantRanges.push_back(fragmentRange);
 
             VkPushConstantRange pushRange = {};
             pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;

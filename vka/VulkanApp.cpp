@@ -489,9 +489,6 @@ namespace vka
         beginInfo.flags = 0;
         beginInfo.pInheritanceInfo = nullptr;
         vkBeginCommandBuffer(renderCommandBuffer, &beginInfo);
-
-        vkCmdSetViewport(renderCommandBuffer, 0, 1, &viewport);
-        vkCmdSetScissor(renderCommandBuffer, 0, 1, &scissorRect);
         
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -505,6 +502,9 @@ namespace vka
         
         vkCmdBindPipeline(renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         
+        vkCmdSetViewport(renderCommandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(renderCommandBuffer, 0, 1, &scissorRect);
+
         VkDeviceSize vertexBufferOffset = 0;
         vkCmdBindVertexBuffers(renderCommandBuffer, 0, 1, 
             &vertexBuffer, 

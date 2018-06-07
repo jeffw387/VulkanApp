@@ -139,9 +139,9 @@ namespace vka
             return pipelineOptional->GetPipeline();
         }
 
-        VkExtent2D GetExtent()
+        VkSurfaceCapabilitiesKHR GetSurfaceCapabilities()
         {
-            return surfaceOptional->GetExtent();
+            return surfaceOptional->GetCapabilities();
         }
 
         VkFramebuffer GetFramebuffer(size_t i)
@@ -396,12 +396,12 @@ namespace vka
         void CreateSwapchain()
         {
             swapchainOptional.reset();
-            surfaceOptional->UpdateCapabilities();
+            auto capabilities = GetSurfaceCapabilities();
             swapchainOptional = Swapchain(GetDevice(), 
                 surfaceOptional->GetSurface(), 
                 surfaceOptional->GetFormat(), 
                 surfaceOptional->GetColorSpace(), 
-                surfaceOptional->GetExtent(), 
+                capabilities.currentExtent, 
                 surfaceOptional->GetPresentMode(), 
                 renderPassOptional->GetRenderPass(),
                 GetGraphicsQueueID(),

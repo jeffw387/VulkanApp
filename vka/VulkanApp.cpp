@@ -392,6 +392,13 @@ namespace vka
         }
     }
 
+    void VulkanApp::UpdateCameraSize()
+    {
+        VkSurfaceCapabilitiesKHR capabilities = deviceOptional->GetSurfaceCapabilities();
+        auto& extent = capabilities.currentExtent;
+        camera.setSize(glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)));
+    }
+
     void VulkanApp::Render()
     {
 		VkSwapchainKHR swapchain;
@@ -416,7 +423,7 @@ namespace vka
         pipeline = deviceOptional->GetPipeline();
         vertexBuffer = vertexBufferUnique.buffer.get();
         graphicsQueue = deviceOptional->GetGraphicsQueue();
-        extent = deviceOptional->GetExtent();
+        extent = deviceOptional->GetSurfaceCapabilities().currentExtent;
 
         auto acquireResult = vkAcquireNextImageKHR(device, swapchain, 
             0, VK_NULL_HANDLE, 
@@ -431,8 +438,8 @@ namespace vka
                 break;
             // recoverable errors
             case VK_ERROR_OUT_OF_DATE_KHR:
-                // recreate swapchain
                 ReturnFenceToImagePresentedPool(imagePresentedFence);
+                UpdateCameraSize();
                 throw Results::ErrorOutOfDate();
             case VK_ERROR_SURFACE_LOST_KHR:
                 ReturnFenceToImagePresentedPool(imagePresentedFence);
@@ -561,6 +568,7 @@ namespace vka
             case VK_SUBOPTIMAL_KHR:
                 throw Results::Suboptimal();
             case VK_ERROR_OUT_OF_DATE_KHR:
+                UpdateCameraSize();
                 throw Results::ErrorOutOfDate();
             case VK_ERROR_SURFACE_LOST_KHR:
                 throw Results::ErrorSurfaceLost();

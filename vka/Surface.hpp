@@ -21,7 +21,7 @@ namespace vka
         {
             GetPlatformHandle();
             CreateSurface();
-            GetCapabilities();
+            surfaceCapabilities = GetCapabilities();
             BufferSupportCheck();
             ChooseFormat();
             ChoosePresentMode();
@@ -45,19 +45,19 @@ namespace vka
             return surfaceColorSpace;
         }
 
-        VkExtent2D GetExtent()
-        {
-            return surfaceCapabilities.currentExtent;
-        }
-
         VkPresentModeKHR GetPresentMode()
         {
             return presentMode;
         }
 
-        void UpdateCapabilities()
+        VkSurfaceCapabilitiesKHR GetCapabilities()
         {
-            GetCapabilities();
+            VkSurfaceCapabilitiesKHR capabilities;
+            auto result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+                physicalDevice,
+                GetSurface(),
+                &capabilities);
+            return capabilities;
         }
 
     private:
@@ -100,22 +100,11 @@ namespace vka
                 &surface);
             surfaceUnique = VkSurfaceKHRUnique(surface, VkSurfaceKHRDeleter(instance));
 #endif
-            VkSurfaceCapabilitiesKHR capabilities = {};
-            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
-            
-        }
-
-        void GetCapabilities()
-        {
-            auto result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-                physicalDevice,
-                GetSurface(),
-                &surfaceCapabilities);
         }
 
         void BufferSupportCheck()
         {
-            if (surfaceCapabilities.minImageCount < Surface::BufferCount)
+            if (surfaceCapabilities.maxImageCount != 0 && surfaceCapabilities.maxImageCount < Surface::BufferCount)
             {
                 std::runtime_error("Error: surface does not support enough swap images!");
             }

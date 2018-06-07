@@ -131,6 +131,8 @@ namespace vka
 
 		void GameThread();
 
+		void UpdateCameraSize();
+
 		void Render();
 
 		VkFence GetFenceFromImagePresentedPool();

@@ -76,9 +76,9 @@ namespace vka
 		VkDevice device;
 		std::optional<Device> deviceOptional;
 
-		VkCommandPool copyCommandPool;
-		VkCommandBuffer copyCommandBuffer;
-		VkFence copyCommandFence;
+		VkCommandPool utilityCommandPool;
+		VkCommandBuffer utilityCommandBuffer;
+		VkFence utilityCommandFence;
 
 		std::map<uint64_t, UniqueImage2D> images;
         std::map<uint64_t, Sprite> sprites;

@@ -64,7 +64,7 @@ namespace vka
 
 	class VulkanApp
 	{
-		friend class Render;
+		friend class FrameRender;
 	public:
 		GLFWwindow* window;
         TimePoint_ms startupTimePoint;
@@ -135,20 +135,20 @@ namespace vka
 
 		void UpdateCameraSize();
 
-		void Render();
-
 		VkFence GetFenceFromImagePresentedPool();
 
 		void ReturnFenceToImagePresentedPool(VkFence fence);
 	};
 
-	class Render
+	class FrameRender
 	{
 		VulkanApp& app;
 
+		VkDevice device;
 		VkSwapchainKHR swapchain;
 		VkRenderPass renderPass;
 		VkFramebuffer framebuffer;
+		VkDescriptorSet fragmentDescriptorSet;
 		VkPipelineLayout pipelineLayout;
 		VkPipeline pipeline;
 		VkFence imagePresentedFence;
@@ -158,9 +158,11 @@ namespace vka
 		VkQueue graphicsQueue;
 		VkSemaphore imageRenderedSemaphore;
 		VkExtent2D extent;
+        VkClearValue clearValue;
 
-		Render(VulkanApp& app);
-		~Render();
+	public:
+		FrameRender(VulkanApp& app);
+		~FrameRender();
 	};
 
 	static VulkanApp* GetUserPointer(GLFWwindow* window)

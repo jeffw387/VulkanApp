@@ -398,12 +398,11 @@ namespace vka
         void CreateSwapchain()
         {
             swapchainOptional.reset();
-            auto capabilities = GetSurfaceCapabilities();
             swapchainOptional = Swapchain(GetDevice(), 
                 surfaceOptional->GetSurface(), 
                 surfaceOptional->GetFormat(), 
                 surfaceOptional->GetColorSpace(), 
-                capabilities.currentExtent, 
+                surfaceOptional->GetExtent(), 
                 surfaceOptional->GetPresentMode(), 
                 renderPassOptional->GetRenderPass(),
                 GetGraphicsQueueID(),

@@ -124,7 +124,6 @@ namespace vka
             fragmentShaderPath);
         device = deviceOptional->GetDevice();
 
-
         auto graphicsQueueID = deviceOptional->GetGraphicsQueueID();
         utilityCommandPool = deviceOptional->CreateCommandPool(graphicsQueueID, true, true);
         auto utilityCommandBuffers = deviceOptional->AllocateCommandBuffers(utilityCommandPool, 1);
@@ -359,7 +358,7 @@ namespace vka
             }
             try
             {
-                Render();
+                auto newFrame = FrameRender(*this);
             }
             catch (Results::ErrorDeviceLost result)
             {
@@ -412,7 +411,7 @@ namespace vka
     {
         Continue,
         Return
-    }
+    };
 
     static RenderResults HandleRenderErrors(VkResult result)
     {
@@ -440,9 +439,10 @@ namespace vka
             case VK_ERROR_DEVICE_LOST:
                 throw Results::ErrorDeviceLost();
         }
+        return RenderResults::Continue;
     }
 
-    Render::Render(VulkanApp& app) : app(app)
+    FrameRender::FrameRender(VulkanApp& app) : app(app)
     {
         // Frame-independent resources
         device = app.deviceOptional->GetDevice();
@@ -450,11 +450,13 @@ namespace vka
         swapchain = app.deviceOptional->GetSwapchain();
         imagePresentedFence = app.GetFenceFromImagePresentedPool();
         renderPass = app.deviceOptional->GetRenderPass();
+        fragmentDescriptorSet = app.fragmentDescriptorSet;
         pipelineLayout = app.deviceOptional->GetPipelineLayout();
         pipeline = app.deviceOptional->GetPipeline();
         vertexBuffer = app.vertexBufferUnique.buffer.get();
         graphicsQueue = app.deviceOptional->GetGraphicsQueue();
-        extent = app.deviceOptional->GetSurfaceCapabilities().currentExtent;
+        extent = app.deviceOptional->GetSurfaceExtent();
+        clearValue = app.clearValue;
 
         auto acquireResult = vkAcquireNextImageKHR(device, swapchain, 
             0, VK_NULL_HANDLE, 
@@ -568,10 +570,10 @@ namespace vka
             graphicsQueue, 
             &presentInfo);
 
-        auto successResult = HandleRenderErrors(acquireResult);
+        HandleRenderErrors(presentResult);
     }
 
-    Render::~Render()
+    FrameRender::~FrameRender()
     {
         app.ReturnFenceToImagePresentedPool(imagePresentedFence);
     }

@@ -139,9 +139,9 @@ namespace vka
             return pipelineOptional->GetPipeline();
         }
 
-        VkSurfaceCapabilitiesKHR GetSurfaceCapabilities()
+        VkExtent2D GetSurfaceExtent()
         {
-            return surfaceOptional->GetCapabilities();
+            return surfaceOptional->GetExtent();
         }
 
         VkFramebuffer GetFramebuffer(size_t i)
@@ -220,11 +220,13 @@ namespace vka
 
         void operator()(Results::Suboptimal result)
         {
+            (*surfaceOptional)(result);
             recreateSwapchain();
         }
 
         void operator()(Results::ErrorOutOfDate result)
         {
+            (*surfaceOptional)(result);
             recreateSwapchain();
         }
         

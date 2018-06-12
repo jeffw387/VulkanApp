@@ -34,6 +34,7 @@
 #include <iostream>
 #include <map>
 #include <functional>
+#include <memory>
 #include <limits>
 #include <thread>
 #include <variant>
@@ -63,6 +64,7 @@ namespace vka
 
 	class VulkanApp
 	{
+		friend class Render;
 	public:
 		GLFWwindow* window;
         TimePoint_ms startupTimePoint;
@@ -138,6 +140,27 @@ namespace vka
 		VkFence GetFenceFromImagePresentedPool();
 
 		void ReturnFenceToImagePresentedPool(VkFence fence);
+	};
+
+	class Render
+	{
+		VulkanApp& app;
+
+		VkSwapchainKHR swapchain;
+		VkRenderPass renderPass;
+		VkFramebuffer framebuffer;
+		VkPipelineLayout pipelineLayout;
+		VkPipeline pipeline;
+		VkFence imagePresentedFence;
+		VkFence renderCommandBufferExecutedFence;
+		VkCommandBuffer renderCommandBuffer;
+		VkBuffer vertexBuffer;
+		VkQueue graphicsQueue;
+		VkSemaphore imageRenderedSemaphore;
+		VkExtent2D extent;
+
+		Render(VulkanApp& app);
+		~Render();
 	};
 
 	static VulkanApp* GetUserPointer(GLFWwindow* window)

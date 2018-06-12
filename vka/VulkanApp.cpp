@@ -368,14 +368,17 @@ namespace vka
             catch (Results::ErrorSurfaceLost result)
             {
                 (*deviceOptional)(result);
+                UpdateCameraSize();
             }
             catch (Results::Suboptimal result)
             {
                 (*deviceOptional)(result);
+                UpdateCameraSize();
             }
             catch (Results::ErrorOutOfDate result)
             {
                 (*deviceOptional)(result);
+                UpdateCameraSize();
             }
         }
     }
@@ -401,59 +404,34 @@ namespace vka
 
     void VulkanApp::UpdateCameraSize()
     {
-        VkSurfaceCapabilitiesKHR capabilities = deviceOptional->GetSurfaceCapabilities();
-        auto& extent = capabilities.currentExtent;
+        auto& extent = deviceOptional->GetSurfaceExtent();
         camera.setSize(glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)));
     }
 
-    void VulkanApp::Render()
+    enum class RenderResults
     {
-		VkSwapchainKHR swapchain;
-		VkRenderPass renderPass;
-		VkFramebuffer framebuffer;
-		VkPipelineLayout pipelineLayout;
-		VkPipeline pipeline;
-		VkFence imagePresentedFence;
-		VkFence renderCommandBufferExecutedFence;
-		VkCommandBuffer renderCommandBuffer;
-		VkBuffer vertexBuffer;
-		VkQueue graphicsQueue;
-		VkSemaphore imageRenderedSemaphore;
-		VkExtent2D extent;
+        Continue,
+        Return
+    }
 
-        // Frame-independent resources
-        device = deviceOptional->GetDevice();
-        swapchain = deviceOptional->GetSwapchain();
-        imagePresentedFence = GetFenceFromImagePresentedPool();
-        renderPass = deviceOptional->GetRenderPass();
-        pipelineLayout = deviceOptional->GetPipelineLayout();
-        pipeline = deviceOptional->GetPipeline();
-        vertexBuffer = vertexBufferUnique.buffer.get();
-        graphicsQueue = deviceOptional->GetGraphicsQueue();
-        extent = deviceOptional->GetSurfaceCapabilities().currentExtent;
-
-        auto acquireResult = vkAcquireNextImageKHR(device, swapchain, 
-            0, VK_NULL_HANDLE, 
-            imagePresentedFence, &nextImage);
-
-        switch (acquireResult)
+    static RenderResults HandleRenderErrors(VkResult result)
+    {
+        switch (result)
         {
-            // Successes
+            // successes
+            case VK_NOT_READY:
+                return RenderResults::Return;
             case VK_SUCCESS:
-                break;
-            case VK_SUBOPTIMAL_KHR:
-                break;
+                return RenderResults::Continue;
+
             // recoverable errors
+            case VK_SUBOPTIMAL_KHR:
+                throw Results::Suboptimal();
             case VK_ERROR_OUT_OF_DATE_KHR:
-                ReturnFenceToImagePresentedPool(imagePresentedFence);
-                UpdateCameraSize();
                 throw Results::ErrorOutOfDate();
             case VK_ERROR_SURFACE_LOST_KHR:
-                ReturnFenceToImagePresentedPool(imagePresentedFence);
                 throw Results::ErrorSurfaceLost();
-            case VK_NOT_READY:
-                ReturnFenceToImagePresentedPool(imagePresentedFence);
-                return;                
+
             // unrecoverable errors
             case VK_ERROR_OUT_OF_HOST_MEMORY:
                 throw Results::ErrorOutOfHostMemory();
@@ -462,12 +440,37 @@ namespace vka
             case VK_ERROR_DEVICE_LOST:
                 throw Results::ErrorDeviceLost();
         }
+    }
+
+    Render::Render(VulkanApp& app) : app(app)
+    {
+        // Frame-independent resources
+        device = app.deviceOptional->GetDevice();
+        auto& nextImage = app.nextImage;
+        swapchain = app.deviceOptional->GetSwapchain();
+        imagePresentedFence = app.GetFenceFromImagePresentedPool();
+        renderPass = app.deviceOptional->GetRenderPass();
+        pipelineLayout = app.deviceOptional->GetPipelineLayout();
+        pipeline = app.deviceOptional->GetPipeline();
+        vertexBuffer = app.vertexBufferUnique.buffer.get();
+        graphicsQueue = app.deviceOptional->GetGraphicsQueue();
+        extent = app.deviceOptional->GetSurfaceCapabilities().currentExtent;
+
+        auto acquireResult = vkAcquireNextImageKHR(device, swapchain, 
+            0, VK_NULL_HANDLE, 
+            imagePresentedFence, &nextImage);
+        
+        auto successResult = HandleRenderErrors(acquireResult);
+        if (successResult == RenderResults::Return)
+        {
+            return;
+        }
 
         // frame-dependent resources
-        renderCommandBuffer = renderCommandBuffers[nextImage];
-        renderCommandBufferExecutedFence = renderCommandBufferExecutedFences[nextImage];
-        framebuffer = deviceOptional->GetFramebuffer(nextImage);
-        imageRenderedSemaphore = imageRenderedSemaphores[nextImage];
+        renderCommandBuffer = app.renderCommandBuffers[nextImage];
+        renderCommandBufferExecutedFence = app.renderCommandBufferExecutedFences[nextImage];
+        framebuffer = app.deviceOptional->GetFramebuffer(nextImage);
+        imageRenderedSemaphore = app.imageRenderedSemaphores[nextImage];
 
         VkViewport viewport = {};
         viewport.x = 0.f;
@@ -525,7 +528,7 @@ namespace vka
             1, &fragmentDescriptorSet,
             0, nullptr);
 
-        Draw();
+        app.Draw();
 
         // Finish recording draw command buffer
         vkCmdEndRenderPass(renderCommandBuffer);
@@ -546,7 +549,6 @@ namespace vka
 
         vkWaitForFences(device, 1, &imagePresentedFence, true, std::numeric_limits<uint64_t>::max());
         vkResetFences(device, 1, &imagePresentedFence);
-        ReturnFenceToImagePresentedPool(imagePresentedFence);
 
         auto drawSubmitResult = vkQueueSubmit(graphicsQueue, 1, 
             &submitInfo, renderCommandBufferExecutedFence);
@@ -565,27 +567,12 @@ namespace vka
         auto presentResult = vkQueuePresentKHR(
             graphicsQueue, 
             &presentInfo);
-        switch (presentResult)
-        {
-            // successes
-            case VK_SUCCESS:
-                // do nothing
-                return;
-            // recoverable errors
-            case VK_SUBOPTIMAL_KHR:
-                throw Results::Suboptimal();
-            case VK_ERROR_OUT_OF_DATE_KHR:
-                UpdateCameraSize();
-                throw Results::ErrorOutOfDate();
-            case VK_ERROR_SURFACE_LOST_KHR:
-                throw Results::ErrorSurfaceLost();
-            // unrecoverable errors
-            case VK_ERROR_OUT_OF_HOST_MEMORY:
-                throw Results::ErrorOutOfHostMemory();
-            case VK_ERROR_OUT_OF_DEVICE_MEMORY:
-                throw Results::ErrorOutOfDeviceMemory();
-            case VK_ERROR_DEVICE_LOST:
-                throw Results::ErrorDeviceLost();
-        }
+
+        auto successResult = HandleRenderErrors(acquireResult);
+    }
+
+    Render::~Render()
+    {
+        app.ReturnFenceToImagePresentedPool(imagePresentedFence);
     }
 }

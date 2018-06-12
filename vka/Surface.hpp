@@ -5,6 +5,7 @@
 #include "GLFW/glfw3.h"
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include "GLFW/glfw3native.h"
+#include "Results.hpp"
 
 #include <stdexcept>
 #include <vector>
@@ -50,14 +51,19 @@ namespace vka
             return presentMode;
         }
 
-        VkSurfaceCapabilitiesKHR GetCapabilities()
+        VkExtent2D GetExtent()
         {
-            VkSurfaceCapabilitiesKHR capabilities;
-            auto result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-                physicalDevice,
-                GetSurface(),
-                &capabilities);
-            return capabilities;
+            return surfaceCapabilities.currentExtent;
+        }
+
+        void operator()(Results::ErrorOutOfDate result)
+        {
+            surfaceCapabilities = GetCapabilities();
+        }
+
+        void operator()(Results::Suboptimal result)
+        {
+            surfaceCapabilities = GetCapabilities();
         }
 
     private:
@@ -74,6 +80,16 @@ namespace vka
         VkFormat surfaceFormat;
         VkColorSpaceKHR surfaceColorSpace;
         VkPresentModeKHR presentMode;
+
+        VkSurfaceCapabilitiesKHR GetCapabilities()
+        {
+            VkSurfaceCapabilitiesKHR capabilities;
+            auto result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+                physicalDevice,
+                GetSurface(),
+                &capabilities);
+            return capabilities;
+        }
 
         void GetPlatformHandle()
         {
@@ -162,5 +178,6 @@ namespace vka
                 presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
             }
         }
+
     };
 }

@@ -51,17 +51,18 @@ namespace cmp
     struct Velocity
     {
         glm::vec2 velocity;
-
-        Velocity() noexcept = default;
-        Velocity(glm::vec2 velocity) : velocity(std::move(velocity)) {}
+        bool awake = false;
     };
 
     struct PlayerControl
     {
-        std::chrono::milliseconds up;
-        std::chrono::milliseconds down;
-        std::chrono::milliseconds right;
-        std::chrono::milliseconds left;
-        std::chrono::milliseconds fire;
+    };
+
+    struct Engine
+    {
+        glm::vec2 thrustDirection;
+
+        Engine() noexcept = default;
+        Engine(glm::vec2 thrustDirection) : thrustDirection(std::move(thrustDirection)) {}
     };
 }

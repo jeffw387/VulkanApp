@@ -65,19 +65,16 @@ public:
             }
         }
         
-        auto physicsView = enttRegistry.persistent<cmp::Position, cmp::Velocity, cmp::PositionMatrix>();
+        auto physicsView = enttRegistry.persistent<cmp::Engine, cmp::Velocity, cmp::Position, cmp::PositionMatrix>();
 
         for (auto entity : physicsView)
         {
-            auto& position = physicsView.get<cmp::Position>(entity);
+            auto& engine = physics.get<cmp::Engine>(entity);
             auto& velocity = physicsView.get<cmp::Velocity>(entity);
+            auto& position = physicsView.get<cmp::Position>(entity);
             auto& transform = physicsView.get<cmp::PositionMatrix>(entity);
 
-            position.position += velocity.velocity;
-            transform.matrix = glm::translate(glm::mat4(1.f), 
-            glm::vec3(position.position.x,
-                position.position.y,
-                0.f));
+            
         }
     }
 
@@ -111,13 +108,15 @@ int main()
     app.inputStateMap[Bindings::Up] =  vka::MakeAction([](){ std::cout << "Up Pressed.\n"; });
     app.inputStateMap[Bindings::Down] =  vka::MakeAction([](){ std::cout << "Down Pressed.\n"; });
 
+    // render view
     app.enttRegistry.prepare<cmp::Sprite, cmp::PositionMatrix, cmp::Color>();
-    app.enttRegistry.prepare<cmp::Position, cmp::Velocity, cmp::PositionMatrix>();
+    // physics view
+    app.enttRegistry.prepare<cmp::Engine, cmp::Velocity, cmp::Position, cmp::PositionMatrix>();
     for (auto i = 0.f; i < 3.f; i++)
     {
         auto entity = app.enttRegistry.create(
             cmp::Sprite(Sprites::SpriteSheet1::starpng::Name), 
-            cmp::Position(glm::vec2(i*2.f, i*2.f)),
+            cmp::Position(glm::vec2(i*20.f, i*20.f)),
             cmp::PositionMatrix(),
             cmp::Velocity(glm::vec2()),
             cmp::Color(glm::vec4(1.f)),

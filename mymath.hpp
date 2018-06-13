@@ -86,6 +86,7 @@ namespace helper
 	template <typename T>
 	T Normalize(T value, T min, T max)
 	{
+		T newValue = {};
 		auto clamped = std::clamp(newValue, min, max);
         auto shifted = clamped - min;
 		auto maxShifted = max - min;

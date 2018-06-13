@@ -69,11 +69,12 @@ public:
 
         for (auto entity : physicsView)
         {
-            auto& engine = physics.get<cmp::Engine>(entity);
+            /*auto& engine = physicsView.get<cmp::Engine>(entity);
             auto& velocity = physicsView.get<cmp::Velocity>(entity);
             auto& position = physicsView.get<cmp::Position>(entity);
-            auto& transform = physicsView.get<cmp::PositionMatrix>(entity);
+            auto& transform = physicsView.get<cmp::PositionMatrix>(entity);*/
 
+			// TODO: update physics and set transforms
             
         }
     }
@@ -117,8 +118,8 @@ int main()
         auto entity = app.enttRegistry.create(
             cmp::Sprite(Sprites::SpriteSheet1::starpng::Name), 
             cmp::Position(glm::vec2(i*20.f, i*20.f)),
-            cmp::PositionMatrix(),
-            cmp::Velocity(glm::vec2()),
+            cmp::PositionMatrix(glm::mat4(1.f)),
+            cmp::Velocity(),
             cmp::Color(glm::vec4(1.f)),
             cmp::RectSize());
     }

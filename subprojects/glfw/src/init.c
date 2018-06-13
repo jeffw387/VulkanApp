@@ -34,8 +34,7 @@
 #include <stdarg.h>
 #include <assert.h>
 
-#if defined _GLFW_BUILD_DLL
-#endif
+
 // The global variables below comprise all global data in GLFW.
 // Any other global variable is a bug.
 

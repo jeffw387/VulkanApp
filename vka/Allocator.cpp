@@ -5,16 +5,6 @@
 #include "mymath.hpp"
 namespace vka
 {
-    
-
-    bool operator!=(const AllocationHandle& lhs, const AllocationHandle& rhs)
-    {
-        return (lhs.memory != rhs.memory) ||
-            (lhs.size != rhs.size) ||
-            (lhs.offsetInDeviceMemory != rhs.offsetInDeviceMemory) ||
-            (lhs.typeID != rhs.typeID);
-    }
-
     void AllocationHandleDeleter::functor(AllocationHandle allocation)
     {
         block->DeallocateMemory(allocation);

@@ -214,8 +214,7 @@ extern "C" {
 #if defined(GLFW_INCLUDE_VULKAN)
   #include <vulkan/vulkan.h>
 #endif /* Vulkan header */
-#if defined _GLFW_BUILD_DLL
-#endif
+
 #if defined(GLFW_DLL) && defined(_GLFW_BUILD_DLL)
  /* GLFW_DLL must be defined by applications that are linking against the DLL
   * version of the GLFW library.  _GLFW_BUILD_DLL is defined by the GLFW

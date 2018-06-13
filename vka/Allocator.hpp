@@ -12,13 +12,24 @@ namespace vka
 {
     struct AllocationHandle
     {
-        VkDeviceMemory memory;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
         VkDeviceSize size;
         VkDeviceSize offsetInDeviceMemory;
         uint32_t typeID;
     };
 
-    bool operator!=(const AllocationHandle& lhs, const AllocationHandle& rhs);
+    static bool operator!=(const AllocationHandle& lhs, const AllocationHandle& rhs)
+	{
+		return (lhs.memory != rhs.memory) ||
+			(lhs.size != rhs.size) ||
+			(lhs.offsetInDeviceMemory != rhs.offsetInDeviceMemory) ||
+			(lhs.typeID != rhs.typeID);
+	}
+
+    static bool operator !=(const AllocationHandle& handle, std::nullptr_t nptr)
+    {
+        return handle.memory != VK_NULL_HANDLE;
+    }
 
     struct MemoryBlock;
     struct AllocationHandleDeleter
@@ -75,7 +86,7 @@ namespace vka
         Allocator(VkPhysicalDevice physicalDevice, 
             VkDevice device, 
             VkDeviceSize defaultBlockSize = DefaultMemoryBlockSize);
-        std::optional<uint32_t> Allocator::ChooseMemoryType(VkMemoryPropertyFlags memoryFlags, 
+        std::optional<uint32_t> ChooseMemoryType(VkMemoryPropertyFlags memoryFlags, 
         const VkMemoryRequirements& requirements);
         UniqueAllocationHandle AllocateMemory(const bool DedicatedAllocation, 
         const VkMemoryRequirements& requirements, 

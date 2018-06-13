@@ -48,6 +48,19 @@ namespace cmp
         Color(glm::vec4 rgba) : rgba(std::move(rgba)) {}
     };
 
+    struct CollisionMesh
+    {
+        
+    };
+
+    // do collision testing for each awake object
+    // add velocity where needed from collisions and wake objects that have velocity added
+    // add velocity to physics entities based on ai or player input
+    // wake physics entities if velocity was added
+    // simulate motion for awake objects
+    // update transform for awake objects
+    // apply drag to awake objects
+
     struct Velocity
     {
         glm::vec2 velocity;

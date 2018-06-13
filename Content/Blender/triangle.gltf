@@ -1,0 +1,142 @@
+{
+    "accessors" : [
+        {
+            "bufferView" : 0,
+            "componentType" : 5121,
+            "count" : 24,
+            "max" : [
+                17
+            ],
+            "min" : [
+                0
+            ],
+            "type" : "SCALAR"
+        },
+        {
+            "bufferView" : 1,
+            "componentType" : 5126,
+            "count" : 18,
+            "max" : [
+                1.0,
+                1.3055555820465088,
+                1.0092592239379883
+            ],
+            "min" : [
+                -1.0,
+                -0.6944444179534912,
+                0.009259283542633057
+            ],
+            "type" : "VEC3"
+        },
+        {
+            "bufferView" : 2,
+            "componentType" : 5121,
+            "count" : 3,
+            "max" : [
+                2
+            ],
+            "min" : [
+                0
+            ],
+            "type" : "SCALAR"
+        },
+        {
+            "bufferView" : 3,
+            "componentType" : 5126,
+            "count" : 3,
+            "max" : [
+                1.0,
+                1.3055555820465088,
+                0.009259283542633057
+            ],
+            "min" : [
+                -1.0,
+                -0.6944444179534912,
+                0.009259283542633057
+            ],
+            "type" : "VEC3"
+        }
+    ],
+    "asset" : {
+        "generator" : "Khronos Blender glTF 2.0 exporter",
+        "version" : "2.0"
+    },
+    "bufferViews" : [
+        {
+            "buffer" : 0,
+            "byteLength" : 24,
+            "byteOffset" : 0,
+            "target" : 34963
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 216,
+            "byteOffset" : 24,
+            "target" : 34962
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 3,
+            "byteOffset" : 240,
+            "target" : 34963
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 36,
+            "byteOffset" : 244,
+            "target" : 34962
+        }
+    ],
+    "buffers" : [
+        {
+            "byteLength" : 280,
+            "uri" : "triangle.bin"
+        }
+    ],
+    "meshes" : [
+        {
+            "name" : "Triangle",
+            "primitives" : [
+                {
+                    "attributes" : {
+                        "POSITION" : 1
+                    },
+                    "indices" : 0
+                }
+            ]
+        },
+        {
+            "name" : "Collision",
+            "primitives" : [
+                {
+                    "attributes" : {
+                        "POSITION" : 3
+                    },
+                    "indices" : 2
+                }
+            ]
+        }
+    ],
+    "nodes" : [
+        {
+            "mesh" : 1,
+            "name" : "Collision"
+        },
+        {
+            "children" : [
+                0
+            ],
+            "mesh" : 0,
+            "name" : "Triangle"
+        }
+    ],
+    "scene" : 0,
+    "scenes" : [
+        {
+            "name" : "Scene",
+            "nodes" : [
+                1
+            ]
+        }
+    ]
+}

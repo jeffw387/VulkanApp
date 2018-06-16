@@ -54,4 +54,9 @@ add_library(json INTERFACE)
 target_include_directories(json INTERFACE subprojects/json)
 target_link_libraries(VulkanApp PRIVATE json)
 
+add_library(bullet INTERFACE)
+target_include_directories(bullet INTERFACE subprojects/bullet3/src)
+add_subdirectory(subprojects/bullet3)
+target_link_libraries(VulkanApp PRIVATE Bullet3Collision bullet)
+
 set_target_properties(VulkanApp PROPERTIES CXX_STANDARD 17)

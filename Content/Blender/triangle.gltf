@@ -30,6 +30,22 @@
         },
         {
             "bufferView" : 2,
+            "componentType" : 5126,
+            "count" : 18,
+            "max" : [
+                0.8944272398948669,
+                0.44721361994743347,
+                1.0
+            ],
+            "min" : [
+                -0.8944272398948669,
+                -1.0,
+                -1.0
+            ],
+            "type" : "VEC3"
+        },
+        {
+            "bufferView" : 3,
             "componentType" : 5121,
             "count" : 3,
             "max" : [
@@ -41,7 +57,7 @@
             "type" : "SCALAR"
         },
         {
-            "bufferView" : 3,
+            "bufferView" : 4,
             "componentType" : 5126,
             "count" : 3,
             "max" : [
@@ -53,6 +69,22 @@
                 -1.0,
                 -0.6944444179534912,
                 0.009259283542633057
+            ],
+            "type" : "VEC3"
+        },
+        {
+            "bufferView" : 5,
+            "componentType" : 5126,
+            "count" : 3,
+            "max" : [
+                0.0,
+                0.0,
+                -1.0
+            ],
+            "min" : [
+                0.0,
+                0.0,
+                -1.0
             ],
             "type" : "VEC3"
         }
@@ -76,20 +108,32 @@
         },
         {
             "buffer" : 0,
-            "byteLength" : 3,
+            "byteLength" : 216,
             "byteOffset" : 240,
+            "target" : 34962
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 3,
+            "byteOffset" : 456,
             "target" : 34963
         },
         {
             "buffer" : 0,
             "byteLength" : 36,
-            "byteOffset" : 244,
+            "byteOffset" : 460,
+            "target" : 34962
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 36,
+            "byteOffset" : 496,
             "target" : 34962
         }
     ],
     "buffers" : [
         {
-            "byteLength" : 280,
+            "byteLength" : 532,
             "uri" : "triangle.bin"
         }
     ],
@@ -99,6 +143,7 @@
             "primitives" : [
                 {
                     "attributes" : {
+                        "NORMAL" : 2,
                         "POSITION" : 1
                     },
                     "indices" : 0
@@ -110,9 +155,10 @@
             "primitives" : [
                 {
                     "attributes" : {
-                        "POSITION" : 3
+                        "NORMAL" : 5,
+                        "POSITION" : 4
                     },
-                    "indices" : 2
+                    "indices" : 3
                 }
             ]
         }

@@ -14,6 +14,7 @@
 #include "ECSComponents.hpp"
 #include "entt.hpp"
 #include "btBulletDynamicsCommon.h"
+#include "BulletCollision/NarrowPhaseCollision/btMinkowskiPenetrationDepthSolver.h"
 
 #undef min
 #undef max
@@ -37,7 +38,10 @@ class ClientApp : public vka::VulkanApp
 public:
     entt::DefaultRegistry enttRegistry;
 	
+	void LoadModels()
+	{
 
+	}
     void LoadImages()
     {
         auto sheet1 = vka::loadImageFromFile(std::string(Sprites::SpriteSheet1::ImagePath));
@@ -70,18 +74,7 @@ public:
             }
         }
         
-        auto physicsView = enttRegistry.persistent<cmp::Engine, cmp::Velocity, cmp::Position, cmp::PositionMatrix>();
-
-        for (auto entity : physicsView)
-        {
-            /*auto& engine = physicsView.get<cmp::Engine>(entity);
-            auto& velocity = physicsView.get<cmp::Velocity>(entity);
-            auto& position = physicsView.get<cmp::Position>(entity);
-            auto& transform = physicsView.get<cmp::PositionMatrix>(entity);*/
-
-			// TODO: update physics and set transforms
-            
-        }
+        //auto physicsView = enttRegistry.persistent<cmp::Engine, cmp::Velocity, cmp::Position, cmp::PositionMatrix>();
     }
 
     void Draw()
@@ -123,21 +116,24 @@ RigidBodyUnique CreateRigidBody(
 	auto rigidBodyInfo = btRigidBody::btRigidBodyConstructionInfo(mass, result.motionState.get(), collisionShape, localInertia);
 
 	result.rigidBody = std::make_unique<btRigidBody>(rigidBodyInfo);
+
+	return std::move(result);
 }
-
-struct SquareCollisionShape
-{
-
-};
 
 int main()
 {
     ClientApp app;
 	auto collisionConfig = std::make_unique<btDefaultCollisionConfiguration>();
-	auto collisionDispatcher = std::make_unique<btCollisionDispatcher>();
+	auto collisionDispatcher = std::make_unique<btCollisionDispatcher>(collisionConfig.get());
 	auto collisionBroadPhase = std::make_unique<btDbvtBroadphase>();
 	auto constraintSolver = std::make_unique<btSequentialImpulseConstraintSolver>();
-	auto dynamicsWorld = std::make_unique<btDiscreteDynamicsWorld>();
+	auto simplexSolver = std::make_unique<btVoronoiSimplexSolver>();
+	auto penetrationDepthSolver = std::make_unique<btMinkowskiPenetrationDepthSolver>();
+	auto dynamicsWorld = std::make_unique<btDiscreteDynamicsWorld>(
+		collisionDispatcher.get(),
+		collisionBroadPhase.get(),
+		constraintSolver.get(),
+		collisionConfig.get());
 
 	auto collisionShapes = std::vector<std::unique_ptr<btCollisionShape>>();
 	auto rigidBodies = std::vector<btRigidBody>();
@@ -149,27 +145,22 @@ int main()
     app.inputBindMap[vka::MakeSignature(GLFW_KEY_UP, GLFW_PRESS)]    = 	Bindings::Up;
     app.inputBindMap[vka::MakeSignature(GLFW_KEY_DOWN, GLFW_PRESS)]  = 	Bindings::Down;
 
-    app.inputStateMap[Bindings::Left] =  vka::MakeAction([](){ std::cout << "Left Pressed.\n"; });
-    app.inputStateMap[Bindings::Right] = vka::MakeAction([](){ std::cout << "Right Pressed.\n"; });
-    app.inputStateMap[Bindings::Up] =  vka::MakeAction([](){ std::cout << "Up Pressed.\n"; });
-    app.inputStateMap[Bindings::Down] =  vka::MakeAction([](){ std::cout << "Down Pressed.\n"; });
+    app.inputStateMap[Bindings::Left] =		vka::MakeAction([](){ std::cout << "Left Pressed.\n"; });
+    app.inputStateMap[Bindings::Right] =	vka::MakeAction([](){ std::cout << "Right Pressed.\n"; });
+    app.inputStateMap[Bindings::Up] =		vka::MakeAction([](){ std::cout << "Up Pressed.\n"; });
+    app.inputStateMap[Bindings::Down] =		vka::MakeAction([](){ std::cout << "Down Pressed.\n"; });
 
     // render view
     app.enttRegistry.prepare<cmp::Sprite, cmp::PositionMatrix, cmp::Color>();
     // physics view
-    app.enttRegistry.prepare<cmp::Engine, cmp::Velocity, cmp::Position, cmp::PositionMatrix>();
+    //app.enttRegistry.prepare<cmp::Engine, cmp::Velocity, cmp::Position, cmp::PositionMatrix>();
     for (auto i = 0.f; i < 3.f; i++)
     {
         auto entity = app.enttRegistry.create(
             cmp::Sprite(Sprites::SpriteSheet1::starpng::Name), 
-            cmp::Position(glm::vec2(i*20.f, i*20.f)),
             cmp::PositionMatrix(glm::mat4(1.f)),
-            cmp::Velocity(),
-            cmp::Color(glm::vec4(1.f)),
-            cmp::RectSize());
+            cmp::Color(glm::vec4(1.f)));
     }
-
-
 
     app.Run(std::string(ConfigPath), std::string(VertexShaderPath), std::string(FragmentShaderPath));
 }

@@ -30,6 +30,7 @@
 #include "Debug.hpp"
 #include "Pool.hpp"
 #include "entt.hpp"
+#include "GLTF.hpp"
 
 #include <iostream>
 #include <map>
@@ -85,6 +86,11 @@ namespace vka
 		std::map<uint64_t, UniqueImage2D> images;
         std::map<uint64_t, Sprite> sprites;
         std::vector<Quad> quads;
+		std::vector<glTF> models;
+		std::vector<VkBufferUnique> indexBuffers;
+		std::vector<VkBufferUnique> positionBuffers;
+		std::vector<VkBufferUnique> normalBuffers;
+
 
         UniqueAllocatedBuffer vertexBufferUnique;
 		VkDescriptorSet fragmentDescriptorSet;
@@ -116,6 +122,8 @@ namespace vka
 		void LoadImage2D(const HashType imageID, const Bitmap& bitmap);
 
 		void CreateSprite(const HashType imageID, const HashType spriteName, const Quad quad);
+
+		void CreateMesh(const glTF & glTFData);
 
 		void RenderSpriteInstance(
 			uint64_t spriteIndex,

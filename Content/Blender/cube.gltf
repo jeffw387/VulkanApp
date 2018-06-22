@@ -30,6 +30,22 @@
         },
         {
             "bufferView" : 2,
+            "componentType" : 5126,
+            "count" : 24,
+            "max" : [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "min" : [
+                -1.0,
+                -1.0,
+                -1.0
+            ],
+            "type" : "VEC3"
+        },
+        {
+            "bufferView" : 3,
             "componentType" : 5121,
             "count" : 6,
             "max" : [
@@ -41,7 +57,7 @@
             "type" : "SCALAR"
         },
         {
-            "bufferView" : 3,
+            "bufferView" : 4,
             "componentType" : 5126,
             "count" : 4,
             "max" : [
@@ -53,6 +69,22 @@
                 -1.0,
                 -1.0,
                 0.0
+            ],
+            "type" : "VEC3"
+        },
+        {
+            "bufferView" : 5,
+            "componentType" : 5126,
+            "count" : 4,
+            "max" : [
+                0.0,
+                0.0,
+                -1.0
+            ],
+            "min" : [
+                0.0,
+                0.0,
+                -1.0
             ],
             "type" : "VEC3"
         }
@@ -76,20 +108,32 @@
         },
         {
             "buffer" : 0,
-            "byteLength" : 6,
+            "byteLength" : 288,
             "byteOffset" : 324,
+            "target" : 34962
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 6,
+            "byteOffset" : 612,
             "target" : 34963
         },
         {
             "buffer" : 0,
             "byteLength" : 48,
-            "byteOffset" : 332,
+            "byteOffset" : 620,
+            "target" : 34962
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 48,
+            "byteOffset" : 668,
             "target" : 34962
         }
     ],
     "buffers" : [
         {
-            "byteLength" : 380,
+            "byteLength" : 716,
             "uri" : "cube.bin"
         }
     ],
@@ -99,6 +143,7 @@
             "primitives" : [
                 {
                     "attributes" : {
+                        "NORMAL" : 2,
                         "POSITION" : 1
                     },
                     "indices" : 0
@@ -110,9 +155,10 @@
             "primitives" : [
                 {
                     "attributes" : {
-                        "POSITION" : 3
+                        "NORMAL" : 5,
+                        "POSITION" : 4
                     },
-                    "indices" : 2
+                    "indices" : 3
                 }
             ]
         }

@@ -214,6 +214,11 @@ namespace vka
         sprites[spriteName] = sprite;
     }
 
+	void VulkanApp::CreateMesh(const glTF& glTFData)
+	{
+
+	}
+
     void VulkanApp::RenderSpriteInstance(
         uint64_t spriteIndex,
         glm::mat4 transform,

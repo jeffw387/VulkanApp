@@ -114,6 +114,7 @@ class VulkanApp
 	double cursorX;
 	double cursorY;
 
+	virtual void LoadModels() = 0;
 	virtual void LoadImages() = 0;
 	virtual void Update(TimePoint_ms) = 0;
 	virtual void Draw() = 0;

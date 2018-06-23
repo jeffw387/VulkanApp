@@ -131,6 +131,7 @@ void VulkanApp::Run(std::string vulkanInitJsonPath, std::string vertexShaderPath
 
     utilityCommandFence = deviceOptional->CreateFence(false);
 
+    LoadModels();
     LoadImages();
 
     FinalizeImageOrder();

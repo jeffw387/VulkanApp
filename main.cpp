@@ -47,10 +47,19 @@ class ClientApp : public vka::VulkanApp
 {
   public:
     entt::DefaultRegistry enttRegistry;
+    vka::Model cubeModel;
+    vka::Model cylinderModel;
+    vka::Model icosphereSub2Model;
+    vka::Model pentagonModel;
+    vka::Model triangleModel;
 
     void LoadModels()
     {
-        vka::LoadModelFromFile(std::string(Models::cube));
+        cubeModel = vka::LoadModelFromFile(std::string(Models::cube));
+        cylinderModel = vka::LoadModelFromFile(std::string(Models::cylinder));
+        icosphereSub2Model = vka::LoadModelFromFile(std::string(Models::icosphereSub2));
+        pentagonModel = vka::LoadModelFromFile(std::string(Models::pentagon));
+        triangleModel = vka::LoadModelFromFile(std::string(Models::triangle));
     }
 
     void LoadImages()

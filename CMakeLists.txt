@@ -30,6 +30,8 @@ add_library(glm INTERFACE)
 target_include_directories(glm INTERFACE subprojects/glm)
 target_link_libraries(VulkanApp PUBLIC glm)
 
+set(GLFW_BUILD_TESTS off)
+set(GLFW_BUILD_EXAMPLES off)
 add_subdirectory(subprojects/glfw)
 target_link_libraries(VulkanApp PRIVATE glfw ${GLFW_LIBRARIES})
 

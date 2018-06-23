@@ -3,6 +3,7 @@
 #include "UniqueVulkan.hpp"
 #include "vulkan/vulkan.h"
 #include "Surface.hpp"
+#include "gsl.hpp"
 
 #include <stdexcept>
 #include <algorithm>
@@ -95,7 +96,7 @@ namespace vka
             swapchainCreateInfo.imageArrayLayers = 1;
             swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
             swapchainCreateInfo.imageSharingMode = shareMode;
-            swapchainCreateInfo.queueFamilyIndexCount = queueFamilyIndices.size();
+            swapchainCreateInfo.queueFamilyIndexCount = gsl::narrow<uint32_t>(queueFamilyIndices.size());
             swapchainCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
             swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
             swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;

@@ -15,6 +15,7 @@
 #include "entt.hpp"
 #include "btBulletDynamicsCommon.h"
 #include "BulletCollision/NarrowPhaseCollision/btMinkowskiPenetrationDepthSolver.h"
+#include "vka/GLTF.hpp"
 
 #undef min
 #undef max
@@ -28,9 +29,18 @@ const char *ConfigPath = CONTENTROOT "VulkanInitInfo.json";
 const char *VertexShaderPath = CONTENTROOT "Shaders/vert.spv";
 const char *FragmentShaderPath = CONTENTROOT "Shaders/frag.spv";
 
-namespace Font
+namespace Fonts
 {
 constexpr auto AeroviasBrasil = entt::HashedString(CONTENTROOT "Content/Fonts/AeroviasBrasilNF.ttf");
+}
+
+namespace Models
+{
+constexpr auto cube = entt::HashedString("Content/Blender/cube.gltf");
+constexpr auto cylinder = entt::HashedString("Content/Blender/cylinder.gltf");
+constexpr auto icosphereSub2 = entt::HashedString("Content/Blender/icosphereSub2.gltf");
+constexpr auto pentagon = entt::HashedString("Content/Blender/pentagon.gltf");
+constexpr auto triangle = entt::HashedString("Content/Blender/triangle.gltf");
 }
 
 class ClientApp : public vka::VulkanApp
@@ -40,7 +50,9 @@ class ClientApp : public vka::VulkanApp
 
     void LoadModels()
     {
+        vka::LoadModelFromFile(std::string(Models::cube));
     }
+
     void LoadImages()
     {
         auto sheet1 = vka::loadImageFromFile(std::string(Sprites::SpriteSheet1::ImagePath));

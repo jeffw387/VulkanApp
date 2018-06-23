@@ -31,6 +31,7 @@
 #include "Pool.hpp"
 #include "entt.hpp"
 #include "GLTF.hpp"
+#include "gsl.hpp"
 
 #include <iostream>
 #include <map>

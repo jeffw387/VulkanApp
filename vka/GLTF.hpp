@@ -26,16 +26,17 @@ struct Mesh
 
 struct Node
 {
-	std::string name;
 	Mesh mesh;
 };
 
-struct Scene
+struct Model
 {
 	Node collision;
-	Node model;
+	Node full;
 };
 
+namespace detail
+{
 using BufferVector = std::vector<std::vector<char>>;
 
 template <typename T>
@@ -84,36 +85,36 @@ static void LoadNode(Node &node, const json &nodejson, const json &j, const Buff
 	size_t meshIndex = nodejson["mesh"];
 	auto &mesh = j["meshes"][meshIndex];
 	auto &primitive = mesh["primitives"][0];
-	node.name = nodejson["name"];
 	CopyMeshData(node.mesh, primitive, j, buffers);
 }
+} // namespace detail
 
-static Scene LoadModelFromFile(std::string fileName)
+static Model LoadModelFromFile(std::string fileName)
 {
 	auto f = std::ifstream(fileName);
 	json j;
 	f >> j;
 
-	BufferVector buffers;
+	detail::BufferVector buffers;
 
 	for (const auto &buffer : j["buffers"])
 	{
 		buffers.push_back(fileIO::readFile(buffer["uri"]));
 	}
 
-	Scene scene;
+	Model model;
 
 	for (const auto &node : j["nodes"])
 	{
 		if (node["name"] == "Collision")
 		{
-			LoadNode(scene.collision, node, j, buffers);
+			detail::LoadNode(model.collision, node, j, buffers);
 		}
 		else
 		{
-			LoadNode(scene.model, node, j, buffers);
+			detail::LoadNode(model.full, node, j, buffers);
 		}
 	}
-	return scene;
+	return model;
 }
 } // namespace vka

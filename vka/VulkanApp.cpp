@@ -108,9 +108,9 @@ void VulkanApp::Run(std::string vulkanInitJsonPath, std::string vertexShaderPath
     VkInstanceCreateInfo instanceCreateInfo = {};
     instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instanceCreateInfo.pApplicationInfo = &applicationInfo;
-    instanceCreateInfo.enabledLayerCount = globalLayersCstrings.size();
+    instanceCreateInfo.enabledLayerCount = gsl::narrow<uint32_t>(globalLayersCstrings.size());
     instanceCreateInfo.ppEnabledLayerNames = globalLayersCstrings.data();
-    instanceCreateInfo.enabledExtensionCount = instanceExtensionsCstrings.size();
+    instanceCreateInfo.enabledExtensionCount = gsl::narrow<uint32_t>(instanceExtensionsCstrings.size());
     instanceCreateInfo.ppEnabledExtensionNames = instanceExtensionsCstrings.data();
 
     instanceOptional = Instance(instanceCreateInfo);
@@ -160,7 +160,7 @@ void VulkanApp::Run(std::string vulkanInitJsonPath, std::string vertexShaderPath
     samplerDescriptorWrite.dstSet = fragmentDescriptorSet;
     samplerDescriptorWrite.dstBinding = 1;
     samplerDescriptorWrite.dstArrayElement = 0;
-    samplerDescriptorWrite.descriptorCount = imageCount;
+    samplerDescriptorWrite.descriptorCount = gsl::narrow<uint32_t>(imageCount);
     samplerDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
     samplerDescriptorWrite.pImageInfo = imageInfos.data();
     samplerDescriptorWrite.pBufferInfo = nullptr;
@@ -228,7 +228,7 @@ void VulkanApp::RenderSpriteInstance(
 
     PushConstants pushConstants;
     pushConstants.vertexPushConstants.mvp = mvp;
-    pushConstants.fragmentPushConstants.imageOffset = sprite.imageOffset;
+    pushConstants.fragmentPushConstants.imageOffset = gsl::narrow<glm::uint32>(sprite.imageOffset);
     pushConstants.fragmentPushConstants.color = color;
 
     vkCmdPushConstants(renderCommandBuffer,
@@ -246,7 +246,7 @@ void VulkanApp::RenderSpriteInstance(
                        &pushConstants.fragmentPushConstants);
 
     // draw the sprite
-    vkCmdDraw(renderCommandBuffer, VerticesPerQuad, 1, sprite.vertexOffset, 0);
+    vkCmdDraw(renderCommandBuffer, VerticesPerQuad, 1, gsl::narrow<uint32_t>(sprite.vertexOffset), 0);
 }
 
 void VulkanApp::FinalizeImageOrder()
@@ -360,7 +360,7 @@ void VulkanApp::GameThread()
         {
             auto newFrame = FrameRender(*this);
         }
-        catch (Results::ErrorDeviceLost result)
+        catch (Results::ErrorDeviceLost)
         {
             return;
         }

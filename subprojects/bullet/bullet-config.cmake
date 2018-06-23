@@ -27,7 +27,7 @@ macro(find_modules PREFIX)
     endforeach(MODULE_NAME)
 endmacro()
 
-message(WARNING "Starting Bullet module search:\n")
+#message(WARNING "Starting Bullet module search:\n")
 # Try install location
 foreach(MODULE_NAME ${bullet_FIND_COMPONENTS})
 	set(${MODULE_NAME}_FOUND FALSE)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vulkan/vulkan.h"
+#include "gsl.hpp"
 
 #include <vector>
 
@@ -46,9 +47,9 @@ namespace vka
             vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
             vertexInputInfo.pNext = nullptr;
             vertexInputInfo.flags = 0;
-            vertexInputInfo.vertexBindingDescriptionCount = vertexBindings.size();
+            vertexInputInfo.vertexBindingDescriptionCount = gsl::narrow<uint32_t>(vertexBindings.size());
             vertexInputInfo.pVertexBindingDescriptions = vertexBindings.data();
-            vertexInputInfo.vertexAttributeDescriptionCount = vertexAttributes.size();
+            vertexInputInfo.vertexAttributeDescriptionCount = gsl::narrow<uint32_t>(vertexAttributes.size());
             vertexInputInfo.pVertexAttributeDescriptions = vertexAttributes.data();
         }
 

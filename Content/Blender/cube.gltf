@@ -139,7 +139,7 @@
     ],
     "meshes" : [
         {
-            "name" : "Cube.001",
+            "name" : "Cube",
             "primitives" : [
                 {
                     "attributes" : {
@@ -151,7 +151,7 @@
             ]
         },
         {
-            "name" : "Collision.001",
+            "name" : "Collision",
             "primitives" : [
                 {
                     "attributes" : {
@@ -169,9 +169,6 @@
             "name" : "Collision"
         },
         {
-            "children" : [
-                0
-            ],
             "mesh" : 0,
             "name" : "Cube"
         }
@@ -181,7 +178,8 @@
         {
             "name" : "Scene",
             "nodes" : [
-                1
+                1,
+                0
             ]
         }
     ]

@@ -169,9 +169,6 @@
             "name" : "Collision"
         },
         {
-            "children" : [
-                0
-            ],
             "mesh" : 0,
             "name" : "Pentagon",
             "rotation" : [
@@ -187,7 +184,8 @@
         {
             "name" : "Scene",
             "nodes" : [
-                1
+                1,
+                0
             ]
         }
     ]

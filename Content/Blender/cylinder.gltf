@@ -3,50 +3,6 @@
         {
             "bufferView" : 0,
             "componentType" : 5121,
-            "count" : 90,
-            "max" : [
-                31
-            ],
-            "min" : [
-                0
-            ],
-            "type" : "SCALAR"
-        },
-        {
-            "bufferView" : 1,
-            "componentType" : 5126,
-            "count" : 32,
-            "max" : [
-                1.0,
-                1.0,
-                0.0
-            ],
-            "min" : [
-                -1.0,
-                -1.0,
-                0.0
-            ],
-            "type" : "VEC3"
-        },
-        {
-            "bufferView" : 2,
-            "componentType" : 5126,
-            "count" : 32,
-            "max" : [
-                0.0,
-                0.0,
-                -1.0
-            ],
-            "min" : [
-                0.0,
-                0.0,
-                -1.0
-            ],
-            "type" : "VEC3"
-        },
-        {
-            "bufferView" : 3,
-            "componentType" : 5121,
             "count" : 372,
             "max" : [
                 191
@@ -57,7 +13,7 @@
             "type" : "SCALAR"
         },
         {
-            "bufferView" : 4,
+            "bufferView" : 1,
             "componentType" : 5126,
             "count" : 192,
             "max" : [
@@ -73,7 +29,7 @@
             "type" : "VEC3"
         },
         {
-            "bufferView" : 5,
+            "bufferView" : 2,
             "componentType" : 5126,
             "count" : 192,
             "max" : [
@@ -87,6 +43,50 @@
                 -1.0
             ],
             "type" : "VEC3"
+        },
+        {
+            "bufferView" : 3,
+            "componentType" : 5121,
+            "count" : 90,
+            "max" : [
+                31
+            ],
+            "min" : [
+                0
+            ],
+            "type" : "SCALAR"
+        },
+        {
+            "bufferView" : 4,
+            "componentType" : 5126,
+            "count" : 32,
+            "max" : [
+                1.0,
+                1.0,
+                0.0
+            ],
+            "min" : [
+                -1.0,
+                -1.0,
+                0.0
+            ],
+            "type" : "VEC3"
+        },
+        {
+            "bufferView" : 5,
+            "componentType" : 5126,
+            "count" : 32,
+            "max" : [
+                0.0,
+                0.0,
+                -1.0
+            ],
+            "min" : [
+                0.0,
+                0.0,
+                -1.0
+            ],
+            "type" : "VEC3"
         }
     ],
     "asset" : {
@@ -96,38 +96,38 @@
     "bufferViews" : [
         {
             "buffer" : 0,
-            "byteLength" : 90,
+            "byteLength" : 372,
             "byteOffset" : 0,
             "target" : 34963
         },
         {
             "buffer" : 0,
-            "byteLength" : 384,
-            "byteOffset" : 92,
+            "byteLength" : 2304,
+            "byteOffset" : 372,
             "target" : 34962
         },
         {
             "buffer" : 0,
-            "byteLength" : 384,
-            "byteOffset" : 476,
+            "byteLength" : 2304,
+            "byteOffset" : 2676,
             "target" : 34962
         },
         {
             "buffer" : 0,
-            "byteLength" : 372,
-            "byteOffset" : 860,
+            "byteLength" : 90,
+            "byteOffset" : 4980,
             "target" : 34963
         },
         {
             "buffer" : 0,
-            "byteLength" : 2304,
-            "byteOffset" : 1232,
+            "byteLength" : 384,
+            "byteOffset" : 5072,
             "target" : 34962
         },
         {
             "buffer" : 0,
-            "byteLength" : 2304,
-            "byteOffset" : 3536,
+            "byteLength" : 384,
+            "byteOffset" : 5456,
             "target" : 34962
         }
     ],
@@ -139,7 +139,7 @@
     ],
     "meshes" : [
         {
-            "name" : "Collision",
+            "name" : "Cylinder",
             "primitives" : [
                 {
                     "attributes" : {
@@ -151,7 +151,7 @@
             ]
         },
         {
-            "name" : "Cylinder",
+            "name" : "Collision",
             "primitives" : [
                 {
                     "attributes" : {
@@ -165,14 +165,11 @@
     ],
     "nodes" : [
         {
-            "mesh" : 0,
+            "mesh" : 1,
             "name" : "Collision"
         },
         {
-            "children" : [
-                0
-            ],
-            "mesh" : 1,
+            "mesh" : 0,
             "name" : "Cylinder"
         }
     ],
@@ -181,7 +178,8 @@
         {
             "name" : "Scene",
             "nodes" : [
-                1
+                1,
+                0
             ]
         }
     ]

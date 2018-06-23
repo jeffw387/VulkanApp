@@ -1,2 +1,0 @@
-lunarg_api_dump.file = true
-lunarg_api_dump.log_filename = apiLog.txt

@@ -16,7 +16,7 @@ set(shaderSourceDir "${CMAKE_SOURCE_DIR}/Shaders")
 set(shaderDestinationDir "${CMAKE_CURRENT_BINARY_DIR}")
 file(INSTALL ${shaderSourceDir} DESTINATION ${shaderDestinationDir})
 
-file(INSTALL ${CMAKE_SOURCE_DIR}/VulkanInitInfo.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(INSTALL ${CMAKE_SOURCE_DIR}/config DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 target_include_directories(VulkanApp PUBLIC vka .)
 target_compile_definitions(VulkanApp PRIVATE VK_NO_PROTOTYPES VK_USE_PLATFORM_WIN32_KHR)

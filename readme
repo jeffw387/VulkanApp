@@ -2,7 +2,7 @@ An application framework using Vulkan.
 
 It's a learning experience for me, primarily.
 
-It uses Meson as its build system at the moment.
+Meson support is not available at the moment, as I've switched to cmake.
 
 The build compiles four cpp files:
 'main.cpp',

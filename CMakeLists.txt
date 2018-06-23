@@ -53,7 +53,7 @@ add_library(json INTERFACE)
 target_include_directories(json INTERFACE subprojects/json)
 target_link_libraries(VulkanApp PRIVATE json)
 
-set(bullet_DIR subprojects/bullet3)
+set(bullet_DIR subprojects/bullet)
 set(USE_MSVC_RUNTIME_LIBRARY_DLL ON)
 add_subdirectory(${bullet_DIR})
 find_package(bullet CONFIG REQUIRED COMPONENTS BulletDynamics BulletCollision)

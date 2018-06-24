@@ -374,7 +374,7 @@ void VulkanApp::SetClearColor(float r, float g, float b, float a)
     clearValue.color = clearColor;
 }
 
-void VulkanApp::GameThread()
+                                                      std::vector<T> data,
 {
     while (gameLoop != false)
     {

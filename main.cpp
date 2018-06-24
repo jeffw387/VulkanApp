@@ -56,11 +56,11 @@ class ClientApp : public vka::VulkanApp
 
     void LoadModels()
     {
-        vka::LoadModelFromFile(Models::Path, std::string(Models::cube));
-        vka::LoadModelFromFile(Models::Path, std::string(Models::cylinder));
-        vka::LoadModelFromFile(Models::Path, std::string(Models::icosphereSub2));
-        vka::LoadModelFromFile(Models::Path, std::string(Models::pentagon));
-        vka::LoadModelFromFile(Models::Path, std::string(Models::triangle));
+        LoadModelFromFile(Models::Path, Models::cube);
+        LoadModelFromFile(Models::Path, Models::cylinder);
+        LoadModelFromFile(Models::Path, Models::icosphereSub2);
+        LoadModelFromFile(Models::Path, Models::pentagon);
+        LoadModelFromFile(Models::Path, Models::triangle);
     }
 
     void LoadImages()

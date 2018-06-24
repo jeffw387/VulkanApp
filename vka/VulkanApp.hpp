@@ -49,6 +49,7 @@
 #include <optional>
 #include <algorithm>
 #include <array>
+#include <cstring>
 
 #undef max
 #undef min
@@ -63,6 +64,9 @@ namespace vka
 {
 using json = nlohmann::json;
 using HashType = entt::HashedString::hash_type;
+using IndexType = uint8_t;
+using PositionType = glm::vec3;
+using NormalType = glm::vec3;
 
 class VulkanApp
 {
@@ -87,11 +91,14 @@ class VulkanApp
 
 	std::map<uint64_t, UniqueImage2D> images;
 	std::map<uint64_t, Sprite> sprites;
+	std::map<uint64_t, Model> models;
+	std::vector<IndexType> vertexIndices;
+	std::vector<PositionType> vertexPositions;
+	std::vector<NormalType> vertexNormals;
+	UniqueAllocatedBuffer indexBuffer;
+	UniqueAllocatedBuffer positionBuffer;
+	UniqueAllocatedBuffer normalBuffer;
 	std::vector<Quad> quads;
-	std::vector<Mesh> models;
-	std::vector<VkBufferUnique> indexBuffers;
-	std::vector<VkBufferUnique> positionBuffers;
-	std::vector<VkBufferUnique> normalBuffers;
 
 	UniqueAllocatedBuffer vertexBufferUnique;
 	VkDescriptorSet fragmentDescriptorSet;
@@ -121,6 +128,8 @@ class VulkanApp
 
 	void Run(std::string vulkanInitJsonPath, std::string vertexShaderPath, std::string fragmentShaderPath);
 
+	void LoadModelFromFile(std::string path, entt::HashedString fileName);
+
 	void LoadImage2D(const HashType imageID, const Bitmap &bitmap);
 
 	void CreateSprite(const HashType imageID, const HashType spriteName, const Quad quad);
@@ -136,6 +145,8 @@ class VulkanApp
 	void FinalizeSpriteOrder();
 
 	void CreateVertexBuffer();
+
+	void Create3DVertexBuffers();
 
 	void SetClearColor(float r, float g, float b, float a);
 

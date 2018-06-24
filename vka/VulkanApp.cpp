@@ -195,34 +195,33 @@ void VulkanApp::Run(std::string vulkanInitJsonPath, std::string vertexShaderPath
     vkDeviceWaitIdle(device);
 }
 
-void LoadModelFromFile(std::string path, std::string fileName)
+void VulkanApp::LoadModelFromFile(std::string path, entt::HashedString fileName)
 {
-	auto f = std::ifstream(path + fileName);
-	json j;
-	f >> j;
+    auto f = std::ifstream(path + std::string(fileName));
+    json j;
+    f >> j;
 
-	detail::BufferVector buffers;
+    detail::BufferVector buffers;
 
-	for (const auto &buffer : j["buffers"])
-	{
-		std::string bufferFileName = buffer["uri"];
-		buffers.push_back(fileIO::readFile(path + bufferFileName));
-	}
+    for (const auto &buffer : j["buffers"])
+    {
+        std::string bufferFileName = buffer["uri"];
+        buffers.push_back(fileIO::readFile(path + bufferFileName));
+    }
 
-	Model model;
+    auto &model = models[fileName];
 
-	for (const auto &node : j["nodes"])
-	{
-		if (node["name"] == "Collision")
-		{
-			detail::LoadMesh(model.collision, node, j, buffers);
-		}
-		else
-		{
-			detail::LoadMesh(model.full, node, j, buffers);
-		}
-	}
-	
+    for (const auto &node : j["nodes"])
+    {
+        if (node["name"] == "Collision")
+        {
+            detail::LoadMesh(model.collision, node, j, buffers);
+        }
+        else
+        {
+            detail::LoadMesh(model.full, node, j, buffers);
+        }
+    }
 }
 
 void VulkanApp::LoadImage2D(const HashType imageID, const Bitmap &bitmap)
@@ -302,6 +301,84 @@ void VulkanApp::FinalizeSpriteOrder()
     }
 }
 
+enum class BufferType
+{
+    Index,
+    Vertex
+};
+
+template <typename T>
+static UniqueAllocatedBuffer CreateVertexBufferStageData(VkDevice device,
+                                                      Allocator &allocator,
+                                                      uint32_t graphicsQueueFamilyID,
+                                                      VkQueue graphicsQueue,
+                                                      std::vector<T>& data,
+                                                      BufferType bufferType,
+                                                      VkCommandBuffer commandBuffer,
+                                                      VkFence fence)
+{
+    auto dataSize = data.size() * sizeof(T);
+    auto stagingBuffer = CreateBufferUnique(
+        device,
+        allocator,
+        dataSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        graphicsQueueFamilyID,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        true);
+
+    VkBufferUsageFlags type = 0;
+    if (bufferType == BufferType::Index)
+    {
+        type = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    }
+    else
+    {
+        type = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    }
+    auto buffer = CreateBufferUnique(
+        device,
+        allocator,
+        data.size(),
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            type,
+        graphicsQueueFamilyID,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        true);
+
+    void *stagingPtr = nullptr;
+    auto memoryMapResult = vkMapMemory(device,
+                                       stagingBuffer.allocation.get().memory,
+                                       stagingBuffer.allocation.get().offsetInDeviceMemory,
+                                       stagingBuffer.allocation.get().size,
+                                       0,
+                                       &stagingPtr);
+
+    std::memcpy(stagingPtr, data.data(), dataSize);
+    vkUnmapMemory(device, stagingBuffer.allocation.get().memory);
+
+    VkBufferCopy bufferCopy = {};
+    bufferCopy.srcOffset = 0;
+    bufferCopy.dstOffset = 0;
+    bufferCopy.size = dataSize;
+
+    CopyToBuffer(
+        commandBuffer,
+        graphicsQueue,
+        stagingBuffer.buffer.get(),
+        buffer.buffer.get(),
+        bufferCopy,
+        fence);
+
+    // wait for vertex buffer copy to finish
+    vkWaitForFences(device, 1, &fence, (VkBool32) true,
+                    std::numeric_limits<uint64_t>::max());
+    vkResetFences(device, 1, &fence);
+
+    return std::move(buffer);
+}
+
 void VulkanApp::CreateVertexBuffer()
 {
     auto graphicsQueueFamilyID = deviceOptional->GetGraphicsQueueID();
@@ -314,54 +391,83 @@ void VulkanApp::CreateVertexBuffer()
     // create vertex buffers
     constexpr auto quadSize = sizeof(Quad);
     size_t vertexBufferSize = quadSize * quads.size();
-    auto vertexStagingBufferUnique = CreateBufferUnique(
-        device,
-        deviceOptional->GetAllocator(),
-        vertexBufferSize,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        graphicsQueueFamilyID,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        true);
 
-    vertexBufferUnique = CreateBufferUnique(
-        device,
-        deviceOptional->GetAllocator(),
-        vertexBufferSize,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        graphicsQueueFamilyID,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        true);
+    vertexBufferUnique = CreateVertexBufferStageData(device,
+    deviceOptional->GetAllocator(),
+    graphicsQueueFamilyID,
+    graphicsQueue,
+    quads,
+    BufferType::Vertex,
+    utilityCommandBuffer,
+    utilityCommandFence);
+}
 
-    void *vertexStagingData = nullptr;
-    auto memoryMapResult = vkMapMemory(device,
-                                       vertexStagingBufferUnique.allocation.get().memory,
-                                       vertexStagingBufferUnique.allocation.get().offsetInDeviceMemory,
-                                       vertexStagingBufferUnique.allocation.get().size,
-                                       0,
-                                       &vertexStagingData);
 
-    memcpy(vertexStagingData, quads.data(), vertexBufferSize);
-    vkUnmapMemory(device, vertexStagingBufferUnique.allocation.get().memory);
+void VulkanApp::Create3DVertexBuffers()
+{
+    auto graphicsQueueFamilyID = deviceOptional->GetGraphicsQueueID();
+    auto graphicsQueue = deviceOptional->GetGraphicsQueue();
 
-    VkBufferCopy bufferCopy = {};
-    bufferCopy.srcOffset = 0;
-    bufferCopy.dstOffset = 0;
-    bufferCopy.size = vertexBufferSize;
+    if (models.size() == 0)
+    {
+        std::runtime_error("Error: no vertices loaded.");
+    }
+    size_t indexCount = 0;
+    size_t vertexCount = 0;
+    for (auto &[id, model] : models)
+    {
+        model.full.firstIndex = indexCount;
+        model.full.firstVertex = vertexCount;
 
-    CopyToBuffer(
-        utilityCommandBuffer,
-        graphicsQueue,
-        vertexStagingBufferUnique.buffer.get(),
-        vertexBufferUnique.buffer.get(),
-        bufferCopy,
-        utilityCommandFence);
+        auto newIndicesCount = model.full.indices.size();
+        auto newVerticesCount = model.full.positions.size();
+        indexCount += newIndicesCount;
+        vertexCount += newVerticesCount;
 
-    // wait for vertex buffer copy to finish
-    vkWaitForFences(device, 1, &utilityCommandFence, (VkBool32) true,
-                    std::numeric_limits<uint64_t>::max());
-    vkResetFences(device, 1, &utilityCommandFence);
+        vertexIndices.insert(std::end(vertexIndices),
+                             model.full.indices.begin(),
+                             model.full.indices.end());
+
+        vertexPositions.insert(std::end(vertexPositions),
+                               model.full.positions.begin(),
+                               model.full.positions.end());
+
+        vertexNormals.insert(std::end(vertexNormals),
+                             model.full.normals.begin(),
+                             model.full.normals.end());
+    }
+
+    auto indexBufferSize = vertexIndices.size() * sizeof(IndexType);
+    auto positionBufferSize = vertexPositions.size() * sizeof(PositionType);
+    auto normalBufferSize = vertexNormals.size() * sizeof(NormalType);
+    auto& allocator = deviceOptional->GetAllocator();
+
+    indexBuffer = CreateVertexBufferStageData<IndexType>(device,
+                                              allocator,
+                                              graphicsQueueFamilyID,
+                                              graphicsQueue,
+                                              vertexIndices,
+                                              BufferType::Index,
+                                              utilityCommandBuffer,
+                                              utilityCommandFence);
+
+    positionBuffer = CreateVertexBufferStageData<PositionType>(device,
+                                                 allocator,
+                                                 graphicsQueueFamilyID,
+                                                 graphicsQueue,
+                                                 vertexPositions,
+                                                 BufferType::Vertex,
+                                                 utilityCommandBuffer,
+                                                 utilityCommandFence);
+
+    normalBuffer = CreateVertexBufferStageData<NormalType>(device,
+                                                 allocator,
+                                                 graphicsQueueFamilyID,
+                                                 graphicsQueue,
+                                                 vertexNormals,
+                                                 BufferType::Vertex,
+                                                 utilityCommandBuffer,
+                                                 utilityCommandFence);
 }
 
 void VulkanApp::SetClearColor(float r, float g, float b, float a)
@@ -374,7 +480,7 @@ void VulkanApp::SetClearColor(float r, float g, float b, float a)
     clearValue.color = clearColor;
 }
 
-                                                      std::vector<T> data,
+void VulkanApp::GameThread()
 {
     while (gameLoop != false)
     {

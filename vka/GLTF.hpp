@@ -20,9 +20,8 @@ struct Mesh
 	std::vector<glm::vec3> positions;
 	std::vector<glm::vec3> normals;
 	std::vector<uint8_t> indices;
-	vka::VkBufferUnique positionsBuffer;
-	vka::VkBufferUnique normalsBuffer;
-	vka::VkBufferUnique indexBuffer;
+	size_t firstIndex;
+	size_t firstVertex;
 };
 
 struct Model

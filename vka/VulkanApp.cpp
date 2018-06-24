@@ -195,6 +195,36 @@ void VulkanApp::Run(std::string vulkanInitJsonPath, std::string vertexShaderPath
     vkDeviceWaitIdle(device);
 }
 
+void LoadModelFromFile(std::string path, std::string fileName)
+{
+	auto f = std::ifstream(path + fileName);
+	json j;
+	f >> j;
+
+	detail::BufferVector buffers;
+
+	for (const auto &buffer : j["buffers"])
+	{
+		std::string bufferFileName = buffer["uri"];
+		buffers.push_back(fileIO::readFile(path + bufferFileName));
+	}
+
+	Model model;
+
+	for (const auto &node : j["nodes"])
+	{
+		if (node["name"] == "Collision")
+		{
+			detail::LoadMesh(model.collision, node, j, buffers);
+		}
+		else
+		{
+			detail::LoadMesh(model.full, node, j, buffers);
+		}
+	}
+	
+}
+
 void VulkanApp::LoadImage2D(const HashType imageID, const Bitmap &bitmap)
 {
     images[imageID] = CreateImage2D(

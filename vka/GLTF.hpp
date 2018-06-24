@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <algorithm>
 
 using json = nlohmann::json;
 
@@ -18,21 +19,16 @@ struct Mesh
 {
 	std::vector<glm::vec3> positions;
 	std::vector<glm::vec3> normals;
-	std::vector<size_t> indices;
+	std::vector<uint8_t> indices;
 	vka::VkBufferUnique positionsBuffer;
 	vka::VkBufferUnique normalsBuffer;
 	vka::VkBufferUnique indexBuffer;
 };
 
-struct Node
-{
-	Mesh mesh;
-};
-
 struct Model
 {
-	Node collision;
-	Node full;
+	Mesh collision;
+	Mesh full;
 };
 
 namespace detail
@@ -59,62 +55,22 @@ static void CopyFromBufferView(std::vector<T> &outputVector,
 	std::memcpy(outputVector.data(), charData, byteLength);
 }
 
-static void CopyMeshData(Mesh &mesh, const json &primitive, const json &j, const BufferVector &buffers)
-{
-	size_t positionAccessorIndex = primitive["attributes"]["POSITION"];
-	CopyFromBufferView(mesh.positions,
-					   j["accessors"][positionAccessorIndex],
-					   j,
-					   buffers);
-
-	size_t normalAccessorIndex = primitive["attributes"]["NORMAL"];
-	CopyFromBufferView(mesh.normals,
-					   j["accessors"][normalAccessorIndex],
-					   j,
-					   buffers);
-
-	size_t indexAccessorIndex = primitive["indices"];
-	CopyFromBufferView(mesh.indices,
-					   j["accessors"][indexAccessorIndex],
-					   j,
-					   buffers);
-}
-
-static void LoadNode(Node &node, const json &nodejson, const json &j, const BufferVector &buffers)
+static void LoadMesh(Mesh &mesh, const json &nodejson, const json &j, const BufferVector &buffers)
 {
 	size_t meshIndex = nodejson["mesh"];
-	auto &mesh = j["meshes"][meshIndex];
-	auto &primitive = mesh["primitives"][0];
-	CopyMeshData(node.mesh, primitive, j, buffers);
+	auto &primitive = j["meshes"][meshIndex]["primitives"][0];
+
+	size_t indexAccessorIndex = primitive["indices"];
+	auto indexAccessor = j["accessors"][indexAccessorIndex];
+	CopyFromBufferView(mesh.indices, indexAccessor, j, buffers);
+
+	size_t positionAccessorIndex = primitive["attributes"]["POSITION"];
+	auto positionAccessor = j["accessors"][positionAccessorIndex];
+	CopyFromBufferView(mesh.positions, positionAccessor, j, buffers);
+
+	size_t normalAccessorIndex = primitive["attributes"]["NORMAL"];
+	auto normalAccessor = j["accessors"][normalAccessorIndex];
+	CopyFromBufferView(mesh.normals, normalAccessor, j, buffers);
 }
 } // namespace detail
-
-static Model LoadModelFromFile(std::string fileName)
-{
-	auto f = std::ifstream(fileName);
-	json j;
-	f >> j;
-
-	detail::BufferVector buffers;
-
-	for (const auto &buffer : j["buffers"])
-	{
-		buffers.push_back(fileIO::readFile(buffer["uri"]));
-	}
-
-	Model model;
-
-	for (const auto &node : j["nodes"])
-	{
-		if (node["name"] == "Collision")
-		{
-			detail::LoadNode(model.collision, node, j, buffers);
-		}
-		else
-		{
-			detail::LoadNode(model.full, node, j, buffers);
-		}
-	}
-	return model;
-}
 } // namespace vka

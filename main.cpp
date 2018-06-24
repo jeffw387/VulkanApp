@@ -36,11 +36,12 @@ constexpr auto AeroviasBrasil = entt::HashedString(CONTENTROOT "Content/Fonts/Ae
 
 namespace Models
 {
-constexpr auto cube = entt::HashedString("Content/Blender/cube.gltf");
-constexpr auto cylinder = entt::HashedString("Content/Blender/cylinder.gltf");
-constexpr auto icosphereSub2 = entt::HashedString("Content/Blender/icosphereSub2.gltf");
-constexpr auto pentagon = entt::HashedString("Content/Blender/pentagon.gltf");
-constexpr auto triangle = entt::HashedString("Content/Blender/triangle.gltf");
+const char* Path = "Content/Blender/";
+constexpr auto cube = entt::HashedString("cube.gltf");
+constexpr auto cylinder = entt::HashedString("cylinder.gltf");
+constexpr auto icosphereSub2 = entt::HashedString("icosphereSub2.gltf");
+constexpr auto pentagon = entt::HashedString("pentagon.gltf");
+constexpr auto triangle = entt::HashedString("triangle.gltf");
 }
 
 class ClientApp : public vka::VulkanApp
@@ -55,11 +56,11 @@ class ClientApp : public vka::VulkanApp
 
     void LoadModels()
     {
-        cubeModel = vka::LoadModelFromFile(std::string(Models::cube));
-        cylinderModel = vka::LoadModelFromFile(std::string(Models::cylinder));
-        icosphereSub2Model = vka::LoadModelFromFile(std::string(Models::icosphereSub2));
-        pentagonModel = vka::LoadModelFromFile(std::string(Models::pentagon));
-        triangleModel = vka::LoadModelFromFile(std::string(Models::triangle));
+        vka::LoadModelFromFile(Models::Path, std::string(Models::cube));
+        vka::LoadModelFromFile(Models::Path, std::string(Models::cylinder));
+        vka::LoadModelFromFile(Models::Path, std::string(Models::icosphereSub2));
+        vka::LoadModelFromFile(Models::Path, std::string(Models::pentagon));
+        vka::LoadModelFromFile(Models::Path, std::string(Models::triangle));
     }
 
     void LoadImages()

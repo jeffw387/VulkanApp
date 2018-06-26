@@ -116,7 +116,7 @@
             {
                 "uri": "fragmentDescriptorSetLayout2D",
                 "bindings": [
-                    {}
+                        "binding": 0,
                 ],
                 "flags": []
             }

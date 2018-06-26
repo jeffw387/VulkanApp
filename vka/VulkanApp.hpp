@@ -85,6 +85,11 @@ class VulkanApp
 	VkDevice device;
 	std::optional<Device> deviceOptional;
 
+	std::map<std::string, VkRenderPass> renderPasses;
+	std::map<std::string, VkDescriptorSetLayout> descriptorSetLayouts;
+	std::map<std::string, VkPipelineLayout> pipelineLayouts;
+	std::map<std::string, VkPipeline> pipelines;
+
 	VkCommandPool utilityCommandPool;
 	VkCommandBuffer utilityCommandBuffer;
 	VkFence utilityCommandFence;

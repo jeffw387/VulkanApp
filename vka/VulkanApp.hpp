@@ -86,6 +86,7 @@ class VulkanApp
 	std::optional<Device> deviceOptional;
 
 	std::map<std::string, VkRenderPass> renderPasses;
+	std::map<std::string, VkSampler> samplers;
 	std::map<std::string, VkDescriptorSetLayout> descriptorSetLayouts;
 	std::map<std::string, VkPipelineLayout> pipelineLayouts;
 	std::map<std::string, VkPipeline> pipelines;

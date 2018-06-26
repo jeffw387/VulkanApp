@@ -116,7 +116,34 @@
             {
                 "uri": "fragmentDescriptorSetLayout2D",
                 "bindings": [
+                    {
+                        "uri": "sampler2D",
                         "binding": 0,
+                        "descriptorCount": 1,
+                        "descriptorType": "VK_DESCRIPTOR_TYPE_SAMPLER",
+                        "shaderStages": [
+                            "VK_SHADER_STAGE_FRAGMENT_BIT"
+                        ],
+                        "immutableSamplers": [
+                            {
+                                "addressModeU": "VK_SAMPLER_ADDRESS_MODE_REPEAT",
+                                "addressModeV": "VK_SAMPLER_ADDRESS_MODE_REPEAT",
+                                "addressModeW": "VK_SAMPLER_ADDRESS_MODE_REPEAT",
+                                "anisotropyEnable": false,
+                                "borderColor": "VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK",
+                                "compareEnable": false,
+                                "compareOp": "VK_COMPARE_OP_NEVER",
+                                "minFilter": "VK_FILTER_LINEAR",
+                                "magFilter": "VK_FILTER_LINEAR",
+                                "mipmapMode": "VK_SAMPLER_MIPMAP_MODE_LINEAR",
+                                "maxAnisotropy": 0,
+                                "minLod": 0,
+                                "maxLod": 0,
+                                "mipLodBias": 0,
+                                "unnormalizedCoordinates": false
+                            }
+                        ]
+                    }
                 ],
                 "flags": []
             }

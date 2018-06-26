@@ -1,0 +1,221 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/pipelineConfig.schema.json",
+    "uri": "pipeline2D.json",
+    "shaderStageConfigs": [
+        {
+            "uri": "vertexShader2D",
+            "shaderStage": "VK_SHADER_STAGE_VERTEX_BIT",
+            "module": "Shaders/vert.spv",
+            "name": "main"
+        },
+        {
+            "uri": "fragmentShader2D",
+            "shaderStage": "VK_SHADER_STAGE_FRAGMENT_BIT",
+            "module": "Shaders/frag.spv",
+            "name": "main"
+        }
+    ],
+    "vertexInputConfig": {
+        "uri": "vertexInput2D",
+        "vertexAttributeDescriptions": [
+            {
+                "uri": "positionAttribute",
+                "binding": 0,
+                "format": "VK_FORMAT_R32G32_SFLOAT",
+                "location": 0,
+                "offset": 0
+            },
+            {
+                "uri": "uvAttribute",
+                "binding": 0,
+                "format": "VK_FORMAT_R32G32_SFLOAT",
+                "location": 1,
+                "offset": 8
+            }
+        ],
+        "vertexBindingDescriptions": [
+            {
+                "uri": "vertexBuffer2D",
+                "binding": 0,
+                "inputRate": "VK_VERTEX_INPUT_RATE_VERTEX",
+                "stride": 16
+            }
+        ]
+    },
+    "inputAssemblyConfig": {
+        "uri": "inputAssembly2D",
+        "primitiveRestartEnable": false,
+        "primitiveTopology": "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST"
+    },
+    "viewportConfig": {
+        "uri": "viewport2D",
+        "viewports": [],
+        "scissors": [],
+        "viewportScissorCount": 1
+    },
+    "rasterizationConfig": {
+        "uri": "rasterization2D",
+        "depthClampEnable": false,
+        "rasterizerDiscardEnable": false,
+        "polygonMode": "VK_POLYGON_MODE_FILL",
+        "cullMode": "VK_CULL_MODE_BACK_BIT",
+        "frontFace": "VK_FRONT_FACE_COUNTER_CLOCKWISE",
+        "depthBiasEnable": false,
+        "depthBiasConstantFactor": 0,
+        "depthBiasClamp": 0,
+        "depthBiasSlopeFactor": 0,
+        "lineWidth": 1
+    },
+    "depthStencilConfig": {
+        "uri": "depthStencil2D",
+        "depthTestEnable": false,
+        "depthWriteEnable": false,
+        "depthCompareOp": "VK_COMPARE_OP_ALWAYS",
+        "depthBoundsTestEnable": false,
+        "stencilTestEnable": false,
+        "front": "",
+        "back": "",
+        "minDepthBounds": 0,
+        "maxDepthBounds": 1
+    },
+    "colorBlendConfig": {
+        "uri": "blendConfig2D",
+        "blendConstants": [
+            1,
+            1,
+            1,
+            1
+        ],
+        "logicOpEnable": false,
+        "logicOp": "VK_LOGIC_OP_CLEAR",
+        "colorBlendAttachments": [
+            {
+                "blendEnable": true,
+                "sourceColorBlendFactor": "VK_BLEND_FACTOR_SRC_ALPHA",
+                "destinationColorBlendFactor": "VK_BLEND_FACTOR_DST_ALPHA",
+                "colorBlendOp": "VK_BLEND_OP_ADD",
+                "sourceAlphaBlendFactor": "VK_BLEND_FACTOR_ZERO",
+                "destinationAlphaBlendFactor": "VK_BLEND_FACTOR_ZERO",
+                "alphaBlendOp": "VK_BLEND_OP_ADD",
+                "colorWriteMask": {
+                    "R": true,
+                    "G": true,
+                    "B": true,
+                    "A": true
+                }
+            }
+        ]
+    },
+    "dynamicStates": [
+        "VK_DYNAMIC_STATE_VIEWPORT",
+        "VK_DYNAMIC_STATE_SCISSOR"
+    ],
+    "pipelineLayoutConfig": {
+        "uri": "pipelineLayout2D",
+        "descriptorSetLayouts": [
+            {
+                "uri": "fragmentDescriptorSetLayout2D",
+                "bindings": [
+                    {}
+                ],
+                "flags": []
+            }
+        ],
+        "pushConstantRanges": [
+            {
+                "uri": "vertexPushConstantRange2D",
+                "shaderStages": [
+                    "VK_SHADER_STAGE_VERTEX_BIT"
+                ],
+                "offset": 0,
+                "size": 64
+            },
+            {
+                "uri": "fragmentPushConstantRange2D",
+                "shaderStages": [
+                    "VK_SHADER_STAGE_FRAGMENT_BIT"
+                ],
+                "offset": 64,
+                "size": 32
+            }
+        ]
+    },
+    "renderPassConfig": {
+        "uri": "renderPass",
+        "attachments": [
+            {
+                "uri": "colorAttachment",
+                "format": "VK_FORMAT_B8G8R8_UNORM",
+                "samples": "VK_SAMPLE_COUNT_1_BIT",
+                "loadOp": "VK_ATTACHMENT_LOAD_OP_CLEAR",
+                "storeOp": "VK_ATTACHMENT_STORE_OP_STORE",
+                "stencilLoadOp": "VK_ATTACHMENT_LOAD_OP_DONT_CARE",
+                "stencilStoreOp": "VK_ATTACHMENT_STORE_OP_DONT_CARE",
+                "initialLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+                "finalLayout": "VK_IMAGE_LAYOUT_PRESENT_SRC_KHR"
+            }
+        ],
+        "subpasses": [
+            {
+                "uri": "subpass2D",
+                "colorAttachments": [
+                    {
+                        "uri": "colorAttachmentRef",
+                        "attachment": 0,
+                        "layout": "VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL"
+                    }
+                ],
+                "depthStencilAttachment": null,
+                "inputAttachments": [],
+                "preserveAttachments": [],
+                "resolveAttachments": [],
+                "pipelineBindPoint": "VK_PIPELINE_BIND_POINT_GRAPHICS"
+            }
+        ],
+        "dependencies": [
+            {
+                "uri": "dep1",
+                "srcSubpass": 0,
+                "dstSubpass": 0,
+                "srcStageMask": [
+                    "VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT"
+                ],
+                "dstStageMask": [
+                    "VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT"
+                ],
+                "srcAccessMask": [
+                    "VK_ACCESS_MEMORY_READ_BIT"
+                ],
+                "dstAccessMask": [
+                    "VK_ACCESS_COLOR_ATTACHMENT_READ_BIT",
+                    "VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT"
+                ],
+                "dependencyFlags": [
+                    "VK_DEPENDENCY_BY_REGION_BIT"
+                ]
+            },
+            {
+                "uri": "dep2",
+                "srcSubpass": 0,
+                "dstSubpass": 0,
+                "srcStageMask": [
+                    "VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT"
+                ],
+                "dstStageMask": [
+                    "VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT"
+                ],
+                "srcAccessMask": [
+                    "VK_ACCESS_COLOR_ATTACHMENT_READ_BIT",
+                    "VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT"
+                ],
+                "dstAccessMask": [
+                    "VK_ACCESS_MEMORY_READ_BIT"
+                ],
+                "dependencyFlags": [
+                    "VK_DEPENDENCY_BY_REGION_BIT"
+                ]
+            }
+        ]
+    },
+    "subpass": 0
+}

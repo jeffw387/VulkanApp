@@ -340,7 +340,7 @@ static UniqueAllocatedBuffer CreateVertexBufferStageData(VkDevice device,
     auto buffer = CreateBufferUnique(
         device,
         allocator,
-        data.size(),
+        dataSize,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
             type,
         graphicsQueueFamilyID,
@@ -389,8 +389,6 @@ void VulkanApp::CreateVertexBuffer()
         std::runtime_error("Error: no vertices loaded.");
     }
     // create vertex buffers
-    constexpr auto quadSize = sizeof(Quad);
-    size_t vertexBufferSize = quadSize * quads.size();
 
     vertexBufferUnique = CreateVertexBufferStageData(device,
     deviceOptional->GetAllocator(),

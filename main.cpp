@@ -25,7 +25,7 @@
 #endif
 
 #include "SpriteData.hpp"
-const char *ConfigPath = CONTENTROOT "VulkanInitInfo.json";
+const char *ConfigPath = CONTENTROOT "config/VulkanInitInfo.json";
 const char *VertexShaderPath = CONTENTROOT "Shaders/vert.spv";
 const char *FragmentShaderPath = CONTENTROOT "Shaders/frag.spv";
 

@@ -16,6 +16,7 @@
 #include "Pipeline.hpp"
 #include "VulkanFunctionLoader.hpp"
 #include "gsl.hpp"
+#include "nlohmann/json.hpp"
 
 #include <tuple>
 #include <vector>
@@ -27,6 +28,7 @@
 
 namespace vka
 {
+	using json = nlohmann::json;
 struct VertexPushConstants
 {
     glm::mat4 mvp;
@@ -121,21 +123,6 @@ class Device
     VkSwapchainKHR GetSwapchain()
     {
         return swapchainOptional.value().GetSwapchain();
-    }
-
-    VkRenderPass GetRenderPass()
-    {
-        return renderPassOptional->GetRenderPass();
-    }
-
-    VkPipelineLayout GetPipelineLayout()
-    {
-        return pipelineLayoutOptional->GetPipelineLayout();
-    }
-
-    VkPipeline GetPipeline()
-    {
-        return pipelineOptional->GetPipeline();
     }
 
     VkExtent2D GetSurfaceExtent()
@@ -251,24 +238,18 @@ class Device
     std::map<VkCommandPool, VkCommandPoolUnique> commandPools;
     std::map<VkFence, VkFenceUnique> fences;
     std::map<VkSemaphore, VkSemaphoreUnique> semaphores;
+	std::map<VkSampler, VkSamplerUnique> samplers;
+	std::map<VkShaderModule, VkShaderModuleUnique> shaderModules;
+	std::map<VkRenderPass, VkRenderPassUnique> renderPasses;
+	std::map<VkDescriptorSetLayout, VkDescriptorSetLayoutUnique> descriptorSetLayouts;
+	std::map<VkPipelineLayout, VkPipelineLayoutUnique> pipelineLayouts;
+	std::map<VkPipeline, VkPipelineUnique> pipelines;
     std::optional<Surface> surfaceOptional;
-    std::optional<RenderPass> renderPassOptional;
     std::optional<Swapchain> swapchainOptional;
     std::optional<Shader> vertexShaderOptional;
     std::optional<Shader> fragmentShaderOptional;
-    VkSampler sampler;
-    VkSamplerUnique samplerUnique;
-
-  public:
-    std::optional<DescriptorSet> fragmentDescriptorSetOptional;
 
   private:
-    std::vector<VkDescriptorSetLayout> setLayouts;
-    std::vector<VkPushConstantRange> pushConstantRanges;
-    VertexData vertexData;
-    std::optional<PipelineLayout> pipelineLayoutOptional;
-    std::optional<Pipeline> pipelineOptional;
-
     void SelectPhysicalDevice()
     {
         std::vector<VkPhysicalDevice> physicalDevices;
@@ -390,10 +371,26 @@ class Device
         surfaceOptional = Surface(instance, physicalDevice, window);
     }
 
-    void CreateRenderPass()
+    VkRenderPass CreateRenderPass(const json &renderPassConfig)
     {
-        renderPassOptional.reset();
-        renderPassOptional = RenderPass(GetDevice(), surfaceOptional->GetFormat());
+		std::vector<VkAttachmentDescription> attachmentDescriptions;
+		for (const auto& attachmentJson : renderPassConfig["attachments"])
+		{
+			VkAttachmentDescription description = {};
+			description.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		}
+		std::vector<VkSubpassDescription> subpassDescriptions;
+		std::vector<VkSubpassDependency> subpassDependencies;
+		VkRenderPassCreateInfo createInfo = {};
+		createInfo.attachmentCount = gsl::narrow<uint32_t>(
+			attachmentDescriptions.size());
+		createInfo.pAttachments = attachmentDescriptions.data();
+		createInfo.subpassCount = gsl::narrow<uint32_t>(
+			subpassDescriptions.size());
+		createInfo.pSubpasses = subpassDescriptions.data();
+		createInfo.dependencyCount = gsl::narrow<uint32_t>(
+			subpassDependencies.size());
+		createInfo.pDependencies = subpassDependencies.data();
     }
 
     void CreateSwapchain()

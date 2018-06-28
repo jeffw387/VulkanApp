@@ -4,13 +4,13 @@
     "shaderStageConfigs": [
         {
             "uri": "vertexShader2D",
-            "shaderStage": "VK_SHADER_STAGE_VERTEX_BIT",
+            "shaderStage": 1,
             "module": "Shaders/vert.spv",
             "name": "main"
         },
         {
             "uri": "fragmentShader2D",
-            "shaderStage": "VK_SHADER_STAGE_FRAGMENT_BIT",
+            "shaderStage": 16,
             "module": "Shaders/frag.spv",
             "name": "main"
         }
@@ -21,14 +21,14 @@
             {
                 "uri": "positionAttribute",
                 "binding": 0,
-                "format": "VK_FORMAT_R32G32_SFLOAT",
+                "format": 103,
                 "location": 0,
                 "offset": 0
             },
             {
                 "uri": "uvAttribute",
                 "binding": 0,
-                "format": "VK_FORMAT_R32G32_SFLOAT",
+                "format": 103,
                 "location": 1,
                 "offset": 8
             }
@@ -37,7 +37,7 @@
             {
                 "uri": "vertexBuffer2D",
                 "binding": 0,
-                "inputRate": "VK_VERTEX_INPUT_RATE_VERTEX",
+                "inputRate": 0,
                 "stride": 16
             }
         ]
@@ -45,7 +45,7 @@
     "inputAssemblyConfig": {
         "uri": "inputAssembly2D",
         "primitiveRestartEnable": false,
-        "primitiveTopology": "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST"
+        "primitiveTopology": 3
     },
     "viewportConfig": {
         "uri": "viewport2D",
@@ -57,9 +57,9 @@
         "uri": "rasterization2D",
         "depthClampEnable": false,
         "rasterizerDiscardEnable": false,
-        "polygonMode": "VK_POLYGON_MODE_FILL",
-        "cullMode": "VK_CULL_MODE_BACK_BIT",
-        "frontFace": "VK_FRONT_FACE_COUNTER_CLOCKWISE",
+        "polygonMode": 0,
+        "cullMode": 2,
+        "frontFace": 1,
         "depthBiasEnable": false,
         "depthBiasConstantFactor": 0,
         "depthBiasClamp": 0,
@@ -70,7 +70,7 @@
         "uri": "depthStencil2D",
         "depthTestEnable": false,
         "depthWriteEnable": false,
-        "depthCompareOp": "VK_COMPARE_OP_ALWAYS",
+        "depthCompareOp": 7,
         "depthBoundsTestEnable": false,
         "stencilTestEnable": false,
         "front": "",
@@ -87,16 +87,16 @@
             1
         ],
         "logicOpEnable": false,
-        "logicOp": "VK_LOGIC_OP_CLEAR",
+        "logicOp": 0,
         "colorBlendAttachments": [
             {
                 "blendEnable": true,
-                "sourceColorBlendFactor": "VK_BLEND_FACTOR_SRC_ALPHA",
-                "destinationColorBlendFactor": "VK_BLEND_FACTOR_DST_ALPHA",
-                "colorBlendOp": "VK_BLEND_OP_ADD",
-                "sourceAlphaBlendFactor": "VK_BLEND_FACTOR_ZERO",
-                "destinationAlphaBlendFactor": "VK_BLEND_FACTOR_ZERO",
-                "alphaBlendOp": "VK_BLEND_OP_ADD",
+                "sourceColorBlendFactor": 6,
+                "destinationColorBlendFactor": 8,
+                "colorBlendOp": 0,
+                "sourceAlphaBlendFactor": 0,
+                "destinationAlphaBlendFactor": 0,
+                "alphaBlendOp": 0,
                 "colorWriteMask": {
                     "R": true,
                     "G": true,
@@ -107,8 +107,8 @@
         ]
     },
     "dynamicStates": [
-        "VK_DYNAMIC_STATE_VIEWPORT",
-        "VK_DYNAMIC_STATE_SCISSOR"
+        0,
+        1
     ],
     "pipelineLayoutConfig": {
         "uri": "pipelineLayout2D",
@@ -120,28 +120,38 @@
                         "uri": "sampler2D",
                         "binding": 0,
                         "descriptorCount": 1,
-                        "descriptorType": "VK_DESCRIPTOR_TYPE_SAMPLER",
+                        "descriptorType": 0,
                         "shaderStages": [
-                            "VK_SHADER_STAGE_FRAGMENT_BIT"
+                            16
                         ],
                         "immutableSamplers": [
                             {
-                                "addressModeU": "VK_SAMPLER_ADDRESS_MODE_REPEAT",
-                                "addressModeV": "VK_SAMPLER_ADDRESS_MODE_REPEAT",
-                                "addressModeW": "VK_SAMPLER_ADDRESS_MODE_REPEAT",
+                                "addressModeU": 0,
+                                "addressModeV": 0,
+                                "addressModeW": 0,
                                 "anisotropyEnable": false,
-                                "borderColor": "VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK",
+                                "borderColor": 0,
                                 "compareEnable": false,
-                                "compareOp": "VK_COMPARE_OP_NEVER",
-                                "minFilter": "VK_FILTER_LINEAR",
-                                "magFilter": "VK_FILTER_LINEAR",
-                                "mipmapMode": "VK_SAMPLER_MIPMAP_MODE_LINEAR",
+                                "compareOp": 0,
+                                "minFilter": 1,
+                                "magFilter": 1,
+                                "mipmapMode": 1,
                                 "maxAnisotropy": 0,
                                 "minLod": 0,
                                 "maxLod": 0,
                                 "mipLodBias": 0,
                                 "unnormalizedCoordinates": false
                             }
+                        ]
+                    },
+                    {
+                        "uri": "images2D",
+                        "binding": 1,
+                        "descriptorCount": 0,
+                        "descriptorType": 2,
+                        "immutableSamplers": [],
+                        "shaderStages": [
+                            16
                         ]
                     }
                 ],
@@ -152,7 +162,7 @@
             {
                 "uri": "vertexPushConstantRange2D",
                 "shaderStages": [
-                    "VK_SHADER_STAGE_VERTEX_BIT"
+                    1
                 ],
                 "offset": 0,
                 "size": 64
@@ -160,7 +170,7 @@
             {
                 "uri": "fragmentPushConstantRange2D",
                 "shaderStages": [
-                    "VK_SHADER_STAGE_FRAGMENT_BIT"
+                    16
                 ],
                 "offset": 64,
                 "size": 32

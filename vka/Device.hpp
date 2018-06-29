@@ -377,7 +377,10 @@ class Device
 		for (const auto& attachmentJson : renderPassConfig["attachments"])
 		{
 			VkAttachmentDescription description = {};
-			description.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			description.finalLayout = attachmentJson["finalLayout"];
+			description.format = attachmentJson["format"];
+			description.initialLayout = attachmentJson["initialLayout"];
+
 		}
 		std::vector<VkSubpassDescription> subpassDescriptions;
 		std::vector<VkSubpassDependency> subpassDependencies;

@@ -1,0 +1,182 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/pipelineConfig.schema.json",
+    "uri": "pipeline2D.json",
+    "shaderStageConfigs": [
+        {
+            "uri": "vertexShader2D",
+            "shaderStage": 1,
+            "module": "Shaders/vert.spv",
+            "name": "main"
+        },
+        {
+            "uri": "fragmentShader2D",
+            "shaderStage": 16,
+            "module": "Shaders/frag.spv",
+            "name": "main"
+        }
+    ],
+    "vertexInputConfig": {
+        "uri": "vertexInput2D",
+        "vertexAttributeDescriptions": [
+            {
+                "uri": "positionAttribute",
+                "binding": 0,
+                "format": 103,
+                "location": 0,
+                "offset": 0
+            },
+            {
+                "uri": "uvAttribute",
+                "binding": 0,
+                "format": 103,
+                "location": 1,
+                "offset": 8
+            }
+        ],
+        "vertexBindingDescriptions": [
+            {
+                "uri": "vertexBuffer2D",
+                "binding": 0,
+                "inputRate": 0,
+                "stride": 16
+            }
+        ]
+    },
+    "inputAssemblyConfig": {
+        "uri": "inputAssembly2D",
+        "primitiveRestartEnable": false,
+        "primitiveTopology": 3
+    },
+    "viewportConfig": {
+        "uri": "viewport2D",
+        "viewports": [],
+        "scissors": [],
+        "viewportScissorCount": 1
+    },
+    "rasterizationConfig": {
+        "uri": "rasterization2D",
+        "depthClampEnable": false,
+        "rasterizerDiscardEnable": false,
+        "polygonMode": 0,
+        "cullMode": 2,
+        "frontFace": 1,
+        "depthBiasEnable": false,
+        "depthBiasConstantFactor": 0,
+        "depthBiasClamp": 0,
+        "depthBiasSlopeFactor": 0,
+        "lineWidth": 1
+    },
+    "depthStencilConfig": {
+        "uri": "depthStencil2D",
+        "depthTestEnable": false,
+        "depthWriteEnable": false,
+        "depthCompareOp": 7,
+        "depthBoundsTestEnable": false,
+        "stencilTestEnable": false,
+        "front": "",
+        "back": "",
+        "minDepthBounds": 0,
+        "maxDepthBounds": 1
+    },
+    "colorBlendConfig": {
+        "uri": "blendConfig2D",
+        "blendConstants": [
+            1,
+            1,
+            1,
+            1
+        ],
+        "logicOpEnable": false,
+        "logicOp": 0,
+        "colorBlendAttachments": [
+            {
+                "blendEnable": true,
+                "sourceColorBlendFactor": 6,
+                "destinationColorBlendFactor": 8,
+                "colorBlendOp": 0,
+                "sourceAlphaBlendFactor": 0,
+                "destinationAlphaBlendFactor": 0,
+                "alphaBlendOp": 0,
+                "colorWriteMask": {
+                    "R": true,
+                    "G": true,
+                    "B": true,
+                    "A": true
+                }
+            }
+        ]
+    },
+    "dynamicStates": [
+        0,
+        1
+    ],
+    "pipelineLayoutConfig": {
+        "uri": "pipelineLayout2D",
+        "descriptorSetLayouts": [
+            {
+                "uri": "fragmentDescriptorSetLayout2D",
+                "bindings": [
+                    {
+                        "uri": "sampler2D",
+                        "binding": 0,
+                        "descriptorCount": 1,
+                        "descriptorType": 0,
+                        "shaderStages": [
+                            16
+                        ],
+                        "immutableSamplers": [
+                            {
+                                "addressModeU": 0,
+                                "addressModeV": 0,
+                                "addressModeW": 0,
+                                "anisotropyEnable": false,
+                                "borderColor": 0,
+                                "compareEnable": false,
+                                "compareOp": 0,
+                                "minFilter": 1,
+                                "magFilter": 1,
+                                "mipmapMode": 1,
+                                "maxAnisotropy": 0,
+                                "minLod": 0,
+                                "maxLod": 0,
+                                "mipLodBias": 0,
+                                "unnormalizedCoordinates": false
+                            }
+                        ]
+                    },
+                    {
+                        "uri": "images2D",
+                        "binding": 1,
+                        "descriptorCount": 0,
+                        "descriptorType": 2,
+                        "immutableSamplers": [],
+                        "shaderStages": [
+                            16
+                        ]
+                    }
+                ],
+                "flags": []
+            }
+        ],
+        "pushConstantRanges": [
+            {
+                "uri": "vertexPushConstantRange2D",
+                "shaderStages": [
+                    1
+                ],
+                "offset": 0,
+                "size": 64
+            },
+            {
+                "uri": "fragmentPushConstantRange2D",
+                "shaderStages": [
+                    16
+                ],
+                "offset": 64,
+                "size": 32
+            }
+        ]
+    },
+    "renderPassConfig": "renderPass.json",
+    "subpass": 0
+}

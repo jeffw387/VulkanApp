@@ -389,8 +389,6 @@ void VulkanApp::CreateVertexBuffer()
         std::runtime_error("Error: no vertices loaded.");
     }
     // create vertex buffers
-    constexpr auto quadSize = sizeof(Quad);
-    size_t vertexBufferSize = quadSize * quads.size();
 
     vertexBufferUnique = CreateVertexBufferStageData(device,
     deviceOptional->GetAllocator(),

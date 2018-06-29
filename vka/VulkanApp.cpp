@@ -317,11 +317,11 @@ static UniqueAllocatedBuffer CreateVertexBufferStageData(VkDevice device,
                                                       VkCommandBuffer commandBuffer,
                                                       VkFence fence)
 {
-    auto dataSize = data.size() * sizeof(T);
+    auto dataByteLength = data.size() * sizeof(T);
     auto stagingBuffer = CreateBufferUnique(
         device,
         allocator,
-        dataSize,
+        dataByteLength,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         graphicsQueueFamilyID,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -340,7 +340,7 @@ static UniqueAllocatedBuffer CreateVertexBufferStageData(VkDevice device,
     auto buffer = CreateBufferUnique(
         device,
         allocator,
-        dataSize,
+        dataByteLength,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
             type,
         graphicsQueueFamilyID,
@@ -355,13 +355,13 @@ static UniqueAllocatedBuffer CreateVertexBufferStageData(VkDevice device,
                                        0,
                                        &stagingPtr);
 
-    std::memcpy(stagingPtr, data.data(), dataSize);
+    std::memcpy(stagingPtr, data.data(), dataByteLength);
     vkUnmapMemory(device, stagingBuffer.allocation.get().memory);
 
     VkBufferCopy bufferCopy = {};
     bufferCopy.srcOffset = 0;
     bufferCopy.dstOffset = 0;
-    bufferCopy.size = dataSize;
+    bufferCopy.size = dataByteLength;
 
     CopyToBuffer(
         commandBuffer,

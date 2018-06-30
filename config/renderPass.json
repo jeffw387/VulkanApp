@@ -10,7 +10,10 @@
       "stencilLoadOp": 2,
       "stencilStoreOp": 1,
       "storeOp": 0,
-      "uri": "colorAttachment"
+      "jsonID": {
+        "uri": "colorAttachment",
+        "inline": true
+      }
     }
   ],
   "dependencies": [
@@ -33,7 +36,10 @@
         8192
       ],
       "srcSubpass": 0,
-      "uri": "dep1"
+      "jsonID": {
+        "uri": "dep1",
+        "inline": true
+      }
     },
     {
       "dependencyFlags": [
@@ -54,14 +60,20 @@
         1024
       ],
       "srcSubpass": 0,
-      "uri": "dep2"
+      "jsonID": {
+        "uri": "dep2",
+        "inline": true
+      }
     }
   ],
   "subpasses": [
     {
       "colorAttachments": [
         {
-          "uri": "colorAttachmentRef",
+          "jsonID": {
+            "uri": "colorAttachmentRef",
+            "inline": true
+          },
           "attachment": 0,
           "layout": 2
         }
@@ -71,8 +83,14 @@
       "pipelineBindPoint": 0,
       "preserveAttachments": [],
       "resolveAttachments": [],
-      "uri": "subpass2D"
+      "jsonID": {
+        "uri": "subpass2D",
+        "inline": true
+      }
     }
   ],
-  "uri": "renderPass.json"
+  "jsonID": {
+    "uri": "renderPass.json",
+    "inline": true
+  }
 }

@@ -1,32 +1,44 @@
 {
     "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/pipelineConfig.schema.json",
-    "uri": "pipeline2D.json",
+    "jsonID": "pipeline2D.json",
     "shaderStageConfigs": [
         {
-            "uri": "vertexShader2D",
+            "jsonID": {
+                "uri": "vertexShader2D",
+                "inline": true
+            },
             "shaderStage": 1,
             "module": "Shaders/vert.spv",
             "name": "main"
         },
         {
-            "uri": "fragmentShader2D",
+            "jsonID": {
+                "uri": "fragmentShader2D",
+                "inline": true
+            },
             "shaderStage": 16,
             "module": "Shaders/frag.spv",
             "name": "main"
         }
     ],
     "vertexInputConfig": {
-        "uri": "vertexInput2D",
+        "jsonID": "vertexInput2D",
         "vertexAttributeDescriptions": [
             {
-                "uri": "positionAttribute",
+                "jsonID": {
+                    "uri": "positionAttribute",
+                    "inline": true
+                },
                 "binding": 0,
                 "format": 103,
                 "location": 0,
                 "offset": 0
             },
             {
-                "uri": "uvAttribute",
+                "jsonID": {
+                    "uri": "uvAttribute",
+                    "inline": true
+                },
                 "binding": 0,
                 "format": 103,
                 "location": 1,
@@ -35,7 +47,10 @@
         ],
         "vertexBindingDescriptions": [
             {
-                "uri": "vertexBuffer2D",
+                "jsonID": {
+                    "uri": "vertexBuffer2D",
+                    "inline": true
+                },
                 "binding": 0,
                 "inputRate": 0,
                 "stride": 16
@@ -43,18 +58,27 @@
         ]
     },
     "inputAssemblyConfig": {
-        "uri": "inputAssembly2D",
+        "jsonID": {
+            "uri": "inputAssembly2D",
+            "inline": true
+        },
         "primitiveRestartEnable": false,
         "primitiveTopology": 3
     },
     "viewportConfig": {
-        "uri": "viewport2D",
+        "jsonID": {
+            "uri": "viewport2D",
+            "inline": true
+        },
         "viewports": [],
         "scissors": [],
         "viewportScissorCount": 1
     },
     "rasterizationConfig": {
-        "uri": "rasterization2D",
+        "jsonID": {
+            "uri": "rasterization2D",
+            "inline": true
+        },
         "depthClampEnable": false,
         "rasterizerDiscardEnable": false,
         "polygonMode": 0,
@@ -67,7 +91,10 @@
         "lineWidth": 1
     },
     "depthStencilConfig": {
-        "uri": "depthStencil2D",
+        "jsonID": {
+            "uri": "depthStencil2D",
+            "inline": true
+        },
         "depthTestEnable": false,
         "depthWriteEnable": false,
         "depthCompareOp": 7,
@@ -79,7 +106,10 @@
         "maxDepthBounds": 1
     },
     "colorBlendConfig": {
-        "uri": "blendConfig2D",
+        "jsonID": {
+            "uri": "blendConfig2D",
+            "inline": true
+        },
         "blendConstants": [
             1,
             1,
@@ -111,13 +141,19 @@
         1
     ],
     "pipelineLayoutConfig": {
-        "uri": "pipelineLayout2D",
+        "jsonID": {
+            "uri": "pipelineLayout2D",
+            "inline": true
+        },
         "descriptorSetLayouts": [
             {
-                "uri": "fragmentDescriptorSetLayout2D",
+                "jsonID": "fragmentDescriptorSetLayout2D",
                 "bindings": [
                     {
-                        "uri": "sampler2D",
+                        "jsonID": {
+                            "uri": "sampler2D",
+                            "inline": true
+                        },
                         "binding": 0,
                         "descriptorCount": 1,
                         "descriptorType": 0,
@@ -145,7 +181,10 @@
                         ]
                     },
                     {
-                        "uri": "images2D",
+                        "jsonID": {
+                            "uri": "images2D",
+                            "inline": true
+                        },
                         "binding": 1,
                         "descriptorCount": 0,
                         "descriptorType": 2,
@@ -160,7 +199,10 @@
         ],
         "pushConstantRanges": [
             {
-                "uri": "vertexPushConstantRange2D",
+                "jsonID": {
+                    "uri": "vertexPushConstantRange2D",
+                    "inline": true
+                },
                 "shaderStages": [
                     1
                 ],
@@ -168,7 +210,10 @@
                 "size": 64
             },
             {
-                "uri": "fragmentPushConstantRange2D",
+                "jsonID": {
+                    "uri": "fragmentPushConstantRange2D",
+                    "inline": true
+                },
                 "shaderStages": [
                     16
                 ],
@@ -177,6 +222,9 @@
             }
         ]
     },
-    "renderPassConfig": "renderPass.json",
+    "renderPassConfig": {
+        "uri": "renderPass.json",
+        "inline": false
+    },
     "subpass": 0
 }

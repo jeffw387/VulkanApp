@@ -279,10 +279,14 @@ void VulkanApp::RenderSpriteInstance(
     vkCmdDraw(renderCommandBuffer, VerticesPerQuad, 1, gsl::narrow<uint32_t>(sprite.vertexOffset), 0);
 }
 
+void VulkanApp::RenderModelInstance(uint64_t modelIndex, glm::mat4 transform, glm::vec4 color)
+{
+}
+
 void VulkanApp::FinalizeImageOrder()
 {
     auto imageOffset = 0;
-    for (auto &image : images)
+    for (auto &image : images2D)
     {
         image.second.imageOffset = imageOffset;
         ++imageOffset;
@@ -292,11 +296,11 @@ void VulkanApp::FinalizeImageOrder()
 void VulkanApp::FinalizeSpriteOrder()
 {
     auto spriteOffset = 0;
-    for (auto &[spriteID, sprite] : sprites)
+    for (auto &[spriteID, sprite] : sprites2D)
     {
-        quads.push_back(sprite.quad);
+        quads2D.push_back(sprite.quad);
         sprite.vertexOffset = spriteOffset;
-        sprite.imageOffset = images[sprite.imageID].imageOffset;
+        sprite.imageOffset = images2D[sprite.imageID].imageOffset;
         ++spriteOffset;
     }
 }
@@ -379,22 +383,22 @@ static UniqueAllocatedBuffer CreateVertexBufferStageData(VkDevice device,
     return std::move(buffer);
 }
 
-void VulkanApp::CreateVertexBuffer()
+void VulkanApp::Create2DVertexBuffer()
 {
     auto graphicsQueueFamilyID = deviceOptional->GetGraphicsQueueID();
     auto graphicsQueue = deviceOptional->GetGraphicsQueue();
 
-    if (quads.size() == 0)
+    if (quads2D.size() == 0)
     {
         std::runtime_error("Error: no vertices loaded.");
     }
     // create vertex buffers
 
-    vertexBufferUnique = CreateVertexBufferStageData(device,
+    vertexBuffer2D = CreateVertexBufferStageData(device,
     deviceOptional->GetAllocator(),
     graphicsQueueFamilyID,
     graphicsQueue,
-    quads,
+    quads2D,
     BufferType::Vertex,
     utilityCommandBuffer,
     utilityCommandFence);
@@ -406,13 +410,13 @@ void VulkanApp::Create3DVertexBuffers()
     auto graphicsQueueFamilyID = deviceOptional->GetGraphicsQueueID();
     auto graphicsQueue = deviceOptional->GetGraphicsQueue();
 
-    if (models.size() == 0)
+    if (models3D.size() == 0)
     {
         std::runtime_error("Error: no vertices loaded.");
     }
     size_t indexCount = 0;
     size_t vertexCount = 0;
-    for (auto &[id, model] : models)
+    for (auto &[id, model] : models3D)
     {
         model.full.firstIndex = indexCount;
         model.full.firstVertex = vertexCount;
@@ -422,47 +426,47 @@ void VulkanApp::Create3DVertexBuffers()
         indexCount += newIndicesCount;
         vertexCount += newVerticesCount;
 
-        vertexIndices.insert(std::end(vertexIndices),
+        vertexIndices3D.insert(std::end(vertexIndices3D),
                              model.full.indices.begin(),
                              model.full.indices.end());
 
-        vertexPositions.insert(std::end(vertexPositions),
+        vertexPositions3D.insert(std::end(vertexPositions3D),
                                model.full.positions.begin(),
                                model.full.positions.end());
 
-        vertexNormals.insert(std::end(vertexNormals),
+        vertexNormals3D.insert(std::end(vertexNormals3D),
                              model.full.normals.begin(),
                              model.full.normals.end());
     }
 
-    auto indexBufferSize = vertexIndices.size() * sizeof(IndexType);
-    auto positionBufferSize = vertexPositions.size() * sizeof(PositionType);
-    auto normalBufferSize = vertexNormals.size() * sizeof(NormalType);
+    auto indexBufferSize = vertexIndices3D.size() * sizeof(IndexType);
+    auto positionBufferSize = vertexPositions3D.size() * sizeof(PositionType);
+    auto normalBufferSize = vertexNormals3D.size() * sizeof(NormalType);
     auto& allocator = deviceOptional->GetAllocator();
 
-    indexBuffer = CreateVertexBufferStageData<IndexType>(device,
+    indexBuffer3D = CreateVertexBufferStageData<IndexType>(device,
                                               allocator,
                                               graphicsQueueFamilyID,
                                               graphicsQueue,
-                                              vertexIndices,
+                                              vertexIndices3D,
                                               BufferType::Index,
                                               utilityCommandBuffer,
                                               utilityCommandFence);
 
-    positionBuffer = CreateVertexBufferStageData<PositionType>(device,
+    positionBuffer3D = CreateVertexBufferStageData<PositionType>(device,
                                                  allocator,
                                                  graphicsQueueFamilyID,
                                                  graphicsQueue,
-                                                 vertexPositions,
+                                                 vertexPositions3D,
                                                  BufferType::Vertex,
                                                  utilityCommandBuffer,
                                                  utilityCommandFence);
 
-    normalBuffer = CreateVertexBufferStageData<NormalType>(device,
+    normalBuffer3D = CreateVertexBufferStageData<NormalType>(device,
                                                  allocator,
                                                  graphicsQueueFamilyID,
                                                  graphicsQueue,
-                                                 vertexNormals,
+                                                 vertexNormals3D,
                                                  BufferType::Vertex,
                                                  utilityCommandBuffer,
                                                  utilityCommandFence);
@@ -493,7 +497,7 @@ void VulkanApp::GameThread()
         }
         try
         {
-            auto newFrame = FrameRender(*this);
+            FrameRender(device, nextImage, swapchain;
         }
         catch (Results::ErrorDeviceLost)
         {
@@ -514,25 +518,6 @@ void VulkanApp::GameThread()
             (*deviceOptional)(result);
             UpdateCameraSize();
         }
-    }
-}
-
-VkFence VulkanApp::GetFenceFromImagePresentedPool()
-{
-    auto fence = imagePresentedFencePool.unpool();
-    auto fenceCount = imagePresentedFencePool.size();
-    if (fence.has_value() == false)
-    {
-        fence = deviceOptional->CreateFence(false);
-    }
-    return fence.value();
-}
-
-void VulkanApp::ReturnFenceToImagePresentedPool(VkFence fence)
-{
-    if (fence != VK_NULL_HANDLE)
-    {
-        imagePresentedFencePool.pool(fence);
     }
 }
 
@@ -577,135 +562,9 @@ static RenderResults HandleRenderErrors(VkResult result)
     return RenderResults::Continue;
 }
 
-FrameRender::FrameRender(VulkanApp &app) : app(app)
+FrameRender::FrameRender(const VkDevice& device) : app(app)
 {
-    // Frame-independent resources
-    device = app.deviceOptional->GetDevice();
-    auto &nextImage = app.nextImage;
-    swapchain = app.deviceOptional->GetSwapchain();
-    imagePresentedFence = app.GetFenceFromImagePresentedPool();
-    renderPass = app.deviceOptional->GetRenderPass();
-    fragmentDescriptorSet = app.fragmentDescriptorSet;
-    pipelineLayout = app.deviceOptional->GetPipelineLayout();
-    pipeline = app.deviceOptional->GetPipeline();
-    vertexBuffer = app.vertexBufferUnique.buffer.get();
-    graphicsQueue = app.deviceOptional->GetGraphicsQueue();
-    extent = app.deviceOptional->GetSurfaceExtent();
-    clearValue = app.clearValue;
-
-    auto acquireResult = vkAcquireNextImageKHR(device, swapchain,
-                                               0, VK_NULL_HANDLE,
-                                               imagePresentedFence, &nextImage);
-
-    auto successResult = HandleRenderErrors(acquireResult);
-    if (successResult == RenderResults::Return)
-    {
-        return;
-    }
-
-    // frame-dependent resources
-    renderCommandBuffer = app.renderCommandBuffers[nextImage];
-    renderCommandBufferExecutedFence = app.renderCommandBufferExecutedFences[nextImage];
-    framebuffer = app.deviceOptional->GetFramebuffer(nextImage);
-    imageRenderedSemaphore = app.imageRenderedSemaphores[nextImage];
-
-    VkViewport viewport = {};
-    viewport.x = 0.f;
-    viewport.y = 0.f;
-    viewport.width = static_cast<float>(extent.width);
-    viewport.height = static_cast<float>(extent.height);
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
-
-    VkRect2D scissorRect = {};
-    scissorRect.offset.x = 0;
-    scissorRect.offset.y = 0;
-    scissorRect.extent = extent;
-
-    // Wait for this frame's render command buffer to finish executing
-    vkWaitForFences(device,
-                    1,
-                    &renderCommandBufferExecutedFence,
-                    true, std::numeric_limits<uint64_t>::max());
-    vkResetFences(device, 1, &renderCommandBufferExecutedFence);
-
-    // record the command buffer
-    VkCommandBufferBeginInfo beginInfo = {};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.pNext = nullptr;
-    beginInfo.flags = 0;
-    beginInfo.pInheritanceInfo = nullptr;
-    vkBeginCommandBuffer(renderCommandBuffer, &beginInfo);
-
-    VkRenderPassBeginInfo renderPassBeginInfo = {};
-    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassBeginInfo.pNext = nullptr;
-    renderPassBeginInfo.renderPass = renderPass;
-    renderPassBeginInfo.framebuffer = framebuffer;
-    renderPassBeginInfo.renderArea = scissorRect;
-    renderPassBeginInfo.clearValueCount = 1;
-    renderPassBeginInfo.pClearValues = &clearValue;
-    vkCmdBeginRenderPass(renderCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    vkCmdBindPipeline(renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-
-    vkCmdSetViewport(renderCommandBuffer, 0, 1, &viewport);
-    vkCmdSetScissor(renderCommandBuffer, 0, 1, &scissorRect);
-
-    VkDeviceSize vertexBufferOffset = 0;
-    vkCmdBindVertexBuffers(renderCommandBuffer, 0, 1,
-                           &vertexBuffer,
-                           &vertexBufferOffset);
-
-    // bind sampler and images uniforms
-    vkCmdBindDescriptorSets(renderCommandBuffer,
-                            VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            pipelineLayout,
-                            0,
-                            1, &fragmentDescriptorSet,
-                            0, nullptr);
-
-    app.Draw();
-
-    // Finish recording draw command buffer
-    vkCmdEndRenderPass(renderCommandBuffer);
-    vkEndCommandBuffer(renderCommandBuffer);
-
-    // Submit draw command buffer
-    auto stageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSubmitInfo submitInfo = {};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.pNext = nullptr;
-    submitInfo.waitSemaphoreCount = 0;
-    submitInfo.pWaitSemaphores = nullptr;
-    submitInfo.pWaitDstStageMask = nullptr;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &renderCommandBuffer;
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &imageRenderedSemaphore;
-
-    vkWaitForFences(device, 1, &imagePresentedFence, true, std::numeric_limits<uint64_t>::max());
-    vkResetFences(device, 1, &imagePresentedFence);
-
-    auto drawSubmitResult = vkQueueSubmit(graphicsQueue, 1,
-                                          &submitInfo, renderCommandBufferExecutedFence);
-
-    // Present image
-    VkPresentInfoKHR presentInfo = {};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.pNext = nullptr;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &imageRenderedSemaphore;
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &swapchain;
-    presentInfo.pImageIndices = &nextImage;
-    presentInfo.pResults = nullptr;
-
-    auto presentResult = vkQueuePresentKHR(
-        graphicsQueue,
-        &presentInfo);
-
-    HandleRenderErrors(presentResult);
+    
 }
 
 FrameRender::~FrameRender()

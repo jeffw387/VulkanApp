@@ -29,516 +29,562 @@
 namespace vka
 {
 	using json = nlohmann::json;
-struct VertexPushConstants
-{
-    glm::mat4 mvp;
-};
+	struct VertexPushConstants
+	{
+		glm::mat4 mvp;
+	};
 
-struct FragmentPushConstants
-{
-    glm::uint32 imageOffset;
-    glm::vec3 padding;
-    glm::vec4 color;
-};
+	struct FragmentPushConstants
+	{
+		glm::uint32 imageOffset;
+		glm::vec3 padding;
+		glm::vec4 color;
+	};
 
-struct PushConstants
-{
-    VertexPushConstants vertexPushConstants;
-    FragmentPushConstants fragmentPushConstants;
-};
+	struct PushConstants
+	{
+		VertexPushConstants vertexPushConstants;
+		FragmentPushConstants fragmentPushConstants;
+	};
 
-constexpr float graphicsQueuePriority = 0.f;
-constexpr float presentQueuePriority = 0.f;
+	constexpr float graphicsQueuePriority = 0.f;
+	constexpr float presentQueuePriority = 0.f;
 
-class Device
-{
-  public:
-    static constexpr uint32_t ImageCount = 1;
-    static constexpr uint32_t PushConstantSize = sizeof(PushConstants);
+	class Device
+	{
+	public:
+		static constexpr uint32_t ImageCount = 1;
+		static constexpr uint32_t PushConstantSize = sizeof(PushConstants);
 
-    Device(VkInstance instance,
-           GLFWwindow *window,
-           std::vector<const char *> deviceExtensions,
-           std::string vertexShaderPath,
-           std::string fragmentShaderPath)
-        : instance(instance),
-          window(window),
-          deviceExtensions(deviceExtensions),
-          vertexShaderPath(vertexShaderPath),
-          fragmentShaderPath(fragmentShaderPath)
-    {
-        SelectPhysicalDevice();
-        GetQueueFamilyProperties();
-        CreateSurface();
-        SelectGraphicsQueue();
-        SelectPresentQueue();
-        CreateDevice();
-        CreateAllocator();
-        CreateRenderPass();
-        CreateSwapchain();
-        CreateVertexShader();
-        CreateFragmentShader();
-        CreateSampler();
-        CreateFragmentDescriptorSet();
-        SetupVertexData();
-        CreatePipelineLayout();
-        CreatePipeline();
-    }
-
-    VkPhysicalDevice GetPhysicalDevice()
-    {
-        return physicalDevice;
-    }
-
-    VkDevice GetDevice()
-    {
-        return deviceUnique.get();
-    }
-
-    auto &GetAllocator()
-    {
-        return allocator;
-    }
-
-    VkQueue GetGraphicsQueue()
-    {
-        return graphicsQueue;
-    }
-
-    VkQueue GetPresentQueue()
-    {
-        return presentQueue;
-    }
-
-    uint32_t GetGraphicsQueueID()
-    {
-        return graphicsQueueCreateInfo.queueFamilyIndex;
-    }
-
-    uint32_t GetPresentQueueID()
-    {
-        return presentQueueCreateInfo.queueFamilyIndex;
-    }
-
-    VkSwapchainKHR GetSwapchain()
-    {
-        return swapchainOptional.value().GetSwapchain();
-    }
-
-    VkExtent2D GetSurfaceExtent()
-    {
-        return surfaceOptional->GetExtent();
-    }
-
-    VkFramebuffer GetFramebuffer(size_t i)
-    {
-        return swapchainOptional->GetFramebuffer(i);
-    }
-
-    VkFence CreateFence(bool signaled)
-    {
-        VkFence fence;
-        VkFenceCreateInfo createInfo = {};
-        createInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        createInfo.pNext = nullptr;
-        if (signaled)
-        {
-            createInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-        }
-        vkCreateFence(GetDevice(), &createInfo, nullptr, &fence);
-        fences[fence] = VkFenceUnique(fence, VkFenceDeleter(GetDevice()));
-        return fence;
-    }
-
-    VkSemaphore CreateSemaphore()
-    {
-        VkSemaphore semaphore;
-        VkSemaphoreCreateInfo createInfo = {};
-        createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        createInfo.pNext = nullptr;
-        vkCreateSemaphore(GetDevice(), &createInfo, nullptr, &semaphore);
-        semaphores[semaphore] =
-            VkSemaphoreUnique(semaphore, VkSemaphoreDeleter(GetDevice()));
-        return semaphore;
-    }
-
-    VkCommandPool CreateCommandPool(uint32_t queueFamilyIndex, bool transient, bool poolReset)
-    {
-        VkCommandPool pool;
-        VkCommandPoolCreateInfo createInfo = {};
-        createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        createInfo.pNext = nullptr;
-        createInfo.flags |= transient ? VK_COMMAND_POOL_CREATE_TRANSIENT_BIT : 0;
-        createInfo.flags |= poolReset ? VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT : 0;
-        createInfo.queueFamilyIndex = queueFamilyIndex;
-        vkCreateCommandPool(GetDevice(), &createInfo, nullptr, &pool);
-        commandPools[pool] = VkCommandPoolUnique(pool, VkCommandPoolDeleter(GetDevice()));
-        return pool;
-    }
-
-    std::vector<VkCommandBuffer> AllocateCommandBuffers(VkCommandPool pool, uint32_t count)
-    {
-        std::vector<VkCommandBuffer> commandBuffers;
-        commandBuffers.resize(count);
-        VkCommandBufferAllocateInfo allocateInfo = {};
-        allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocateInfo.pNext = nullptr;
-        allocateInfo.commandPool = pool;
-        allocateInfo.level = (VkCommandBufferLevel)0;
-        allocateInfo.commandBufferCount = count;
-        vkAllocateCommandBuffers(GetDevice(), &allocateInfo, commandBuffers.data());
-        return commandBuffers;
-    }
-
-    void operator()(Results::ErrorSurfaceLost result)
-    {
-        vkDeviceWaitIdle(GetDevice());
-        CreateSurface();
-        CreateRenderPass();
-        CreateSwapchain();
-    }
-
-    void recreateSwapchain()
-    {
-        vkDeviceWaitIdle(GetDevice());
-        CreateSwapchain();
-    }
-
-    void operator()(Results::Suboptimal result)
-    {
-        (*surfaceOptional)(result);
-        recreateSwapchain();
-    }
-
-    void operator()(Results::ErrorOutOfDate result)
-    {
-        (*surfaceOptional)(result);
-        recreateSwapchain();
-    }
-
-  private:
-    VkInstance instance;
-    GLFWwindow *window;
-    std::vector<const char *> deviceExtensions;
-    std::string vertexShaderPath;
-    std::string fragmentShaderPath;
-
-    VkPhysicalDevice physicalDevice;
-    std::vector<VkQueueFamilyProperties> queueFamilyProperties;
-
-    VkDeviceQueueCreateInfo graphicsQueueCreateInfo;
-    VkDeviceQueueCreateInfo presentQueueCreateInfo;
-    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    VkDeviceCreateInfo createInfo;
-    VkDeviceUnique deviceUnique;
-    VkQueue graphicsQueue;
-    VkQueue presentQueue;
-    Allocator allocator;
-
-    std::map<VkCommandPool, VkCommandPoolUnique> commandPools;
-    std::map<VkFence, VkFenceUnique> fences;
-    std::map<VkSemaphore, VkSemaphoreUnique> semaphores;
-	std::map<VkSampler, VkSamplerUnique> samplers;
-	std::map<VkShaderModule, VkShaderModuleUnique> shaderModules;
-	std::map<VkRenderPass, VkRenderPassUnique> renderPasses;
-	std::map<VkDescriptorSetLayout, VkDescriptorSetLayoutUnique> descriptorSetLayouts;
-	std::map<VkPipelineLayout, VkPipelineLayoutUnique> pipelineLayouts;
-	std::map<VkPipeline, VkPipelineUnique> pipelines;
-    std::optional<Surface> surfaceOptional;
-    std::optional<Swapchain> swapchainOptional;
-    std::optional<Shader> vertexShaderOptional;
-    std::optional<Shader> fragmentShaderOptional;
-
-  private:
-    void SelectPhysicalDevice()
-    {
-        std::vector<VkPhysicalDevice> physicalDevices;
-        uint32_t physicalDeviceCount;
-        vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, nullptr);
-        physicalDevices.resize(physicalDeviceCount);
-        auto result = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data());
-
-        physicalDevice = physicalDevices[0];
-    }
-
-    void GetQueueFamilyProperties()
-    {
-        uint32_t propCount;
-        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice,
-                                                 &propCount,
-                                                 nullptr);
-        queueFamilyProperties.resize(propCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice,
-                                                 &propCount,
-                                                 queueFamilyProperties.data());
-    }
-
-    void SelectGraphicsQueue()
-    {
-        std::optional<uint32_t> graphicsQueueFamilyIndex;
-        for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
-        {
-            if (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-            {
-                graphicsQueueFamilyIndex = i;
-                break;
-            }
-        }
-
-        if (graphicsQueueFamilyIndex.has_value() == false)
-        {
-            std::runtime_error("Device does not support graphics queue!");
-        }
-
-        graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        graphicsQueueCreateInfo.pNext = nullptr;
-        graphicsQueueCreateInfo.flags = 0;
-        graphicsQueueCreateInfo.queueFamilyIndex = graphicsQueueFamilyIndex.value();
-        graphicsQueueCreateInfo.queueCount = 1;
-        graphicsQueueCreateInfo.pQueuePriorities = &graphicsQueuePriority;
-    }
-
-    void SelectPresentQueue()
-    {
-        std::optional<uint32_t> presentQueueFamilyIndex;
-        for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
-        {
-            VkBool32 presentSupport = false;
-            auto surface = surfaceOptional->GetSurface();
-            vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surfaceOptional->GetSurface(), &presentSupport);
-            if (presentSupport)
-            {
-                presentQueueFamilyIndex = i;
-                break;
-            }
-        }
-
-        if (presentQueueFamilyIndex.has_value() == false)
-        {
-            std::runtime_error("Device does not support present queue!");
-        }
-
-        presentQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        presentQueueCreateInfo.pNext = nullptr;
-        presentQueueCreateInfo.flags = 0;
-        presentQueueCreateInfo.queueFamilyIndex = presentQueueFamilyIndex.value();
-        presentQueueCreateInfo.queueCount = 1;
-        presentQueueCreateInfo.pQueuePriorities = &presentQueuePriority;
-    }
-
-    void CreateDevice()
-    {
-        queueCreateInfos.push_back(graphicsQueueCreateInfo);
-        auto graphicsQueueID = GetGraphicsQueueID();
-        auto presentQueueID = GetPresentQueueID();
-        auto singleQueue = (graphicsQueueID == presentQueueID);
-        if (!singleQueue)
-        {
-            queueCreateInfos.push_back(presentQueueCreateInfo);
-        }
-
-        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        createInfo.pNext = nullptr;
-        createInfo.flags = 0;
-        createInfo.queueCreateInfoCount = gsl::narrow<uint32_t>(queueCreateInfos.size());
-        createInfo.pQueueCreateInfos = queueCreateInfos.data();
-        createInfo.enabledLayerCount = 0;
-        createInfo.ppEnabledLayerNames = nullptr;
-        createInfo.enabledExtensionCount = gsl::narrow<uint32_t>(deviceExtensions.size());
-        createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-        createInfo.pEnabledFeatures = nullptr;
-        VkDevice device;
-        vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
-        deviceUnique = VkDeviceUnique(device, VkDeviceDeleter());
-        LoadDeviceLevelEntryPoints(device);
-
-        vkGetDeviceQueue(device, graphicsQueueID, 0, &graphicsQueue);
-        if (!singleQueue)
-        {
-            vkGetDeviceQueue(device, presentQueueID, 0, &presentQueue);
-        }
-    }
-
-    void CreateAllocator()
-    {
-        constexpr auto allocSize = 512000U;
-        allocator = Allocator(physicalDevice, GetDevice(), allocSize);
-    }
-
-    void CreateSurface()
-    {
-        surfaceOptional.reset();
-        surfaceOptional = Surface(instance, physicalDevice, window);
-    }
-
-    VkRenderPass CreateRenderPass(const json &renderPassConfig)
-    {
-		std::vector<VkAttachmentDescription> attachmentDescriptions;
-		for (const auto& attachmentJson : renderPassConfig["attachments"])
+		Device(VkInstance instance,
+			std::vector<const char *> deviceExtensions,
+			VkSurfaceKHR surface)
+			: instance(instance),
+			deviceExtensions(deviceExtensions),
+			surface(surface)
 		{
-			VkAttachmentDescription description = {};
-			description.finalLayout = attachmentJson["finalLayout"];
-			description.format = attachmentJson["format"];
-			description.initialLayout = attachmentJson["initialLayout"];
-
+			SelectPhysicalDevice();
+			GetQueueFamilyProperties();
+			SelectGraphicsQueue();
+			SelectPresentQueue();
+			CreateDevice();
+			CreateAllocator();
 		}
-		std::vector<VkSubpassDescription> subpassDescriptions;
-		std::vector<VkSubpassDependency> subpassDependencies;
-		VkRenderPassCreateInfo createInfo = {};
-		createInfo.attachmentCount = gsl::narrow<uint32_t>(
-			attachmentDescriptions.size());
-		createInfo.pAttachments = attachmentDescriptions.data();
-		createInfo.subpassCount = gsl::narrow<uint32_t>(
-			subpassDescriptions.size());
-		createInfo.pSubpasses = subpassDescriptions.data();
-		createInfo.dependencyCount = gsl::narrow<uint32_t>(
-			subpassDependencies.size());
-		createInfo.pDependencies = subpassDependencies.data();
-    }
 
-    void CreateSwapchain()
-    {
-        swapchainOptional.reset();
-        swapchainOptional = Swapchain(GetDevice(),
-                                      surfaceOptional->GetSurface(),
-                                      surfaceOptional->GetFormat(),
-                                      surfaceOptional->GetColorSpace(),
-                                      surfaceOptional->GetExtent(),
-                                      surfaceOptional->GetPresentMode(),
-                                      renderPassOptional->GetRenderPass(),
-                                      GetGraphicsQueueID(),
-                                      GetPresentQueueID());
-    }
+		VkPhysicalDevice GetPhysicalDevice()
+		{
+			return physicalDevice;
+		}
 
-    void CreateVertexShader()
-    {
-        auto vertexShaderBinary = fileIO::readFile(vertexShaderPath);
-        vertexShaderOptional = Shader(GetDevice(),
-                                      std::move(vertexShaderBinary),
-                                      VK_SHADER_STAGE_VERTEX_BIT,
-                                      "main");
-    }
+		VkDevice GetDevice()
+		{
+			return deviceUnique.get();
+		}
 
-    void CreateFragmentShader()
-    {
-        auto fragmentShaderBinary = fileIO::readFile(fragmentShaderPath);
-        fragmentShaderOptional = Shader(GetDevice(),
-                                        std::move(fragmentShaderBinary),
-                                        VK_SHADER_STAGE_FRAGMENT_BIT,
-                                        "main");
-    }
+		auto &GetAllocator()
+		{
+			return allocator;
+		}
 
-    void CreateSampler()
-    {
-        VkSamplerCreateInfo createInfo = {};
-        createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        createInfo.pNext = nullptr;
-        createInfo.flags = 0;
-        createInfo.magFilter = VK_FILTER_LINEAR;
-        createInfo.minFilter = VK_FILTER_LINEAR;
-        createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        createInfo.mipLodBias = 0.f;
-        createInfo.anisotropyEnable = false;
-        createInfo.maxAnisotropy = 16.f;
-        createInfo.compareEnable = false;
-        createInfo.compareOp = VK_COMPARE_OP_NEVER;
-        createInfo.minLod = 0.f;
-        createInfo.maxLod = 0.f;
-        createInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
-        createInfo.unnormalizedCoordinates = false;
+		VkQueue GetGraphicsQueue()
+		{
+			return graphicsQueue;
+		}
 
-        vkCreateSampler(GetDevice(), &createInfo, nullptr, &sampler);
-        samplerUnique = VkSamplerUnique(sampler, VkSamplerDeleter(GetDevice()));
-    }
+		VkQueue GetPresentQueue()
+		{
+			return presentQueue;
+		}
 
-    void CreateFragmentDescriptorSet()
-    {
-        VkDescriptorSetLayoutBinding binding0 = {};
-        binding0.binding = 0;
-        binding0.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-        binding0.descriptorCount = 1;
-        binding0.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        binding0.pImmutableSamplers = &sampler;
+		uint32_t GetGraphicsQueueID()
+		{
+			return graphicsQueueCreateInfo.queueFamilyIndex;
+		}
 
-        VkDescriptorSetLayoutBinding binding1 = {};
-        binding1.binding = 1;
-        binding1.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        binding1.descriptorCount = Device::ImageCount;
-        binding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        binding1.pImmutableSamplers = nullptr;
+		uint32_t GetPresentQueueID()
+		{
+			return presentQueueCreateInfo.queueFamilyIndex;
+		}
 
-        VkDescriptorPoolSize size0 = {};
-        size0.type = VK_DESCRIPTOR_TYPE_SAMPLER;
-        size0.descriptorCount = 1;
+		VkFence CreateFence(bool signaled)
+		{
+			VkFence fence;
+			VkFenceCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			if (signaled)
+			{
+				createInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+			}
+			vkCreateFence(GetDevice(), &createInfo, nullptr, &fence);
+			fences[fence] = VkFenceUnique(fence, VkFenceDeleter(GetDevice()));
+			return fence;
+		}
 
-        VkDescriptorPoolSize size1 = {};
-        size1.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        size1.descriptorCount = Device::ImageCount;
+		VkSemaphore CreateSemaphore()
+		{
+			VkSemaphore semaphore;
+			VkSemaphoreCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			vkCreateSemaphore(GetDevice(), &createInfo, nullptr, &semaphore);
+			semaphores[semaphore] =
+				VkSemaphoreUnique(semaphore, VkSemaphoreDeleter(GetDevice()));
+			return semaphore;
+		}
 
-        fragmentDescriptorSetOptional = DescriptorSet(GetDevice(),
-                                                      std::vector<VkDescriptorSetLayoutBinding>{binding0, binding1},
-                                                      std::vector<VkDescriptorPoolSize>{size0, size1},
-                                                      1);
-    }
+		VkCommandPool CreateCommandPool(uint32_t queueFamilyIndex, bool transient, bool poolReset)
+		{
+			VkCommandPool pool;
+			VkCommandPoolCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			createInfo.flags |= transient ? VK_COMMAND_POOL_CREATE_TRANSIENT_BIT : 0;
+			createInfo.flags |= poolReset ? VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT : 0;
+			createInfo.queueFamilyIndex = queueFamilyIndex;
+			vkCreateCommandPool(GetDevice(), &createInfo, nullptr, &pool);
+			commandPools[pool] = VkCommandPoolUnique(pool, VkCommandPoolDeleter(GetDevice()));
+			return pool;
+		}
 
-    void SetupVertexData()
-    {
-        vertexData = VertexData(Vertex::vertexBindingDescriptions(),
-                                Vertex::vertexAttributeDescriptions());
-    }
+		std::vector<VkCommandBuffer> AllocateCommandBuffers(VkCommandPool pool, uint32_t count)
+		{
+			std::vector<VkCommandBuffer> commandBuffers;
+			commandBuffers.resize(count);
+			VkCommandBufferAllocateInfo allocateInfo = {};
+			allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+			allocateInfo.pNext = nullptr;
+			allocateInfo.commandPool = pool;
+			allocateInfo.level = (VkCommandBufferLevel)0;
+			allocateInfo.commandBufferCount = count;
+			vkAllocateCommandBuffers(GetDevice(), &allocateInfo, commandBuffers.data());
+			return commandBuffers;
+		}
 
-    void CreatePipelineLayout()
-    {
-        setLayouts.push_back(fragmentDescriptorSetOptional->GetSetLayout());
+	private:
+		VkInstance instance;
+		std::vector<const char *> deviceExtensions;
+		VkSurfaceKHR surface;
 
-        VkPushConstantRange vertexPushRange = {};
-        vertexPushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        vertexPushRange.offset = offsetof(PushConstants, vertexPushConstants);
-        vertexPushRange.size = sizeof(VertexPushConstants);
-        pushConstantRanges.push_back(vertexPushRange);
+		VkPhysicalDevice physicalDevice;
+		std::vector<VkQueueFamilyProperties> queueFamilyProperties;
 
-        VkPushConstantRange fragmentPushRange = {};
-        fragmentPushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragmentPushRange.offset = offsetof(PushConstants, fragmentPushConstants);
-        fragmentPushRange.size = sizeof(FragmentPushConstants);
-        pushConstantRanges.push_back(fragmentPushRange);
+		VkDeviceQueueCreateInfo graphicsQueueCreateInfo;
+		VkDeviceQueueCreateInfo presentQueueCreateInfo;
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+		VkDeviceCreateInfo createInfo;
+		VkDeviceUnique deviceUnique;
+		VkQueue graphicsQueue;
+		VkQueue presentQueue;
+		Allocator allocator;
 
-        pipelineLayoutOptional = PipelineLayout(GetDevice(),
-                                                setLayouts,
-                                                pushConstantRanges);
-    }
+		std::map<VkCommandPool, VkCommandPoolUnique> commandPools;
+		std::map<VkFence, VkFenceUnique> fences;
+		std::map<VkSemaphore, VkSemaphoreUnique> semaphores;
+		std::map<VkSampler, VkSamplerUnique> samplers;
+		std::map<VkShaderModule, VkShaderModuleUnique> shaderModules;
+		std::map<VkSwapchainKHR, VkSwapchainKHRUnique> swapchains;
+		std::map<VkRenderPass, VkRenderPassUnique> renderPasses;
+		std::map<VkDescriptorSetLayout, VkDescriptorSetLayoutUnique> descriptorSetLayouts;
+		std::map<VkPipelineLayout, VkPipelineLayoutUnique> pipelineLayouts;
+		std::map<VkPipeline, VkPipelineUnique> pipelines;
 
-    void CreatePipeline()
-    {
-        VkSpecializationMapEntry imageArraySize;
-        imageArraySize.constantID = 0;
-        imageArraySize.offset = 0;
-        imageArraySize.size = sizeof(uint32_t);
+	private:
+		void SelectPhysicalDevice()
+		{
+			std::vector<VkPhysicalDevice> physicalDevices;
+			uint32_t physicalDeviceCount;
+			vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, nullptr);
+			physicalDevices.resize(physicalDeviceCount);
+			auto result = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data());
 
-        auto vertexSpecializationMapEntries = std::vector<VkSpecializationMapEntry>();
-        auto fragmentSpecializationMapEntries = std::vector<VkSpecializationMapEntry>{imageArraySize};
-        auto vertexSpecialization = MakeSpecialization(
-            gsl::span<VkSpecializationMapEntry>(nullptr, 0),
-            nullptr);
+			physicalDevice = physicalDevices[0];
+		}
 
-        auto fragmentSpecialization = MakeSpecialization(
-            gsl::span<VkSpecializationMapEntry>(
-                fragmentSpecializationMapEntries.data(),
-                fragmentSpecializationMapEntries.size()),
-            &Device::ImageCount);
+		void GetQueueFamilyProperties()
+		{
+			uint32_t propCount;
+			vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice,
+				&propCount,
+				nullptr);
+			queueFamilyProperties.resize(propCount);
+			vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice,
+				&propCount,
+				queueFamilyProperties.data());
+		}
 
-        auto vertexShaderStageInfo = vertexShaderOptional->GetShaderStageInfo(&vertexSpecialization);
-        auto fragmentShaderStageInfo = fragmentShaderOptional->GetShaderStageInfo(&fragmentSpecialization);
+		void SelectGraphicsQueue()
+		{
+			std::optional<uint32_t> graphicsQueueFamilyIndex;
+			for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
+			{
+				if (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+				{
+					graphicsQueueFamilyIndex = i;
+					break;
+				}
+			}
 
-        pipelineOptional = Pipeline(GetDevice(),
-                                    pipelineLayoutOptional->GetPipelineLayout(),
-                                    renderPassOptional->GetRenderPass(),
-                                    vertexShaderStageInfo,
-                                    fragmentShaderStageInfo,
-                                    vertexData);
-    }
-};
+			if (graphicsQueueFamilyIndex.has_value() == false)
+			{
+				std::runtime_error("Device does not support graphics queue!");
+			}
+
+			graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			graphicsQueueCreateInfo.pNext = nullptr;
+			graphicsQueueCreateInfo.flags = 0;
+			graphicsQueueCreateInfo.queueFamilyIndex = graphicsQueueFamilyIndex.value();
+			graphicsQueueCreateInfo.queueCount = 1;
+			graphicsQueueCreateInfo.pQueuePriorities = &graphicsQueuePriority;
+		}
+
+		void SelectPresentQueue()
+		{
+			std::optional<uint32_t> presentQueueFamilyIndex;
+			for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
+			{
+				VkBool32 presentSupport = false;
+				vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
+				if (presentSupport)
+				{
+					presentQueueFamilyIndex = i;
+					break;
+				}
+			}
+
+			if (presentQueueFamilyIndex.has_value() == false)
+			{
+				std::runtime_error("Device does not support present queue!");
+			}
+
+			presentQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			presentQueueCreateInfo.pNext = nullptr;
+			presentQueueCreateInfo.flags = 0;
+			presentQueueCreateInfo.queueFamilyIndex = presentQueueFamilyIndex.value();
+			presentQueueCreateInfo.queueCount = 1;
+			presentQueueCreateInfo.pQueuePriorities = &presentQueuePriority;
+		}
+
+		void CreateDevice()
+		{
+			queueCreateInfos.push_back(graphicsQueueCreateInfo);
+			auto graphicsQueueID = GetGraphicsQueueID();
+			auto presentQueueID = GetPresentQueueID();
+			auto singleQueue = (graphicsQueueID == presentQueueID);
+			if (!singleQueue)
+			{
+				queueCreateInfos.push_back(presentQueueCreateInfo);
+			}
+
+			createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			createInfo.flags = 0;
+			createInfo.queueCreateInfoCount = gsl::narrow<uint32_t>(queueCreateInfos.size());
+			createInfo.pQueueCreateInfos = queueCreateInfos.data();
+			createInfo.enabledLayerCount = 0;
+			createInfo.ppEnabledLayerNames = nullptr;
+			createInfo.enabledExtensionCount = gsl::narrow<uint32_t>(deviceExtensions.size());
+			createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+			createInfo.pEnabledFeatures = nullptr;
+			VkDevice device;
+			vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
+			deviceUnique = VkDeviceUnique(device, VkDeviceDeleter());
+			LoadDeviceLevelEntryPoints(device);
+
+			vkGetDeviceQueue(device, graphicsQueueID, 0, &graphicsQueue);
+			if (!singleQueue)
+			{
+				vkGetDeviceQueue(device, presentQueueID, 0, &presentQueue);
+			}
+		}
+
+		void CreateAllocator()
+		{
+			constexpr auto allocSize = 512000U;
+			allocator = Allocator(physicalDevice, GetDevice(), allocSize);
+		}
+
+		VkRenderPass CreateRenderPass(const VkDevice& device, const json &renderPassConfig)
+		{
+			std::vector<VkAttachmentDescription> attachmentDescriptions;
+			for (const auto& attachmentJson : renderPassConfig["attachments"])
+			{
+				auto& description = attachmentDescriptions.emplace_back(VkAttachmentDescription());
+				description.initialLayout = attachmentJson["initialLayout"];
+				description.finalLayout = attachmentJson["finalLayout"];
+				description.samples = attachmentJson["samples"];
+				description.format = attachmentJson["format"];
+				description.loadOp = attachmentJson["loadOp"];
+				description.storeOp = attachmentJson["storeOp"];
+				description.stencilLoadOp = attachmentJson["stencilLoadOp"];
+				description.stencilStoreOp = attachmentJson["stencilStoreOp"];
+			}
+
+			std::vector<VkSubpassDescription> subpassDescriptions;
+			struct SubpassData
+			{
+				std::vector<VkAttachmentReference> colorAttachments;
+				std::optional<VkAttachmentReference> depthStencilAttachment;
+				std::vector<VkAttachmentReference> inputAttachments;
+				std::vector<VkAttachmentReference> resolveAttachments;
+				std::vector<uint32_t> preserveAttachments;
+			};
+			std::vector<SubpassData> subpassDatas;
+			auto subpassIndex = 0U;
+			for (const auto& subpassJson : renderPassConfig["subpasses"])
+			{
+				auto& subpass = subpassDescriptions.emplace_back(VkSubpassDescription());
+				auto& subpassData = subpassDatas.emplace_back(SubpassData());
+				
+				for (const auto& colorAttachmentJson : subpassJson["colorAttachments"])
+				{
+					auto& colorAttachment = subpassData.colorAttachments.emplace_back(
+						VkAttachmentReference());
+					colorAttachment.attachment = colorAttachmentJson["attachment"];
+					colorAttachment.layout = colorAttachmentJson["layout"];
+				}
+				subpass.colorAttachmentCount = gsl::narrow<uint32_t>(subpassData.colorAttachments.size());
+				subpass.pColorAttachments = subpassData.colorAttachments.data();
+
+				auto depthStencilAttachmentJson = subpassJson["depthStencilAttachment"];
+				if (!depthStencilAttachmentJson.is_null())
+				{
+					subpassData.depthStencilAttachment = VkAttachmentReference();
+					subpassData.depthStencilAttachment.value().attachment = depthStencilAttachmentJson["attachment"];
+					subpassData.depthStencilAttachment.value().layout = depthStencilAttachmentJson["layout"];
+				}
+				subpass.pDepthStencilAttachment = &subpassData.depthStencilAttachment.value_or(nullptr);
+
+				for (const auto& inputAttachmentJson : subpassJson["inputAttachments"])
+				{
+					auto& inputAttachment = subpassData.inputAttachments.emplace_back(
+						VkAttachmentReference());
+					inputAttachment.attachment = inputAttachmentJson["attachment"];
+					inputAttachment.layout = inputAttachmentJson["layout"];
+				}
+				subpass.inputAttachmentCount = gsl::narrow<uint32_t>(subpassData.inputAttachments.size());
+				subpass.pInputAttachments = subpassData.inputAttachments.data();
+
+				for (const auto& resolveAttachmentJson : subpassJson["resolveAttachments"])
+				{
+					auto& resolveAttachment = subpassData.resolveAttachments.emplace_back(
+						VkAttachmentReference());
+					resolveAttachment.attachment = resolveAttachmentJson["attachment"];
+					resolveAttachment.layout = resolveAttachmentJson["layout"];
+				}
+				if (subpassData.resolveAttachments.size() > 0)
+				{
+					subpass.pResolveAttachments = subpassData.resolveAttachments.data();
+				}
+
+				for (const auto& preserveAttachmentJson : subpassJson["preserveAttachments"])
+				{
+					auto& preserveAttachment = subpassData.preserveAttachments.emplace_back(
+						VkAttachmentReference());
+					preserveAttachment = preserveAttachmentJson;
+				}
+				subpass.preserveAttachmentCount = gsl::narrow<uint32_t>(subpassData.preserveAttachments.size());
+				subpass.pPreserveAttachments = subpassData.preserveAttachments.data();
+
+				++subpassIndex;
+			}
+
+			std::vector<VkSubpassDependency> subpassDependencies;
+			for (const auto& dependencyJson : renderPassConfig["dependencies"])
+			{
+				auto& dependency = subpassDependencies.emplace_back(VkSubpassDependency());
+				for (const auto& flag : dependencyJson["dependencyFlags"])
+				{
+					dependency.dependencyFlags |= static_cast<VkDependencyFlags>(flag);
+				}
+				for (const auto& maskBit : dependencyJson["srcAccessMask"])
+				{
+					dependency.srcAccessMask |= static_cast<VkAccessFlags>(maskBit);
+				}
+				for (const auto& maskBit : dependencyJson["dstAccessMask"])
+				{
+					dependency.dstAccessMask |= maskBit;
+				}
+				for (const auto& maskBit : dependencyJson["srcStageMask"])
+				{
+					dependency.srcStageMask |= maskBit;
+				}
+				for (const auto& maskBit : dependencyJson["dstStageMask"])
+				{
+					dependency.dstStageMask |= maskBit;
+				}
+				dependency.srcSubpass = dependencyJson["srcSubpass"];
+				dependency.dstSubpass = dependencyJson["dstSubpass"];
+			}
+			VkRenderPassCreateInfo createInfo = {};
+			createInfo.attachmentCount = gsl::narrow<uint32_t>(
+				attachmentDescriptions.size());
+			createInfo.pAttachments = attachmentDescriptions.data();
+			createInfo.subpassCount = gsl::narrow<uint32_t>(
+				subpassDescriptions.size());
+			createInfo.pSubpasses = subpassDescriptions.data();
+			createInfo.dependencyCount = gsl::narrow<uint32_t>(
+				subpassDependencies.size());
+			createInfo.pDependencies = subpassDependencies.data();
+
+			VkRenderPass renderPass;
+			vkCreateRenderPass(device, &createInfo, nullptr, &renderPass);
+
+			renderPasses[renderPass] = VkRenderPassUnique(renderPass, VkRenderPassDeleter(device));
+
+			return renderPass;
+		}
+
+		VkSwapchainKHR CreateSwapchain(const VkDevice& device, const json& swapchainConfig)
+		{
+			VkSwapchainCreateInfoKHR createInfo = {};
+			for (const auto& flagBit : swapchainConfig["flags"])
+			{
+				createInfo.flags |= flagBit;
+
+			}
+
+			swapchainOptional.reset();
+			swapchainOptional = Swapchain(GetDevice(),
+				surfaceOptional->GetSurface(),
+				surfaceOptional->GetFormat(),
+				surfaceOptional->GetColorSpace(),
+				surfaceOptional->GetExtent(),
+				surfaceOptional->GetPresentMode(),
+				renderPassOptional->GetRenderPass(),
+				GetGraphicsQueueID(),
+				GetPresentQueueID());
+		}
+
+		void CreateVertexShader()
+		{
+			auto vertexShaderBinary = fileIO::readFile(vertexShaderPath);
+			vertexShaderOptional = Shader(GetDevice(),
+				std::move(vertexShaderBinary),
+				VK_SHADER_STAGE_VERTEX_BIT,
+				"main");
+		}
+
+		void CreateFragmentShader()
+		{
+			auto fragmentShaderBinary = fileIO::readFile(fragmentShaderPath);
+			fragmentShaderOptional = Shader(GetDevice(),
+				std::move(fragmentShaderBinary),
+				VK_SHADER_STAGE_FRAGMENT_BIT,
+				"main");
+		}
+
+		void CreateSampler()
+		{
+			VkSamplerCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			createInfo.flags = 0;
+			createInfo.magFilter = VK_FILTER_LINEAR;
+			createInfo.minFilter = VK_FILTER_LINEAR;
+			createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+			createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			createInfo.mipLodBias = 0.f;
+			createInfo.anisotropyEnable = false;
+			createInfo.maxAnisotropy = 16.f;
+			createInfo.compareEnable = false;
+			createInfo.compareOp = VK_COMPARE_OP_NEVER;
+			createInfo.minLod = 0.f;
+			createInfo.maxLod = 0.f;
+			createInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+			createInfo.unnormalizedCoordinates = false;
+
+			vkCreateSampler(GetDevice(), &createInfo, nullptr, &sampler);
+			samplerUnique = VkSamplerUnique(sampler, VkSamplerDeleter(GetDevice()));
+		}
+
+		void CreateFragmentDescriptorSet()
+		{
+			VkDescriptorSetLayoutBinding binding0 = {};
+			binding0.binding = 0;
+			binding0.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+			binding0.descriptorCount = 1;
+			binding0.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+			binding0.pImmutableSamplers = &sampler;
+
+			VkDescriptorSetLayoutBinding binding1 = {};
+			binding1.binding = 1;
+			binding1.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+			binding1.descriptorCount = Device::ImageCount;
+			binding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+			binding1.pImmutableSamplers = nullptr;
+
+			VkDescriptorPoolSize size0 = {};
+			size0.type = VK_DESCRIPTOR_TYPE_SAMPLER;
+			size0.descriptorCount = 1;
+
+			VkDescriptorPoolSize size1 = {};
+			size1.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+			size1.descriptorCount = Device::ImageCount;
+
+			fragmentDescriptorSetOptional = DescriptorSet(GetDevice(),
+				std::vector<VkDescriptorSetLayoutBinding>{binding0, binding1},
+				std::vector<VkDescriptorPoolSize>{size0, size1},
+				1);
+		}
+
+		void SetupVertexData()
+		{
+			vertexData = VertexData(Vertex::vertexBindingDescriptions(),
+				Vertex::vertexAttributeDescriptions());
+		}
+
+		void CreatePipelineLayout()
+		{
+			setLayouts.push_back(fragmentDescriptorSetOptional->GetSetLayout());
+
+			VkPushConstantRange vertexPushRange = {};
+			vertexPushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+			vertexPushRange.offset = offsetof(PushConstants, vertexPushConstants);
+			vertexPushRange.size = sizeof(VertexPushConstants);
+			pushConstantRanges.push_back(vertexPushRange);
+
+			VkPushConstantRange fragmentPushRange = {};
+			fragmentPushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+			fragmentPushRange.offset = offsetof(PushConstants, fragmentPushConstants);
+			fragmentPushRange.size = sizeof(FragmentPushConstants);
+			pushConstantRanges.push_back(fragmentPushRange);
+
+			pipelineLayoutOptional = PipelineLayout(GetDevice(),
+				setLayouts,
+				pushConstantRanges);
+		}
+
+		void CreatePipeline()
+		{
+			VkSpecializationMapEntry imageArraySize;
+			imageArraySize.constantID = 0;
+			imageArraySize.offset = 0;
+			imageArraySize.size = sizeof(uint32_t);
+
+			auto vertexSpecializationMapEntries = std::vector<VkSpecializationMapEntry>();
+			auto fragmentSpecializationMapEntries = std::vector<VkSpecializationMapEntry>{ imageArraySize };
+			auto vertexSpecialization = MakeSpecialization(
+				gsl::span<VkSpecializationMapEntry>(nullptr, 0),
+				nullptr);
+
+			auto fragmentSpecialization = MakeSpecialization(
+				gsl::span<VkSpecializationMapEntry>(
+					fragmentSpecializationMapEntries.data(),
+					fragmentSpecializationMapEntries.size()),
+				&Device::ImageCount);
+
+			auto vertexShaderStageInfo = vertexShaderOptional->GetShaderStageInfo(&vertexSpecialization);
+			auto fragmentShaderStageInfo = fragmentShaderOptional->GetShaderStageInfo(&fragmentSpecialization);
+
+			pipelineOptional = Pipeline(GetDevice(),
+				pipelineLayoutOptional->GetPipelineLayout(),
+				renderPassOptional->GetRenderPass(),
+				vertexShaderStageInfo,
+				fragmentShaderStageInfo,
+				vertexData);
+		}
+	};
 } // namespace vka

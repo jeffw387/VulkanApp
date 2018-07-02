@@ -1,6 +1,9 @@
 {
     "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/pipelineConfig.schema.json",
-    "jsonID": "pipeline2D.json",
+    "jsonID": {
+        "uri": "pipeline2D.json",
+        "inline": true
+    },
     "shaderStageConfigs": [
         {
             "jsonID": {
@@ -22,7 +25,10 @@
         }
     ],
     "vertexInputConfig": {
-        "jsonID": "vertexInput2D",
+        "jsonID": {
+            "uri": "vertexInput2D",
+            "inline": true
+        },
         "vertexAttributeDescriptions": [
             {
                 "jsonID": {
@@ -147,7 +153,10 @@
         },
         "descriptorSetLayouts": [
             {
-                "jsonID": "fragmentDescriptorSetLayout2D",
+                "jsonID": {
+                    "uri": "fragmentDescriptorSetLayout2D",
+                    "inline": true
+                },
                 "bindings": [
                     {
                         "jsonID": {
@@ -223,8 +232,13 @@
         ]
     },
     "renderPassConfig": {
-        "uri": "renderPass.json",
-        "inline": false
+        "jsonID": {
+            "uri": "renderPass.json",
+            "inline": false
+        },
+        "attachments": [],
+        "dependencies": [],
+        "subpasses": []
     },
     "subpass": 0
 }

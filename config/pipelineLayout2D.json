@@ -8,44 +8,12 @@
         {
             "jsonID": {
                 "uri": "config/fragmentDescriptorSetLayout2D.json",
-                "inline": true
-            },
-            "bindings": [
-                {
-                    "binding": 0,
-                    "descriptorCount": 1,
-                    "descriptorType": 0,
-                    "shaderStages": [
-                        16
-                    ],
-                    "immutableSamplers": [
-                        {
-                            "jsonID": {
-                                "uri": "config/sampler2D.json",
-                                "inline": false
-                            }
-                        }
-                    ]
-                },
-                {
-                    "binding": 1,
-                    "descriptorCount": 0,
-                    "descriptorType": 2,
-                    "immutableSamplers": [],
-                    "shaderStages": [
-                        16
-                    ]
-                }
-            ],
-            "flags": []
+                "inline": false
+            }
         }
     ],
     "pushConstantRanges": [
         {
-            "jsonID": {
-                "uri": "vertexPushConstantRange2D",
-                "inline": true
-            },
             "shaderStages": [
                 1
             ],
@@ -53,10 +21,6 @@
             "size": 64
         },
         {
-            "jsonID": {
-                "uri": "fragmentPushConstantRange2D",
-                "inline": true
-            },
             "shaderStages": [
                 16
             ],

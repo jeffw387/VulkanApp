@@ -531,9 +531,12 @@ namespace vka
 			return sampler;
 		}
 
-		VkDescriptorSetLayout CreateDescriptorSetLayout(const VkSampler& sampler, const json& descriptorSetLayoutJson, const std::vector<VkSampler>& immutableSamplers)
+		VkDescriptorSetLayout CreateDescriptorSetLayout(const VkDevice& device, const VkSampler& sampler, const json& descriptorSetLayoutJson, const std::vector<VkSampler>& immutableSamplers)
 		{
 			VkDescriptorSetLayoutCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+			createInfo.pNext = nullptr;
+
 			std::vector<VkDescriptorSetLayoutBinding> bindings;
 			for (const auto& bindingJson : descriptorSetLayoutJson["bindings"])
 			{
@@ -542,48 +545,33 @@ namespace vka
 				binding.binding = bindingModule["binding"];
 				binding.descriptorType = bindingModule["descriptorType"];
 				binding.descriptorCount = bindingModule["descriptorCount"];
+				for (const auto& flag : bindingModule["stageFlags"])
+				{
+					binding.stageFlags |= flag;
+				}
+				if (immutableSamplers.size() > 0)
+				{
+					binding.pImmutableSamplers = immutableSamplers.data();
+				}
 			}
-			createInfo.
+			createInfo.bindingCount = gsl::narrow<uint32_t>(bindings.size());
+			createInfo.pBindings = bindings.data();
+			for (const auto& flag : descriptorSetLayoutJson["flags"])
+			{
+				createInfo.flags |= flag;
+			}
+
+			VkDescriptorSetLayout setLayout;
+			vkCreateDescriptorSetLayout(device, &createInfo, nullptr, &setLayout);
+			descriptorSetLayouts[setLayout] = VkDescriptorSetLayoutUnique(setLayout, VkDescriptorSetLayoutDeleter(device));
+
+			return setLayout;
 		}
 
-		void CreateFragmentDescriptorSet()
+		VkPipelineLayout CreatePipelineLayout(const VkDevice& device, const std::vector<VkDescriptorSetLayout> setLayouts, const json& pipelineLayoutJson)
 		{
-			VkDescriptorSetLayoutBinding binding0 = {};
-			binding0.binding = 0;
-			binding0.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-			binding0.descriptorCount = 1;
-			binding0.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-			binding0.pImmutableSamplers = &sampler;
 
-			VkDescriptorSetLayoutBinding binding1 = {};
-			binding1.binding = 1;
-			binding1.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-			binding1.descriptorCount = Device::ImageCount;
-			binding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-			binding1.pImmutableSamplers = nullptr;
 
-			VkDescriptorPoolSize size0 = {};
-			size0.type = VK_DESCRIPTOR_TYPE_SAMPLER;
-			size0.descriptorCount = 1;
-
-			VkDescriptorPoolSize size1 = {};
-			size1.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-			size1.descriptorCount = Device::ImageCount;
-
-			fragmentDescriptorSetOptional = DescriptorSet(GetDevice(),
-				std::vector<VkDescriptorSetLayoutBinding>{binding0, binding1},
-				std::vector<VkDescriptorPoolSize>{size0, size1},
-				1);
-		}
-
-		void SetupVertexData()
-		{
-			vertexData = VertexData(Vertex::vertexBindingDescriptions(),
-				Vertex::vertexAttributeDescriptions());
-		}
-
-		void CreatePipelineLayout()
-		{
 			setLayouts.push_back(fragmentDescriptorSetOptional->GetSetLayout());
 
 			VkPushConstantRange vertexPushRange = {};

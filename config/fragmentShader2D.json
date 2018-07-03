@@ -1,0 +1,10 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/shaderStageConfig.schema.json",
+    "jsonID": {
+        "uri": "config/fragmentShader2D.json",
+        "inline": true
+    },
+    "shaderStage": 16,
+    "module": "Shaders/frag.spv",
+    "name": "main"
+}

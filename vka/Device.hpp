@@ -17,6 +17,7 @@
 #include "VulkanFunctionLoader.hpp"
 #include "gsl.hpp"
 #include "nlohmann/json.hpp"
+#include "jsonConfig.hpp"
 
 #include <tuple>
 #include <vector>
@@ -435,69 +436,114 @@ namespace vka
 			return renderPass;
 		}
 
-		VkSwapchainKHR CreateSwapchain(const VkDevice& device, const json& swapchainConfig)
+		VkSwapchainKHR CreateSwapchain(
+			const VkDevice& device, 
+			const VkSurfaceKHR& surface, 
+			const uint32_t& graphicsQueueFamilyID, 
+			const uint32_t& presentQueueFamilyID, 
+			const json& swapchainConfig)
 		{
 			VkSwapchainCreateInfoKHR createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+			createInfo.pNext = nullptr;
 			for (const auto& flagBit : swapchainConfig["flags"])
 			{
 				createInfo.flags |= flagBit;
-
 			}
+			createInfo.clipped = swapchainConfig["clipped"];
+			createInfo.compositeAlpha = swapchainConfig["compositeAlpha"];
+			createInfo.imageArrayLayers = swapchainConfig["imageArrayLayers"];
+			createInfo.imageColorSpace = swapchainConfig["imageColorSpace"];
+			createInfo.imageExtent = swapchainConfig["imageExtent"];
+			createInfo.imageFormat = swapchainConfig["imageFormat"];
+			std::vector<uint32_t> queueFamilyIndices;
+			if (graphicsQueueFamilyID == presentQueueFamilyID)
+			{
+				createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			}
+			else
+			{
+				createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+				queueFamilyIndices.push_back(graphicsQueueFamilyID);
+				queueFamilyIndices.push_back(presentQueueFamilyID);
+			}
+			createInfo.imageUsage = swapchainConfig["imageUsage"];
+			createInfo.minImageCount = swapchainConfig["minImageCount"];
+			createInfo.queueFamilyIndexCount = gsl::narrow<uint32_t>(queueFamilyIndices.size());
+			createInfo.pQueueFamilyIndices = queueFamilyIndices.data();
+			// TODO: add check in for present mode support here
+			createInfo.presentMode = swapchainConfig["presentMode"];
+			createInfo.preTransform = swapchainConfig["preTransform"];
+			createInfo.surface = surface;
+			createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-			swapchainOptional.reset();
-			swapchainOptional = Swapchain(GetDevice(),
-				surfaceOptional->GetSurface(),
-				surfaceOptional->GetFormat(),
-				surfaceOptional->GetColorSpace(),
-				surfaceOptional->GetExtent(),
-				surfaceOptional->GetPresentMode(),
-				renderPassOptional->GetRenderPass(),
-				GetGraphicsQueueID(),
-				GetPresentQueueID());
+			VkSwapchainKHR swapchain;
+			vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain);
+			swapchains[swapchain] = VkSwapchainKHRUnique(swapchain, VkSwapchainKHRDeleter(device));
+
+			return swapchain;
 		}
 
-		void CreateVertexShader()
+		VkShaderModule CreateShaderModule(const VkDevice& device, const json& shaderJson)
 		{
-			auto vertexShaderBinary = fileIO::readFile(vertexShaderPath);
-			vertexShaderOptional = Shader(GetDevice(),
-				std::move(vertexShaderBinary),
-				VK_SHADER_STAGE_VERTEX_BIT,
-				"main");
+			auto shaderJsonModule = GetModule(shaderJson);
+			auto shaderBinary = fileIO::readFile(shaderJsonModule["module"]);
+			VkShaderModuleCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			createInfo.flags = 0;
+			createInfo.codeSize = shaderBinary.size();
+			createInfo.pCode = reinterpret_cast<const uint32_t *>(shaderBinary.data());
+
+			VkShaderModule shaderModule;
+			vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule);
+			shaderModules[shaderModule] = VkShaderModuleUnique(shaderModule, VkShaderModuleDeleter(device));
+
+			return shaderModule;
 		}
 
-		void CreateFragmentShader()
-		{
-			auto fragmentShaderBinary = fileIO::readFile(fragmentShaderPath);
-			fragmentShaderOptional = Shader(GetDevice(),
-				std::move(fragmentShaderBinary),
-				VK_SHADER_STAGE_FRAGMENT_BIT,
-				"main");
-		}
-
-		void CreateSampler()
+		VkSampler CreateSampler(const VkDevice& device, const json& samplerJson)
 		{
 			VkSamplerCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
 			createInfo.pNext = nullptr;
 			createInfo.flags = 0;
-			createInfo.magFilter = VK_FILTER_LINEAR;
-			createInfo.minFilter = VK_FILTER_LINEAR;
-			createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-			createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			createInfo.mipLodBias = 0.f;
-			createInfo.anisotropyEnable = false;
-			createInfo.maxAnisotropy = 16.f;
-			createInfo.compareEnable = false;
-			createInfo.compareOp = VK_COMPARE_OP_NEVER;
-			createInfo.minLod = 0.f;
-			createInfo.maxLod = 0.f;
-			createInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
-			createInfo.unnormalizedCoordinates = false;
+			createInfo.magFilter = samplerJson["magFilter"];
+			createInfo.minFilter = samplerJson["minFilter"];
+			createInfo.mipmapMode = samplerJson["mipmapMode"];
+			createInfo.addressModeU = samplerJson["addressModeU"];
+			createInfo.addressModeV = samplerJson["addressModeV"];
+			createInfo.addressModeW = samplerJson["addressModeW"];
+			createInfo.mipLodBias = samplerJson["mipLodBias"];
+			createInfo.anisotropyEnable = samplerJson["anistropyEnable"];
+			createInfo.maxAnisotropy = samplerJson["maxAnistropy"];
+			createInfo.compareEnable = samplerJson["compareEnable"];
+			createInfo.compareOp = samplerJson["compareOp"];
+			createInfo.minLod = samplerJson["minLod"];
+			createInfo.maxLod = samplerJson["maxLod"];
+			createInfo.borderColor = samplerJson["borderColor"];
+			createInfo.unnormalizedCoordinates = samplerJson["unnormalizedCoordinates"];
 
+			VkSampler sampler;
 			vkCreateSampler(GetDevice(), &createInfo, nullptr, &sampler);
-			samplerUnique = VkSamplerUnique(sampler, VkSamplerDeleter(GetDevice()));
+			samplers[sampler] = VkSamplerUnique(sampler, VkSamplerDeleter(GetDevice()));
+
+			return sampler;
+		}
+
+		VkDescriptorSetLayout CreateDescriptorSetLayout(const VkSampler& sampler, const json& descriptorSetLayoutJson, const std::vector<VkSampler>& immutableSamplers)
+		{
+			VkDescriptorSetLayoutCreateInfo createInfo = {};
+			std::vector<VkDescriptorSetLayoutBinding> bindings;
+			for (const auto& bindingJson : descriptorSetLayoutJson["bindings"])
+			{
+				auto bindingModule = GetModule(bindingJson);
+				auto& binding = bindings.emplace_back(VkDescriptorSetLayoutBinding());
+				binding.binding = bindingModule["binding"];
+				binding.descriptorType = bindingModule["descriptorType"];
+				binding.descriptorCount = bindingModule["descriptorCount"];
+			}
+			createInfo.
 		}
 
 		void CreateFragmentDescriptorSet()

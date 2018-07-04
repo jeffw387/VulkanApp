@@ -6,15 +6,23 @@
     },
     "shaderStageConfigs": [
         {
-            "jsonID": {
-                "uri": "config/vertexShader2D.json",
-                "inline": false
+            "shaderStage": 1,
+            "name": "main",
+            "module": {
+                "jsonID": {
+                    "uri": "config/vertexShader2D.json",
+                    "inline": false
+                }
             }
         },
         {
-            "jsonID": {
-                "uri": "config/fragmentShader2D.json",
-                "inline": false
+            "shaderStage": 16,
+            "name": "main",
+            "module": {
+                "jsonID": {
+                    "uri": "config/fragmentShader2D.json",
+                    "inline": false
+                }
             }
         }
     ],

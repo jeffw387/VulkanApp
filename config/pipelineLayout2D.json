@@ -14,14 +14,14 @@
     ],
     "pushConstantRanges": [
         {
-            "shaderStages": [
+            "stageFlags": [
                 1
             ],
             "offset": 0,
             "size": 64
         },
         {
-            "shaderStages": [
+            "stageFlags": [
                 16
             ],
             "offset": 64,

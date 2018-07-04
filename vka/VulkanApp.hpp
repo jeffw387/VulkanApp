@@ -68,6 +68,24 @@ using IndexType = uint8_t;
 using PositionType = glm::vec3;
 using NormalType = glm::vec3;
 
+struct VertexPushConstants
+{
+	glm::mat4 mvp;
+};
+
+struct FragmentPushConstants
+{
+	glm::uint32 imageOffset;
+	glm::vec3 padding;
+	glm::vec4 color;
+};
+
+struct PushConstants
+{
+	VertexPushConstants vertexPushConstants;
+	FragmentPushConstants fragmentPushConstants;
+};
+
 class VulkanApp
 {
 	friend class FrameRender;

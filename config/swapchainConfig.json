@@ -1,5 +1,9 @@
 {
     "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/swapchainConfig.schema.json",
+    "jsonID": {
+        "uri": "config/swapchainConfig.json",
+        "inline": true
+    },
     "clipped": false,
     "compositeAlpha": 8,
     "format": 30,

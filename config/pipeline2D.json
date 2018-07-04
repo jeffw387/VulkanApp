@@ -6,24 +6,32 @@
     },
     "shaderStageConfigs": [
         {
-            "shaderStage": 1,
+            "stage": 1,
             "name": "main",
             "module": {
                 "jsonID": {
                     "uri": "config/vertexShader2D.json",
                     "inline": false
                 }
-            }
+            },
+            "specializationMapEntries": []
         },
         {
-            "shaderStage": 16,
+            "stage": 16,
             "name": "main",
             "module": {
                 "jsonID": {
                     "uri": "config/fragmentShader2D.json",
                     "inline": false
                 }
-            }
+            },
+            "specializationMapEntries": [
+                {
+                    "constantID": 0,
+                    "offset": 0,
+                    "size": 4
+                }
+            ]
         }
     ],
     "vertexInputConfig": {

@@ -2,18 +2,9 @@
 
 #include "vulkan/vulkan.h"
 #include "UniqueVulkan.hpp"
-#include "Surface.hpp"
-#include "Swapchain.hpp"
-#include "RenderPass.hpp"
-#include "Shader.hpp"
-#include "DescriptorSet.hpp"
 #include "Results.hpp"
 #include "fileIO.hpp"
-#include "Vertex.hpp"
-#include "VertexData.hpp"
-#include "GLFW/glfw3.h"
 #include "Allocator.hpp"
-#include "Pipeline.hpp"
 #include "VulkanFunctionLoader.hpp"
 #include "gsl.hpp"
 #include "nlohmann/json.hpp"
@@ -30,24 +21,6 @@
 namespace vka
 {
 	using json = nlohmann::json;
-	struct VertexPushConstants
-	{
-		glm::mat4 mvp;
-	};
-
-	struct FragmentPushConstants
-	{
-		glm::uint32 imageOffset;
-		glm::vec3 padding;
-		glm::vec4 color;
-	};
-
-	struct PushConstants
-	{
-		VertexPushConstants vertexPushConstants;
-		FragmentPushConstants fragmentPushConstants;
-	};
-
 	constexpr float graphicsQueuePriority = 0.f;
 	constexpr float presentQueuePriority = 0.f;
 
@@ -57,7 +30,8 @@ namespace vka
 		static constexpr uint32_t ImageCount = 1;
 		static constexpr uint32_t PushConstantSize = sizeof(PushConstants);
 
-		Device(VkInstance instance,
+		Device(
+			VkInstance instance,
 			std::vector<const char *> deviceExtensions,
 			VkSurfaceKHR surface)
 			: instance(instance),
@@ -79,7 +53,7 @@ namespace vka
 
 		VkDevice GetDevice()
 		{
-			return deviceUnique.get();
+			return device;
 		}
 
 		auto &GetAllocator()
@@ -134,7 +108,10 @@ namespace vka
 			return semaphore;
 		}
 
-		VkCommandPool CreateCommandPool(uint32_t queueFamilyIndex, bool transient, bool poolReset)
+		VkCommandPool CreateCommandPool(
+			uint32_t queueFamilyIndex, 
+			bool transient, 
+			bool poolReset)
 		{
 			VkCommandPool pool;
 			VkCommandPoolCreateInfo createInfo = {};
@@ -162,150 +139,8 @@ namespace vka
 			return commandBuffers;
 		}
 
-	private:
-		VkInstance instance;
-		std::vector<const char *> deviceExtensions;
-		VkSurfaceKHR surface;
-
-		VkPhysicalDevice physicalDevice;
-		std::vector<VkQueueFamilyProperties> queueFamilyProperties;
-
-		VkDeviceQueueCreateInfo graphicsQueueCreateInfo;
-		VkDeviceQueueCreateInfo presentQueueCreateInfo;
-		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-		VkDeviceCreateInfo createInfo;
-		VkDeviceUnique deviceUnique;
-		VkQueue graphicsQueue;
-		VkQueue presentQueue;
-		Allocator allocator;
-
-		std::map<VkCommandPool, VkCommandPoolUnique> commandPools;
-		std::map<VkFence, VkFenceUnique> fences;
-		std::map<VkSemaphore, VkSemaphoreUnique> semaphores;
-		std::map<VkSampler, VkSamplerUnique> samplers;
-		std::map<VkShaderModule, VkShaderModuleUnique> shaderModules;
-		std::map<VkSwapchainKHR, VkSwapchainKHRUnique> swapchains;
-		std::map<VkRenderPass, VkRenderPassUnique> renderPasses;
-		std::map<VkDescriptorSetLayout, VkDescriptorSetLayoutUnique> descriptorSetLayouts;
-		std::map<VkPipelineLayout, VkPipelineLayoutUnique> pipelineLayouts;
-		std::map<VkPipeline, VkPipelineUnique> pipelines;
-
-	private:
-		void SelectPhysicalDevice()
-		{
-			std::vector<VkPhysicalDevice> physicalDevices;
-			uint32_t physicalDeviceCount;
-			vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, nullptr);
-			physicalDevices.resize(physicalDeviceCount);
-			auto result = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data());
-
-			physicalDevice = physicalDevices[0];
-		}
-
-		void GetQueueFamilyProperties()
-		{
-			uint32_t propCount;
-			vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice,
-				&propCount,
-				nullptr);
-			queueFamilyProperties.resize(propCount);
-			vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice,
-				&propCount,
-				queueFamilyProperties.data());
-		}
-
-		void SelectGraphicsQueue()
-		{
-			std::optional<uint32_t> graphicsQueueFamilyIndex;
-			for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
-			{
-				if (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-				{
-					graphicsQueueFamilyIndex = i;
-					break;
-				}
-			}
-
-			if (graphicsQueueFamilyIndex.has_value() == false)
-			{
-				std::runtime_error("Device does not support graphics queue!");
-			}
-
-			graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-			graphicsQueueCreateInfo.pNext = nullptr;
-			graphicsQueueCreateInfo.flags = 0;
-			graphicsQueueCreateInfo.queueFamilyIndex = graphicsQueueFamilyIndex.value();
-			graphicsQueueCreateInfo.queueCount = 1;
-			graphicsQueueCreateInfo.pQueuePriorities = &graphicsQueuePriority;
-		}
-
-		void SelectPresentQueue()
-		{
-			std::optional<uint32_t> presentQueueFamilyIndex;
-			for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
-			{
-				VkBool32 presentSupport = false;
-				vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
-				if (presentSupport)
-				{
-					presentQueueFamilyIndex = i;
-					break;
-				}
-			}
-
-			if (presentQueueFamilyIndex.has_value() == false)
-			{
-				std::runtime_error("Device does not support present queue!");
-			}
-
-			presentQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-			presentQueueCreateInfo.pNext = nullptr;
-			presentQueueCreateInfo.flags = 0;
-			presentQueueCreateInfo.queueFamilyIndex = presentQueueFamilyIndex.value();
-			presentQueueCreateInfo.queueCount = 1;
-			presentQueueCreateInfo.pQueuePriorities = &presentQueuePriority;
-		}
-
-		void CreateDevice()
-		{
-			queueCreateInfos.push_back(graphicsQueueCreateInfo);
-			auto graphicsQueueID = GetGraphicsQueueID();
-			auto presentQueueID = GetPresentQueueID();
-			auto singleQueue = (graphicsQueueID == presentQueueID);
-			if (!singleQueue)
-			{
-				queueCreateInfos.push_back(presentQueueCreateInfo);
-			}
-
-			createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-			createInfo.pNext = nullptr;
-			createInfo.flags = 0;
-			createInfo.queueCreateInfoCount = gsl::narrow<uint32_t>(queueCreateInfos.size());
-			createInfo.pQueueCreateInfos = queueCreateInfos.data();
-			createInfo.enabledLayerCount = 0;
-			createInfo.ppEnabledLayerNames = nullptr;
-			createInfo.enabledExtensionCount = gsl::narrow<uint32_t>(deviceExtensions.size());
-			createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-			createInfo.pEnabledFeatures = nullptr;
-			VkDevice device;
-			vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
-			deviceUnique = VkDeviceUnique(device, VkDeviceDeleter());
-			LoadDeviceLevelEntryPoints(device);
-
-			vkGetDeviceQueue(device, graphicsQueueID, 0, &graphicsQueue);
-			if (!singleQueue)
-			{
-				vkGetDeviceQueue(device, presentQueueID, 0, &presentQueue);
-			}
-		}
-
-		void CreateAllocator()
-		{
-			constexpr auto allocSize = 512000U;
-			allocator = Allocator(physicalDevice, GetDevice(), allocSize);
-		}
-
-		VkRenderPass CreateRenderPass(const VkDevice& device, const json &renderPassConfig)
+		VkRenderPass CreateRenderPass(
+			const json &renderPassConfig)
 		{
 			std::vector<VkAttachmentDescription> attachmentDescriptions;
 			for (const auto& attachmentJson : renderPassConfig["attachments"])
@@ -336,7 +171,7 @@ namespace vka
 			{
 				auto& subpass = subpassDescriptions.emplace_back(VkSubpassDescription());
 				auto& subpassData = subpassDatas.emplace_back(SubpassData());
-				
+
 				for (const auto& colorAttachmentJson : subpassJson["colorAttachments"])
 				{
 					auto& colorAttachment = subpassData.colorAttachments.emplace_back(
@@ -437,10 +272,9 @@ namespace vka
 		}
 
 		VkSwapchainKHR CreateSwapchain(
-			const VkDevice& device, 
-			const VkSurfaceKHR& surface, 
-			const uint32_t& graphicsQueueFamilyID, 
-			const uint32_t& presentQueueFamilyID, 
+			const VkSurfaceKHR& surface,
+			const uint32_t& graphicsQueueFamilyID,
+			const uint32_t& presentQueueFamilyID,
 			const json& swapchainConfig)
 		{
 			VkSwapchainCreateInfoKHR createInfo = {};
@@ -484,7 +318,8 @@ namespace vka
 			return swapchain;
 		}
 
-		VkShaderModule CreateShaderModule(const VkDevice& device, const json& shaderJson)
+		VkShaderModule CreateShaderModule(
+			const json& shaderJson)
 		{
 			auto shaderJsonModule = GetModule(shaderJson);
 			auto shaderBinary = fileIO::readFile(shaderJsonModule["module"]);
@@ -502,7 +337,8 @@ namespace vka
 			return shaderModule;
 		}
 
-		VkSampler CreateSampler(const VkDevice& device, const json& samplerJson)
+		VkSampler CreateSampler(
+			const json& samplerJson)
 		{
 			VkSamplerCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -531,7 +367,10 @@ namespace vka
 			return sampler;
 		}
 
-		VkDescriptorSetLayout CreateDescriptorSetLayout(const VkDevice& device, const VkSampler& sampler, const json& descriptorSetLayoutJson, const std::vector<VkSampler>& immutableSamplers)
+		VkDescriptorSetLayout CreateDescriptorSetLayout(
+			const VkSampler& sampler,
+			const json& descriptorSetLayoutJson,
+			const std::vector<VkSampler>& immutableSamplers)
 		{
 			VkDescriptorSetLayoutCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -568,7 +407,9 @@ namespace vka
 			return setLayout;
 		}
 
-		VkPipelineLayout CreatePipelineLayout(const VkDevice& device, const std::vector<VkDescriptorSetLayout>& setLayouts, const json& pipelineLayoutJson)
+		VkPipelineLayout CreatePipelineLayout(
+			const std::vector<VkDescriptorSetLayout>& setLayouts,
+			const json& pipelineLayoutJson)
 		{
 			VkPipelineLayoutCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -598,10 +439,9 @@ namespace vka
 		}
 
 		VkPipeline CreateGraphicsPipeline(
-			const VkDevice& device, 
-			const VkPipelineLayout& layout, 
-			const VkRenderPass& renderPass, 
-			std::map<std::string, VkShaderModule>& shaderModules, 
+			const VkPipelineLayout& layout,
+			const VkRenderPass& renderPass,
+			std::map<std::string, VkShaderModule>& shaderModules,
 			std::map<VkShaderModule, gsl::span<gsl::byte>>& shaderSpecializationData,
 			const json& pipelineJson)
 		{
@@ -824,6 +664,149 @@ namespace vka
 			pipelines[pipeline] = VkPipelineUnique(pipeline, VkPipelineDeleter(device));
 
 			return pipeline;
+		}
+
+	private:
+		VkInstance instance;
+		std::vector<const char *> deviceExtensions;
+		VkSurfaceKHR surface;
+
+		VkPhysicalDevice physicalDevice;
+		std::vector<VkQueueFamilyProperties> queueFamilyProperties;
+
+		VkDeviceQueueCreateInfo graphicsQueueCreateInfo;
+		VkDeviceQueueCreateInfo presentQueueCreateInfo;
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+		VkDeviceCreateInfo createInfo;
+		VkDevice device;
+		VkDeviceUnique deviceUnique;
+		VkQueue graphicsQueue;
+		VkQueue presentQueue;
+		Allocator allocator;
+
+		std::map<VkCommandPool, VkCommandPoolUnique> commandPools;
+		std::map<VkFence, VkFenceUnique> fences;
+		std::map<VkSemaphore, VkSemaphoreUnique> semaphores;
+		std::map<VkSampler, VkSamplerUnique> samplers;
+		std::map<VkShaderModule, VkShaderModuleUnique> shaderModules;
+		std::map<VkSwapchainKHR, VkSwapchainKHRUnique> swapchains;
+		std::map<VkRenderPass, VkRenderPassUnique> renderPasses;
+		std::map<VkDescriptorSetLayout, VkDescriptorSetLayoutUnique> descriptorSetLayouts;
+		std::map<VkPipelineLayout, VkPipelineLayoutUnique> pipelineLayouts;
+		std::map<VkPipeline, VkPipelineUnique> pipelines;
+
+
+		void SelectPhysicalDevice()
+		{
+			std::vector<VkPhysicalDevice> physicalDevices;
+			uint32_t physicalDeviceCount;
+			vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, nullptr);
+			physicalDevices.resize(physicalDeviceCount);
+			auto result = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data());
+
+			physicalDevice = physicalDevices[0];
+		}
+
+		void GetQueueFamilyProperties()
+		{
+			uint32_t propCount;
+			vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice,
+				&propCount,
+				nullptr);
+			queueFamilyProperties.resize(propCount);
+			vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice,
+				&propCount,
+				queueFamilyProperties.data());
+		}
+
+		void SelectGraphicsQueue()
+		{
+			std::optional<uint32_t> graphicsQueueFamilyIndex;
+			for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
+			{
+				if (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+				{
+					graphicsQueueFamilyIndex = i;
+					break;
+				}
+			}
+
+			if (graphicsQueueFamilyIndex.has_value() == false)
+			{
+				std::runtime_error("Device does not support graphics queue!");
+			}
+
+			graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			graphicsQueueCreateInfo.pNext = nullptr;
+			graphicsQueueCreateInfo.flags = 0;
+			graphicsQueueCreateInfo.queueFamilyIndex = graphicsQueueFamilyIndex.value();
+			graphicsQueueCreateInfo.queueCount = 1;
+			graphicsQueueCreateInfo.pQueuePriorities = &graphicsQueuePriority;
+		}
+
+		void SelectPresentQueue()
+		{
+			std::optional<uint32_t> presentQueueFamilyIndex;
+			for (uint32_t i = 0; i < queueFamilyProperties.size(); ++i)
+			{
+				VkBool32 presentSupport = false;
+				vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
+				if (presentSupport)
+				{
+					presentQueueFamilyIndex = i;
+					break;
+				}
+			}
+
+			if (presentQueueFamilyIndex.has_value() == false)
+			{
+				std::runtime_error("Device does not support present queue!");
+			}
+
+			presentQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			presentQueueCreateInfo.pNext = nullptr;
+			presentQueueCreateInfo.flags = 0;
+			presentQueueCreateInfo.queueFamilyIndex = presentQueueFamilyIndex.value();
+			presentQueueCreateInfo.queueCount = 1;
+			presentQueueCreateInfo.pQueuePriorities = &presentQueuePriority;
+		}
+
+		void CreateDevice()
+		{
+			queueCreateInfos.push_back(graphicsQueueCreateInfo);
+			auto graphicsQueueID = GetGraphicsQueueID();
+			auto presentQueueID = GetPresentQueueID();
+			auto singleQueue = (graphicsQueueID == presentQueueID);
+			if (!singleQueue)
+			{
+				queueCreateInfos.push_back(presentQueueCreateInfo);
+			}
+
+			createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			createInfo.flags = 0;
+			createInfo.queueCreateInfoCount = gsl::narrow<uint32_t>(queueCreateInfos.size());
+			createInfo.pQueueCreateInfos = queueCreateInfos.data();
+			createInfo.enabledLayerCount = 0;
+			createInfo.ppEnabledLayerNames = nullptr;
+			createInfo.enabledExtensionCount = gsl::narrow<uint32_t>(deviceExtensions.size());
+			createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+			createInfo.pEnabledFeatures = nullptr;
+			vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
+			deviceUnique = VkDeviceUnique(device, VkDeviceDeleter());
+			LoadDeviceLevelEntryPoints(device);
+
+			vkGetDeviceQueue(device, graphicsQueueID, 0, &graphicsQueue);
+			if (!singleQueue)
+			{
+				vkGetDeviceQueue(device, presentQueueID, 0, &presentQueue);
+			}
+		}
+
+		void CreateAllocator()
+		{
+			constexpr auto allocSize = 512000U;
+			allocator = Allocator(physicalDevice, GetDevice(), allocSize);
 		}
 	};
 } // namespace vka

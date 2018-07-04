@@ -13,6 +13,7 @@
 #include "Input.hpp"
 #include "Instance.hpp"
 #include "Device.hpp"
+#include "Surface.hpp"
 #include "Image2D.hpp"
 #include "Bitmap.hpp"
 #include "Sprite.hpp"
@@ -98,12 +99,29 @@ class VulkanApp
 	LibraryHandle VulkanLibrary;
 	Camera2D camera;
 
+	VkInstance instance;
 	std::optional<Instance> instanceOptional;
 	VkDebugReportCallbackEXTUnique debugCallbackUnique;
+	VkPhysicalDevice physicalDevice;
 	VkDevice device;
 	std::optional<Device> deviceOptional;
+	VkSurfaceKHR surface;
+	std::optional<Surface> surfaceOptional;
+
+	struct 
+	{
+		json renderPass;
+		json fragmentShader2D;
+		json vertexShader2D;
+		json fragmentDescriptorSetLayout2D;
+		json sampler2D;
+		json swapchainConfig;
+		json pipelineLayout2D;
+		json pipeline2D;
+	} jsonConfigs;
 
 	std::map<std::string, VkRenderPass> renderPasses;
+	std::map<std::string, VkSwapchainKHR> swapchains;
 	std::map<std::string, VkSampler> samplers;
 	std::map<std::string, VkShaderModule> shaderModules;
 	std::map<std::string, VkDescriptorSetLayout> descriptorSetLayouts;
@@ -111,17 +129,23 @@ class VulkanApp
 	std::map<std::string, VkPipeline> pipelines;
 
 	VkRenderPass renderPass;
+	VkSwapchainKHR swapchain;
+	std::vector<VkFramebuffer> framebuffers;
+	std::vector<VkImage> framebufferImages;
+	std::vector<VkImageView> framebufferImageViews;
 
 	VkSampler sampler2D;
-	VkShaderModule vertex2D;
-	VkDescriptorSetLayout fragment2DdescriptorSetLayout;
-	VkShaderModule fragment2D;
-	VkPipelineLayout pipeline2Dlayout;
+	VkShaderModule vertexShader2D;
+	VkDescriptorSetLayout fragmentDescriptorSetLayout2D;
+	VkDescriptorPool fragmentDescriptorPool2D;
+	VkDescriptorSet fragmentDescriptorSet2D;
+	VkShaderModule fragmentShader2D;
+	VkPipelineLayout pipelineLayout2D;
 	VkPipeline pipeline2D;
 
-	VkShaderModule vertex3D;
-	VkShaderModule fragment3D;
-	VkPipelineLayout pipeline3Dlayout;
+	VkShaderModule vertexShader3D;
+	VkShaderModule fragmentShader3D;
+	VkPipelineLayout pipelineLayout3D;
 	VkPipeline pipeline3D;
 
 	VkCommandPool utilityCommandPool;
@@ -143,10 +167,9 @@ class VulkanApp
 
 	VkCommandPool renderCommandPool;
 	std::vector<VkCommandBuffer> renderCommandBuffers;
-	std::array<VkFence, Surface::BufferCount> renderCommandBufferExecutedFences;
+	std::vector<VkFence> renderCommandBufferExecutedFences;
+	std::vector<VkSemaphore> imageRenderedSemaphores;
 	Pool<VkFence> imagePresentedFencePool;
-	std::array<VkFence, Surface::BufferCount> imagePresentedFences;
-	std::array<VkSemaphore, Surface::BufferCount> imageRenderedSemaphores;
 	uint32_t nextImage;
 
 	VkClearValue clearValue;
@@ -205,13 +228,13 @@ static void FrameRender(const VkDevice& device,
 	std::function<VkFence()> fenceCreateFunc,
 	const std::vector<VkCommandBuffer>& renderCommandBuffers,
 	const std::vector<VkFence>& renderCommandBufferExecutedFences,
-	std::function<VkFramebuffer(uint32_t)> framebufferGetFunc,
+	const std::vector<VkFramebuffer> framebuffers,
 	std::function<void()> drawFunc,
 	const std::vector<VkSemaphore>& imageRenderedSemaphores,
 	const VkRenderPass& renderPass,
-	const VkDescriptorSet& fragment2DdescriptorSet,
-	const VkPipelineLayout& pipeline2Dlayout,
-	const VkPipelineLayout& pipeline3Dlayout,
+	const VkDescriptorSet& fragmentDescriptorSet2D,
+	const VkPipelineLayout& pipelineLayout2D,
+	const VkPipelineLayout& pipelineLayout3D,
 	const VkPipeline& pipeline2D,
 	const VkPipeline& pipeline3D,
 	const VkBuffer& vertexBuffer2D,
@@ -236,7 +259,7 @@ static void FrameRender(const VkDevice& device,
 	// frame-dependent resources
 	auto renderCommandBuffer = renderCommandBuffers[nextImage];
 	auto renderCommandBufferExecutedFence = renderCommandBufferExecutedFences[nextImage];
-	auto framebuffer = framebufferGetFunc(nextImage);
+	auto framebuffer = framebuffers.at(nextImage);
 	auto imageRenderedSemaphore = imageRenderedSemaphores[nextImage];
 
 	VkViewport viewport = {};
@@ -290,9 +313,9 @@ static void FrameRender(const VkDevice& device,
 	// bind sampler and images uniforms
 	vkCmdBindDescriptorSets(renderCommandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		pipeline2Dlayout,
+		pipelineLayout2D,
 		0,
-		1, &fragment2DdescriptorSet,
+		1, &fragmentDescriptorSet2D,
 		0, nullptr);
 
 	drawFunc();

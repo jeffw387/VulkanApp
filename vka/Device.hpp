@@ -96,6 +96,7 @@ namespace vka
 			return fence;
 		}
 
+#undef CreateSemaphore
 		VkSemaphore CreateSemaphore()
 		{
 			VkSemaphore semaphore;
@@ -108,10 +109,69 @@ namespace vka
 			return semaphore;
 		}
 
+		VkImageView CreateColorImageView2D(
+			VkImage image, 
+			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB)
+		{
+			VkImageView imageView;
+			VkImageViewCreateInfo viewCreateInfo = {};
+			viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			viewCreateInfo.pNext = nullptr;
+			viewCreateInfo.flags = (VkImageViewCreateFlags)0;
+			viewCreateInfo.image = image;
+			viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			viewCreateInfo.format = format;
+			viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+			viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+			viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+			viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+			viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			viewCreateInfo.subresourceRange.baseMipLevel = 0;
+			viewCreateInfo.subresourceRange.levelCount = 1;
+			viewCreateInfo.subresourceRange.baseArrayLayer = 0;
+			viewCreateInfo.subresourceRange.layerCount = 1;
+			vkCreateImageView(device, &viewCreateInfo, nullptr, &imageView);
+			imageViews[imageView] = VkImageViewUnique(imageView, VkImageViewDeleter(device));
+
+			return imageView;
+		}
+
+		void DestroyImageView(const VkImageView& view)
+		{
+			imageViews.erase(view);
+		}
+
+		VkFramebuffer CreateFramebuffer(
+			const VkRenderPass& renderPass, 
+			const VkExtent2D& extent,
+			const VkImageView& view)
+		{
+			VkFramebuffer framebuffer;
+			VkFramebufferCreateInfo framebufferCreateInfo = {};
+			framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+			framebufferCreateInfo.pNext = nullptr;
+			framebufferCreateInfo.flags = 0;
+			framebufferCreateInfo.renderPass = renderPass;
+			framebufferCreateInfo.attachmentCount = 1;
+			framebufferCreateInfo.width = extent.width;
+			framebufferCreateInfo.height = extent.height;
+			framebufferCreateInfo.layers = 1;
+			framebufferCreateInfo.pAttachments = &view;
+			vkCreateFramebuffer(device, &framebufferCreateInfo, nullptr, &framebuffer);
+			framebuffers[framebuffer] = VkFramebufferUnique(framebuffer, VkFramebufferDeleter(device));
+
+			return framebuffer;
+		}
+
+		void DestroyFramebuffer(const VkFramebuffer& framebuffer)
+		{
+			framebuffers.erase(framebuffer);
+		}
+
 		VkCommandPool CreateCommandPool(
-			uint32_t queueFamilyIndex, 
-			bool transient, 
-			bool poolReset)
+			const uint32_t& queueFamilyIndex,
+			const bool& transient,
+			const bool& poolReset)
 		{
 			VkCommandPool pool;
 			VkCommandPoolCreateInfo createInfo = {};
@@ -125,7 +185,9 @@ namespace vka
 			return pool;
 		}
 
-		std::vector<VkCommandBuffer> AllocateCommandBuffers(VkCommandPool pool, uint32_t count)
+		std::vector<VkCommandBuffer> AllocateCommandBuffers(
+			const VkCommandPool& pool,
+			const uint32_t& count)
 		{
 			std::vector<VkCommandBuffer> commandBuffers;
 			commandBuffers.resize(count);
@@ -273,8 +335,6 @@ namespace vka
 
 		VkSwapchainKHR CreateSwapchain(
 			const VkSurfaceKHR& surface,
-			const uint32_t& graphicsQueueFamilyID,
-			const uint32_t& presentQueueFamilyID,
 			const json& swapchainConfig)
 		{
 			VkSwapchainCreateInfoKHR createInfo = {};
@@ -291,15 +351,15 @@ namespace vka
 			createInfo.imageExtent = swapchainConfig["imageExtent"];
 			createInfo.imageFormat = swapchainConfig["imageFormat"];
 			std::vector<uint32_t> queueFamilyIndices;
-			if (graphicsQueueFamilyID == presentQueueFamilyID)
+			if (GetGraphicsQueueID() == GetPresentQueueID())
 			{
 				createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 			}
 			else
 			{
 				createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-				queueFamilyIndices.push_back(graphicsQueueFamilyID);
-				queueFamilyIndices.push_back(presentQueueFamilyID);
+				queueFamilyIndices.push_back(GetGraphicsQueueID());
+				queueFamilyIndices.push_back(GetPresentQueueID());
 			}
 			createInfo.imageUsage = swapchainConfig["imageUsage"];
 			createInfo.minImageCount = swapchainConfig["minImageCount"];
@@ -368,9 +428,8 @@ namespace vka
 		}
 
 		VkDescriptorSetLayout CreateDescriptorSetLayout(
-			const VkSampler& sampler,
 			const json& descriptorSetLayoutJson,
-			const std::vector<VkSampler>& immutableSamplers)
+			const gsl::span<VkSampler> immutableSamplers)
 		{
 			VkDescriptorSetLayoutCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -407,8 +466,57 @@ namespace vka
 			return setLayout;
 		}
 
+		VkDescriptorPool CreateDescriptorPool(
+			const json& descriptorSetLayoutJson,
+			const uint32_t& maxSets = 1,
+			const bool& freeDescriptorSet = false)
+		{
+			std::vector<VkDescriptorPoolSize> poolSizes;
+			for (const auto& bindingJson : descriptorSetLayoutJson["bindings"])
+			{
+				VkDescriptorPoolSize size;
+				size.type = bindingJson["descriptorType"];
+				size.descriptorCount = bindingJson["descriptorCount"];
+				poolSizes.push_back(size);
+			}
+			VkDescriptorPoolCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			createInfo.poolSizeCount = gsl::narrow<uint32_t>(poolSizes.size());
+			createInfo.pPoolSizes = poolSizes.data();
+			if (freeDescriptorSet)
+			{
+				createInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+			}
+
+			VkDescriptorPool pool;
+			vkCreateDescriptorPool(device, &createInfo, nullptr, &pool);
+			descriptorPools[pool] = VkDescriptorPoolUnique(pool, VkDescriptorPoolDeleter(device));
+
+			return pool;
+		}
+
+		std::vector<VkDescriptorSet> AllocateDescriptorSets(
+			const VkDescriptorPool& pool,
+			const gsl::span<VkDescriptorSetLayout> layouts,
+			const uint32_t& count = 1)
+		{
+			VkDescriptorSetAllocateInfo allocateInfo = {};
+			allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			allocateInfo.pNext = nullptr;
+			allocateInfo.descriptorPool = pool;
+			allocateInfo.descriptorSetCount = count;
+			allocateInfo.pSetLayouts = layouts.data();
+
+			std::vector<VkDescriptorSet> sets;
+			sets.resize(count);
+			vkAllocateDescriptorSets(device, &allocateInfo, sets.data());
+
+			return sets;
+		}
+
 		VkPipelineLayout CreatePipelineLayout(
-			const std::vector<VkDescriptorSetLayout>& setLayouts,
+			const gsl::span<VkDescriptorSetLayout> setLayouts,
 			const json& pipelineLayoutJson)
 		{
 			VkPipelineLayoutCreateInfo createInfo = {};
@@ -684,6 +792,8 @@ namespace vka
 		VkQueue presentQueue;
 		Allocator allocator;
 
+		std::map<VkImageView, VkImageViewUnique> imageViews;
+		std::map<VkFramebuffer, VkFramebufferUnique> framebuffers;
 		std::map<VkCommandPool, VkCommandPoolUnique> commandPools;
 		std::map<VkFence, VkFenceUnique> fences;
 		std::map<VkSemaphore, VkSemaphoreUnique> semaphores;
@@ -692,6 +802,7 @@ namespace vka
 		std::map<VkSwapchainKHR, VkSwapchainKHRUnique> swapchains;
 		std::map<VkRenderPass, VkRenderPassUnique> renderPasses;
 		std::map<VkDescriptorSetLayout, VkDescriptorSetLayoutUnique> descriptorSetLayouts;
+		std::map<VkDescriptorPool, VkDescriptorPoolUnique> descriptorPools;
 		std::map<VkPipelineLayout, VkPipelineLayoutUnique> pipelineLayouts;
 		std::map<VkPipeline, VkPipelineUnique> pipelines;
 

@@ -568,57 +568,262 @@ namespace vka
 			return setLayout;
 		}
 
-		VkPipelineLayout CreatePipelineLayout(const VkDevice& device, const std::vector<VkDescriptorSetLayout> setLayouts, const json& pipelineLayoutJson)
+		VkPipelineLayout CreatePipelineLayout(const VkDevice& device, const std::vector<VkDescriptorSetLayout>& setLayouts, const json& pipelineLayoutJson)
 		{
+			VkPipelineLayoutCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			std::vector<VkPushConstantRange> pushConstantRanges;
+			for (const auto& rangeJson : pipelineLayoutJson["pushConstantRanges"])
+			{
+				auto& range = pushConstantRanges.emplace_back(VkPushConstantRange());
+				range.offset = rangeJson["offset"];
+				range.size = rangeJson["size"];
+				for (const auto& flag : rangeJson["stage"])
+				{
+					range.stageFlags |= flag;
+				}
+			}
+			createInfo.setLayoutCount = gsl::narrow<uint32_t>(setLayouts.size());
+			createInfo.pSetLayouts = setLayouts.data();
+			createInfo.pushConstantRangeCount = gsl::narrow<uint32_t>(pushConstantRanges.size());
+			createInfo.pPushConstantRanges = pushConstantRanges.data();
+			createInfo.flags = 0;
 
+			VkPipelineLayout pipelineLayout;
+			vkCreatePipelineLayout(device, &createInfo, nullptr, &pipelineLayout);
+			pipelineLayouts[pipelineLayout] = VkPipelineLayoutUnique(pipelineLayout, VkPipelineLayoutDeleter(device));
 
-			setLayouts.push_back(fragmentDescriptorSetOptional->GetSetLayout());
-
-			VkPushConstantRange vertexPushRange = {};
-			vertexPushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-			vertexPushRange.offset = offsetof(PushConstants, vertexPushConstants);
-			vertexPushRange.size = sizeof(VertexPushConstants);
-			pushConstantRanges.push_back(vertexPushRange);
-
-			VkPushConstantRange fragmentPushRange = {};
-			fragmentPushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-			fragmentPushRange.offset = offsetof(PushConstants, fragmentPushConstants);
-			fragmentPushRange.size = sizeof(FragmentPushConstants);
-			pushConstantRanges.push_back(fragmentPushRange);
-
-			pipelineLayoutOptional = PipelineLayout(GetDevice(),
-				setLayouts,
-				pushConstantRanges);
+			return pipelineLayout;
 		}
 
-		void CreatePipeline()
+		VkPipeline CreateGraphicsPipeline(
+			const VkDevice& device, 
+			const VkPipelineLayout& layout, 
+			const VkRenderPass& renderPass, 
+			std::map<std::string, VkShaderModule>& shaderModules, 
+			std::map<VkShaderModule, gsl::span<gsl::byte>>& shaderSpecializationData,
+			const json& pipelineJson)
 		{
-			VkSpecializationMapEntry imageArraySize;
-			imageArraySize.constantID = 0;
-			imageArraySize.offset = 0;
-			imageArraySize.size = sizeof(uint32_t);
+			auto colorBlendConfigJson = pipelineJson["colorBlendConfig"];
+			VkPipelineColorBlendStateCreateInfo colorBlendState = {};
+			colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+			colorBlendState.pNext = nullptr;
+			colorBlendState.logicOpEnable = colorBlendConfigJson["logicOpEnable"];
+			colorBlendState.logicOp = colorBlendConfigJson["logicOp"];
+			for (auto i = 0U; i < 4; ++i)
+			{
+				colorBlendState.blendConstants[i] = colorBlendConfigJson["blendConstants"][i];
+			}
+			std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
+			for (const auto& colorBlendJson : colorBlendConfigJson["colorBlendAttachments"])
+			{
+				auto& colorBlendAttachment = colorBlendAttachments.emplace_back(VkPipelineColorBlendAttachmentState());
+				colorBlendAttachment.blendEnable = colorBlendJson["blendEnable"];
+				colorBlendAttachment.colorBlendOp = colorBlendJson["colorBlendOp"];
+				colorBlendAttachment.srcColorBlendFactor = colorBlendJson["srcColorBlendFactor"];
+				colorBlendAttachment.dstColorBlendFactor = colorBlendJson["dstColorBlendFactor"];
+				colorBlendAttachment.alphaBlendOp = colorBlendJson["alphaBlendOp"];
+				colorBlendAttachment.srcAlphaBlendFactor = colorBlendJson["srcAlphaBlendFactor"];
+				colorBlendAttachment.dstAlphaBlendFactor = colorBlendJson["dstAlphaBlendFactor"];
+				auto colorWriteMaskJson = colorBlendJson["colorWriteMask"];
+				if (colorWriteMaskJson["R"])
+					colorBlendAttachment.colorWriteMask |= VK_COLOR_COMPONENT_R_BIT;
+				if (colorWriteMaskJson["G"])
+					colorBlendAttachment.colorWriteMask |= VK_COLOR_COMPONENT_G_BIT;
+				if (colorWriteMaskJson["B"])
+					colorBlendAttachment.colorWriteMask |= VK_COLOR_COMPONENT_B_BIT;
+				if (colorWriteMaskJson["A"])
+					colorBlendAttachment.colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;
+			}
+			colorBlendState.attachmentCount = gsl::narrow<uint32_t>(colorBlendAttachments.size());
+			colorBlendState.pAttachments = colorBlendAttachments.data();
 
-			auto vertexSpecializationMapEntries = std::vector<VkSpecializationMapEntry>();
-			auto fragmentSpecializationMapEntries = std::vector<VkSpecializationMapEntry>{ imageArraySize };
-			auto vertexSpecialization = MakeSpecialization(
-				gsl::span<VkSpecializationMapEntry>(nullptr, 0),
-				nullptr);
+			auto depthStencilJson = pipelineJson["depthStencilConfig"];
+			VkPipelineDepthStencilStateCreateInfo depthStencilState = {};
+			depthStencilState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+			depthStencilState.pNext = nullptr;
+			depthStencilState.depthTestEnable = depthStencilJson["depthTestEnable"];
+			depthStencilState.depthWriteEnable = depthStencilJson["depthWriteEnable"];
+			depthStencilState.depthBoundsTestEnable = depthStencilJson["depthBoundsTestEnable"];
+			depthStencilState.depthCompareOp = depthStencilJson["depthCompareOp"];
+			depthStencilState.stencilTestEnable = depthStencilJson["stencilTestEnable"];
+			depthStencilState.minDepthBounds = depthStencilJson["minDepthBounds"];
+			depthStencilState.maxDepthBounds = depthStencilJson["maxDepthBounds"];
 
-			auto fragmentSpecialization = MakeSpecialization(
-				gsl::span<VkSpecializationMapEntry>(
-					fragmentSpecializationMapEntries.data(),
-					fragmentSpecializationMapEntries.size()),
-				&Device::ImageCount);
+			auto shaderStagesJson = pipelineJson["shaderStageConfigs"];
+			std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+			std::map<VkShaderModule, std::string> shaderEntryPoints;
+			std::map<VkShaderModule, VkSpecializationInfo> shaderSpecializationInfos;
+			std::map<VkShaderModule, std::vector<VkSpecializationMapEntry>> shaderSpecializationMapEntries;
+			for (const auto& shaderStageJson : shaderStagesJson)
+			{
+				std::string uri = shaderStageJson["module"]["jsonID"]["uri"];
+				std::string entryPoint = shaderStageJson["name"];
+				VkShaderModule shaderModule = shaderModules[uri];
+				shaderEntryPoints[shaderModule] = entryPoint;
 
-			auto vertexShaderStageInfo = vertexShaderOptional->GetShaderStageInfo(&vertexSpecialization);
-			auto fragmentShaderStageInfo = fragmentShaderOptional->GetShaderStageInfo(&fragmentSpecialization);
+				VkSpecializationInfo specInfo = {};
+				specInfo.dataSize = shaderSpecializationData[shaderModule].length_bytes();
+				specInfo.pData = shaderSpecializationData[shaderModule].begin();
+				for (const auto& mapEntryJson : shaderStageJson["specializationMapEntries"])
+				{
+					VkSpecializationMapEntry mapEntry = {};
+					mapEntry.constantID = mapEntryJson["constantID"];
+					mapEntry.offset = mapEntryJson["offset"];
+					mapEntry.size = mapEntryJson["size"];
+					shaderSpecializationMapEntries[shaderModule].push_back(mapEntry);
+				}
+				specInfo.mapEntryCount = gsl::narrow<uint32_t>(shaderSpecializationMapEntries[shaderModule].size());
+				specInfo.pMapEntries = shaderSpecializationMapEntries[shaderModule].data();
+				shaderSpecializationInfos[shaderModule] = specInfo;
 
-			pipelineOptional = Pipeline(GetDevice(),
-				pipelineLayoutOptional->GetPipelineLayout(),
-				renderPassOptional->GetRenderPass(),
-				vertexShaderStageInfo,
-				fragmentShaderStageInfo,
-				vertexData);
+				auto& shaderStage = shaderStages.emplace_back(VkPipelineShaderStageCreateInfo());
+				shaderStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+				shaderStage.pNext = nullptr;
+				shaderStage.module = shaderModule;
+				shaderStage.pSpecializationInfo = &shaderSpecializationInfos[shaderModule];
+				shaderStage.pName = shaderEntryPoints[shaderModule].data();
+				shaderStage.stage = shaderStageJson["stage"];
+			}
+
+			auto dynamicStatesJson = pipelineJson["dynamicStates"];
+			std::vector<VkDynamicState> dynamicStates;
+			for (const auto& dynamicStateJson : dynamicStatesJson)
+			{
+				dynamicStates.push_back(dynamicStateJson);
+			}
+			VkPipelineDynamicStateCreateInfo dynamicState = {};
+			dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+			dynamicState.pNext = nullptr;
+			dynamicState.dynamicStateCount = gsl::narrow<uint32_t>(dynamicStates.size());
+			dynamicState.pDynamicStates = dynamicStates.data();
+
+			auto inputAssemblyJson = pipelineJson["inputAssemblyConfig"];
+			VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = {};
+			inputAssemblyState.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+			inputAssemblyState.pNext = nullptr;
+			inputAssemblyState.primitiveRestartEnable = inputAssemblyJson["primitiveRestartEnable"];
+			inputAssemblyState.topology = inputAssemblyJson["topology"];
+
+			VkPipelineMultisampleStateCreateInfo multisampleState = {};
+			if (pipelineJson.find("multisampleConfig") != pipelineJson.end())
+			{
+				auto multisampleJson = pipelineJson["multisampleConfig"];
+				VkSampleMask sampleMask = {};
+				multisampleState.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+				multisampleState.pNext = nullptr;
+				multisampleState.sampleShadingEnable = multisampleJson["sampleShadingEnable"];
+				multisampleState.minSampleShading = multisampleJson["minSampleShading"];
+				multisampleState.rasterizationSamples = multisampleJson["rasterizationSamples"];
+				multisampleState.alphaToCoverageEnable = multisampleJson["alphaToCoverageEnable"];
+				multisampleState.alphaToOneEnable = multisampleJson["alphaToOneEnable"];
+				multisampleState.pSampleMask = &sampleMask;
+			}
+
+			auto rasterizationJson = pipelineJson["rasterizationConfig"];
+			VkPipelineRasterizationStateCreateInfo rasterizationState = {};
+			rasterizationState.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+			rasterizationState.pNext = nullptr;
+			rasterizationState.rasterizerDiscardEnable = rasterizationJson["rasterizerDiscardEnable"];
+			rasterizationState.cullMode = rasterizationJson["cullMode"];
+			rasterizationState.depthBiasClamp = rasterizationJson["depthBiasClamp"];
+			rasterizationState.depthBiasConstantFactor = rasterizationJson["depthBiasConstantFactor"];
+			rasterizationState.depthBiasEnable = rasterizationJson["depthBiasEnable"];
+			rasterizationState.depthBiasSlopeFactor = rasterizationJson["depthBiasSlopeFactor"];
+			rasterizationState.depthClampEnable = rasterizationJson["depthClampEnable"];
+			rasterizationState.frontFace = rasterizationJson["frontFace"];
+			rasterizationState.lineWidth = rasterizationJson["lineWidth"];
+			rasterizationState.polygonMode = rasterizationJson["polygonMode"];
+
+			auto tesselationJson = pipelineJson["tesselationConfig"];
+			VkPipelineTessellationStateCreateInfo tesselationState = {};
+			tesselationState.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
+			tesselationState.pNext = nullptr;
+			tesselationState.patchControlPoints = tesselationJson["patchControlPoints"];
+
+			auto vertexInputJson = pipelineJson["vertexInputConfig"];
+			std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions;
+			for (const auto& inputAttrDescJson : vertexInputJson["vertexAttributeDescriptions"])
+			{
+				auto& attributeDescription = vertexAttributeDescriptions.emplace_back(VkVertexInputAttributeDescription());
+				attributeDescription.binding = inputAttrDescJson["binding"];
+				attributeDescription.format = inputAttrDescJson["format"];
+				attributeDescription.location = inputAttrDescJson["location"];
+				attributeDescription.offset = inputAttrDescJson["offset"];
+			}
+
+			std::vector<VkVertexInputBindingDescription> vertexBindingDescriptions;
+			for (const auto& inputBindingDescJson : vertexInputJson["vertexBindingDescriptions"])
+			{
+				auto& bindingDescription = vertexBindingDescriptions.emplace_back(VkVertexInputBindingDescription());
+				bindingDescription.binding = inputBindingDescJson["binding"];
+				bindingDescription.inputRate = inputBindingDescJson["inputRate"];
+				bindingDescription.stride = inputBindingDescJson["stride"];
+			}
+
+			VkPipelineVertexInputStateCreateInfo vertexInputState = {};
+			vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+			vertexInputState.pNext = nullptr;
+			vertexInputState.vertexAttributeDescriptionCount = gsl::narrow<uint32_t>(vertexAttributeDescriptions.size());
+			vertexInputState.pVertexAttributeDescriptions = vertexAttributeDescriptions.data();
+			vertexInputState.vertexBindingDescriptionCount = gsl::narrow<uint32_t>(vertexBindingDescriptions.size());
+			vertexInputState.pVertexBindingDescriptions = vertexBindingDescriptions.data();
+
+			auto viewportJson = pipelineJson["viewportConfig"];
+			std::vector<VkViewport> viewports;
+			for (const auto& viewportJson : viewportJson["viewports"])
+			{
+				auto& viewport = viewports.emplace_back(VkViewport());
+				viewport.x = viewportJson["x"];
+				viewport.y = viewportJson["y"];
+				viewport.width = viewportJson["width"];
+				viewport.height = viewportJson["height"];
+				viewport.minDepth = viewportJson["minDepth"];
+				viewport.maxDepth = viewportJson["maxDepth"];
+			}
+
+			std::vector<VkRect2D> scissors;
+			for (const auto& scissorJson : viewportJson["scissors"])
+			{
+				auto& scissor = scissors.emplace_back(VkRect2D());
+				scissor.extent.width = scissorJson["extent"]["width"];
+				scissor.extent.height = scissorJson["extent"]["height"];
+				scissor.offset.x = scissorJson["offset"]["x"];
+				scissor.offset.y = scissorJson["offset"]["y"];
+			}
+
+			VkPipelineViewportStateCreateInfo viewportState = {};
+			viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+			viewportState.pNext = nullptr;
+			viewportState.viewportCount = gsl::narrow<uint32_t>(viewports.size());
+			viewportState.pViewports = viewports.data();
+			viewportState.scissorCount = gsl::narrow<uint32_t>(scissors.size());
+			viewportState.pScissors = scissors.data();
+
+			VkGraphicsPipelineCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+			createInfo.pNext = nullptr;
+			createInfo.layout = layout;
+			createInfo.pColorBlendState = &colorBlendState;
+			createInfo.pDepthStencilState = &depthStencilState;
+			createInfo.pDynamicState = &dynamicState;
+			createInfo.pInputAssemblyState = &inputAssemblyState;
+			createInfo.pMultisampleState = &multisampleState;
+			createInfo.pRasterizationState = &rasterizationState;
+			createInfo.stageCount = gsl::narrow<uint32_t>(shaderStages.size());
+			createInfo.pStages = shaderStages.data();
+			createInfo.pTessellationState = &tesselationState;
+			createInfo.pVertexInputState = &vertexInputState;
+			createInfo.pViewportState = &viewportState;
+			createInfo.renderPass = renderPass;
+			createInfo.subpass = pipelineJson["subpass"];
+
+			VkPipeline pipeline;
+			vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &createInfo, nullptr, &pipeline);
+			pipelines[pipeline] = VkPipelineUnique(pipeline, VkPipelineDeleter(device));
+
+			return pipeline;
 		}
 	};
 } // namespace vka

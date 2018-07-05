@@ -2,6 +2,54 @@
 
 namespace vka
 {
+	void VulkanApp::CleanUpSwapchain()
+	{
+		vkDeviceWaitIdle(device);
+		for (const auto& fb : framebuffers)
+		{
+			deviceOptional->DestroyFramebuffer(fb);
+		}
+		for (const auto& view : framebufferImageViews)
+		{
+			deviceOptional->DestroyImageView(view);
+		}
+		deviceOptional->DestroySwapchain(swapchain);
+	}
+
+	void VulkanApp::CreateSwapchain()
+	{
+		swapchain = StoreHandle(
+			deviceOptional->CreateSwapchain(
+				surface,
+				surfaceOptional->GetFormat(),
+				jsonConfigs.swapchainConfig),
+			jsonConfigs.swapchainConfig,
+			swapchains);
+
+		uint32_t swapImageCount;
+		vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, nullptr);
+		framebufferImages.resize(swapImageCount);
+		framebufferImageViews.resize(swapImageCount);
+		framebuffers.resize(swapImageCount);
+		vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, framebufferImages.data());
+
+		for (auto i = 0U; i < swapImageCount; ++i)
+		{
+			auto& fbImage = framebufferImages[i];
+			auto& fbView = framebufferImageViews[i];
+			auto& fb = framebuffers[i];
+
+			fbView = deviceOptional->CreateColorImageView2D(fbImage, surfaceOptional->GetFormat());
+			fb = deviceOptional->CreateFramebuffer(renderPass, surfaceOptional->GetExtent(), fbView);
+		}
+	}
+
+	void VulkanApp::CreateSurface()
+	{
+		surfaceOptional = SurfaceManager(instance, physicalDevice, window);
+		surface = surfaceOptional->GetSurface();
+	}
+
 	void VulkanApp::Run(std::string vulkanInitJsonPath, std::string vertexShaderPath, std::string fragmentShaderPath)
 	{
 		json vulkanInitData = json::parse(fileIO::readFile(vulkanInitJsonPath));
@@ -127,15 +175,12 @@ namespace vka
 
 		debugCallbackUnique = InitDebugCallback(instanceOptional->GetInstance());
 
-		deviceOptional = Device(
-			instanceOptional->GetInstance(),
-			deviceExtensionsCstrings,
-			surface);
-		physicalDevice = deviceOptional->GetPhysicalDevice();
-		device = deviceOptional->GetDevice();
+		physicalDevice = SelectPhysicalDevice(instance);
 
-		surfaceOptional = Surface(instance, physicalDevice, window);
-		surface = surfaceOptional->GetSurface();
+		CreateSurface();
+
+		deviceOptional = DeviceManager(physicalDevice, deviceExtensionsCstrings, surface);
+		device = deviceOptional->GetDevice();
 
 		auto graphicsQueueID = deviceOptional->GetGraphicsQueueID();
 		utilityCommandPool = deviceOptional->CreateCommandPool(graphicsQueueID, true, true);
@@ -188,7 +233,7 @@ namespace vka
 			shaderModules);
 
 		auto imageInfos = std::vector<VkDescriptorImageInfo>();
-		uint32_t imageCount = images2D.size();
+		uint32_t imageCount = gsl::narrow<uint32_t>(images2D.size());
 		imageInfos.reserve(imageCount);
 		for (auto &imagePair : images2D)
 		{
@@ -214,10 +259,10 @@ namespace vka
 		vkUpdateDescriptorSets(device, 1, &samplerDescriptorWrite, 0, nullptr);
 
 		renderCommandPool = deviceOptional->CreateCommandPool(graphicsQueueID, false, true);
-		renderCommandBuffers = deviceOptional->AllocateCommandBuffers(renderCommandPool, Surface::BufferCount);
-		renderCommandBufferExecutedFences.resize(Surface::BufferCount);
-		imageRenderedSemaphores.resize(Surface::BufferCount);
-		for (auto i = 0; i < Surface::BufferCount; ++i)
+		renderCommandBuffers = deviceOptional->AllocateCommandBuffers(renderCommandPool, SurfaceManager::BufferCount);
+		renderCommandBufferExecutedFences.resize(SurfaceManager::BufferCount);
+		imageRenderedSemaphores.resize(SurfaceManager::BufferCount);
+		for (auto i = 0; i < SurfaceManager::BufferCount; ++i)
 		{
 			renderCommandBufferExecutedFences[i] = deviceOptional->CreateFence(true);
 			imageRenderedSemaphores[i] = deviceOptional->CreateSemaphore();
@@ -231,30 +276,7 @@ namespace vka
 			jsonConfigs.renderPass,
 			renderPasses);
 
-		swapchain = StoreHandle(
-			deviceOptional->CreateSwapchain(
-				surface,
-				jsonConfigs.swapchainConfig),
-			jsonConfigs.swapchainConfig,
-			swapchains);
-
-		// TODO: get swap images, create framebuffers and views
-		uint32_t swapImageCount;
-		vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, nullptr);
-		framebufferImages.resize(swapImageCount);
-		framebufferImageViews.resize(swapImageCount);
-		framebuffers.resize(swapImageCount);
-		vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, framebufferImages.data());
-
-		for (auto i = 0; i < swapImageCount; ++i)
-		{
-			auto& fbImage = framebufferImages[i];
-			auto& fbView = framebufferImageViews[i];
-			auto& fb = framebuffers[i];
-
-			fbView = deviceOptional->CreateColorImageView2D(fbImage, surfaceOptional->GetFormat());
-			fb = deviceOptional->CreateFramebuffer(renderPass, surfaceOptional->GetExtent(), fbView);
-		}
+		CreateSwapchain();
 
 		pipelineLayout2D = StoreHandle(
 			deviceOptional->CreatePipelineLayout(
@@ -623,19 +645,23 @@ namespace vka
 			{
 				return;
 			}
-			catch (Results::ErrorSurfaceLost result)
+			catch (Results::ErrorSurfaceLost)
 			{
-				(*deviceOptional)(result);
+				CreateSurface();
+				CleanUpSwapchain();
+				CreateSwapchain();
 				UpdateCameraSize();
 			}
-			catch (Results::Suboptimal result)
+			catch (Results::Suboptimal)
 			{
-				(*deviceOptional)(result);
+				CleanUpSwapchain();
+				CreateSwapchain();
 				UpdateCameraSize();
 			}
-			catch (Results::ErrorOutOfDate result)
+			catch (Results::ErrorOutOfDate)
 			{
-				(*deviceOptional)(result);
+				CleanUpSwapchain();
+				CreateSwapchain();
 				UpdateCameraSize();
 			}
 		}
@@ -643,52 +669,7 @@ namespace vka
 
 	void VulkanApp::UpdateCameraSize()
 	{
-		auto &extent = deviceOptional->GetSurfaceExtent();
+		auto &extent = surfaceOptional->GetExtent();
 		camera.setSize(glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)));
-	}
-
-	enum class RenderResults
-	{
-		Continue,
-		Return
-	};
-
-	static RenderResults HandleRenderErrors(VkResult result)
-	{
-		switch (result)
-		{
-			// successes
-		case VK_NOT_READY:
-			return RenderResults::Return;
-		case VK_SUCCESS:
-			return RenderResults::Continue;
-
-			// recoverable errors
-		case VK_SUBOPTIMAL_KHR:
-			throw Results::Suboptimal();
-		case VK_ERROR_OUT_OF_DATE_KHR:
-			throw Results::ErrorOutOfDate();
-		case VK_ERROR_SURFACE_LOST_KHR:
-			throw Results::ErrorSurfaceLost();
-
-			// unrecoverable errors
-		case VK_ERROR_OUT_OF_HOST_MEMORY:
-			throw Results::ErrorOutOfHostMemory();
-		case VK_ERROR_OUT_OF_DEVICE_MEMORY:
-			throw Results::ErrorOutOfDeviceMemory();
-		case VK_ERROR_DEVICE_LOST:
-			throw Results::ErrorDeviceLost();
-		}
-		return RenderResults::Continue;
-	}
-
-	FrameRender::FrameRender(const VkDevice& device) : app(app)
-	{
-
-	}
-
-	FrameRender::~FrameRender()
-	{
-		app.ReturnFenceToImagePresentedPool(imagePresentedFence);
 	}
 } // namespace vka

@@ -17,7 +17,7 @@ namespace vka
 		return j;
 	}
 
-	static json GetModule(const json& inputJson)
+	/*static json GetModule(const json& inputJson)
 	{
 		auto jsonID = inputJson.find("jsonID");
 		if (jsonID != inputJson.end())
@@ -29,13 +29,15 @@ namespace vka
 			}
 			else
 			{
-				auto f = std::ifstream((*jsonID)["uri"]);
+				std::string uri = (*jsonID)["uri"];
+				auto f = std::ifstream(uri);
 				json j;
 				f >> j;
 				return j;
 			}
 		}
-	}
+		return json();
+	}*/
 	
 	template <typename moduleT>
 	static moduleT&& StoreHandle(

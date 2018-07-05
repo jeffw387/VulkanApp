@@ -9,7 +9,7 @@
             "binding": 0,
             "descriptorCount": 1,
             "descriptorType": 0,
-            "shaderStages": [
+            "stageFlags": [
                 16
             ],
             "immutableSamplers": [
@@ -23,10 +23,10 @@
         },
         {
             "binding": 1,
-            "descriptorCount": 0,
+            "descriptorCount": 1,
             "descriptorType": 2,
             "immutableSamplers": [],
-            "shaderStages": [
+            "stageFlags": [
                 16
             ]
         }

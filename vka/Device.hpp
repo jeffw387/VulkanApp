@@ -24,24 +24,31 @@ namespace vka
 	constexpr float graphicsQueuePriority = 0.f;
 	constexpr float presentQueuePriority = 0.f;
 
-	class Device
+	static VkPhysicalDevice SelectPhysicalDevice(VkInstance instance)
+	{
+		std::vector<VkPhysicalDevice> physicalDevices;
+		uint32_t physicalDeviceCount;
+		vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, nullptr);
+		physicalDevices.resize(physicalDeviceCount);
+		auto result = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data());
+
+		return physicalDevices[0];
+	}
+
+	class DeviceManager
 	{
 	public:
 		static constexpr uint32_t ImageCount = 1;
-		static constexpr uint32_t PushConstantSize = sizeof(PushConstants);
 
-		Device(
-			VkInstance instance,
-			std::vector<const char *> deviceExtensions,
-			VkSurfaceKHR surface)
-			: instance(instance),
+		DeviceManager(
+			const VkPhysicalDevice& physicalDevice,
+			const std::vector<const char*>& deviceExtensions,
+			const VkSurfaceKHR& surface)
+			:
+			physicalDevice(physicalDevice),
 			deviceExtensions(deviceExtensions),
 			surface(surface)
 		{
-			SelectPhysicalDevice();
-			GetQueueFamilyProperties();
-			SelectGraphicsQueue();
-			SelectPresentQueue();
 			CreateDevice();
 			CreateAllocator();
 		}
@@ -110,7 +117,7 @@ namespace vka
 		}
 
 		VkImageView CreateColorImageView2D(
-			VkImage image, 
+			VkImage image,
 			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB)
 		{
 			VkImageView imageView;
@@ -142,7 +149,7 @@ namespace vka
 		}
 
 		VkFramebuffer CreateFramebuffer(
-			const VkRenderPass& renderPass, 
+			const VkRenderPass& renderPass,
 			const VkExtent2D& extent,
 			const VkImageView& view)
 		{
@@ -202,7 +209,7 @@ namespace vka
 		}
 
 		VkRenderPass CreateRenderPass(
-			const json &renderPassConfig)
+			json renderPassConfig)
 		{
 			std::vector<VkAttachmentDescription> attachmentDescriptions;
 			for (const auto& attachmentJson : renderPassConfig["attachments"])
@@ -251,7 +258,14 @@ namespace vka
 					subpassData.depthStencilAttachment.value().attachment = depthStencilAttachmentJson["attachment"];
 					subpassData.depthStencilAttachment.value().layout = depthStencilAttachmentJson["layout"];
 				}
-				subpass.pDepthStencilAttachment = &subpassData.depthStencilAttachment.value_or(nullptr);
+				if (subpassData.depthStencilAttachment.has_value())
+				{
+					subpass.pDepthStencilAttachment = &subpassData.depthStencilAttachment.value();
+				}
+				else
+				{
+					subpass.pDepthStencilAttachment = nullptr;
+				}
 
 				for (const auto& inputAttachmentJson : subpassJson["inputAttachments"])
 				{
@@ -277,9 +291,7 @@ namespace vka
 
 				for (const auto& preserveAttachmentJson : subpassJson["preserveAttachments"])
 				{
-					auto& preserveAttachment = subpassData.preserveAttachments.emplace_back(
-						VkAttachmentReference());
-					preserveAttachment = preserveAttachmentJson;
+					subpassData.preserveAttachments.push_back(preserveAttachmentJson);
 				}
 				subpass.preserveAttachmentCount = gsl::narrow<uint32_t>(subpassData.preserveAttachments.size());
 				subpass.pPreserveAttachments = subpassData.preserveAttachments.data();
@@ -293,28 +305,29 @@ namespace vka
 				auto& dependency = subpassDependencies.emplace_back(VkSubpassDependency());
 				for (const auto& flag : dependencyJson["dependencyFlags"])
 				{
-					dependency.dependencyFlags |= static_cast<VkDependencyFlags>(flag);
+					dependency.dependencyFlags |= flag.get<uint32_t>();
 				}
 				for (const auto& maskBit : dependencyJson["srcAccessMask"])
 				{
-					dependency.srcAccessMask |= static_cast<VkAccessFlags>(maskBit);
+					dependency.srcAccessMask |= maskBit.get<uint32_t>();
 				}
 				for (const auto& maskBit : dependencyJson["dstAccessMask"])
 				{
-					dependency.dstAccessMask |= maskBit;
+					dependency.dstAccessMask |= maskBit.get<uint32_t>();
 				}
 				for (const auto& maskBit : dependencyJson["srcStageMask"])
 				{
-					dependency.srcStageMask |= maskBit;
+					dependency.srcStageMask |= maskBit.get<uint32_t>();
 				}
 				for (const auto& maskBit : dependencyJson["dstStageMask"])
 				{
-					dependency.dstStageMask |= maskBit;
+					dependency.dstStageMask |= maskBit.get<uint32_t>();
 				}
 				dependency.srcSubpass = dependencyJson["srcSubpass"];
 				dependency.dstSubpass = dependencyJson["dstSubpass"];
 			}
 			VkRenderPassCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 			createInfo.attachmentCount = gsl::narrow<uint32_t>(
 				attachmentDescriptions.size());
 			createInfo.pAttachments = attachmentDescriptions.data();
@@ -335,7 +348,8 @@ namespace vka
 
 		VkSwapchainKHR CreateSwapchain(
 			const VkSurfaceKHR& surface,
-			const json& swapchainConfig)
+			const VkFormat& imageFormat,
+			json swapchainConfig)
 		{
 			VkSwapchainCreateInfoKHR createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -348,8 +362,9 @@ namespace vka
 			createInfo.compositeAlpha = swapchainConfig["compositeAlpha"];
 			createInfo.imageArrayLayers = swapchainConfig["imageArrayLayers"];
 			createInfo.imageColorSpace = swapchainConfig["imageColorSpace"];
-			createInfo.imageExtent = swapchainConfig["imageExtent"];
-			createInfo.imageFormat = swapchainConfig["imageFormat"];
+			createInfo.imageExtent.width = swapchainConfig["imageExtent"]["width"];
+			createInfo.imageExtent.height = swapchainConfig["imageExtent"]["height"];
+			createInfo.imageFormat = imageFormat;
 			std::vector<uint32_t> queueFamilyIndices;
 			if (GetGraphicsQueueID() == GetPresentQueueID())
 			{
@@ -378,11 +393,14 @@ namespace vka
 			return swapchain;
 		}
 
-		VkShaderModule CreateShaderModule(
-			const json& shaderJson)
+		void DestroySwapchain(VkSwapchainKHR swapchain)
 		{
-			auto shaderJsonModule = GetModule(shaderJson);
-			auto shaderBinary = fileIO::readFile(shaderJsonModule["module"]);
+			swapchains.erase(swapchain);
+		}
+
+		VkShaderModule CreateShaderModule(json shaderJson)
+		{
+			auto shaderBinary = fileIO::readFile(shaderJson["path"]);
 			VkShaderModuleCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 			createInfo.pNext = nullptr;
@@ -398,7 +416,7 @@ namespace vka
 		}
 
 		VkSampler CreateSampler(
-			const json& samplerJson)
+			json samplerJson)
 		{
 			VkSamplerCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -411,8 +429,8 @@ namespace vka
 			createInfo.addressModeV = samplerJson["addressModeV"];
 			createInfo.addressModeW = samplerJson["addressModeW"];
 			createInfo.mipLodBias = samplerJson["mipLodBias"];
-			createInfo.anisotropyEnable = samplerJson["anistropyEnable"];
-			createInfo.maxAnisotropy = samplerJson["maxAnistropy"];
+			createInfo.anisotropyEnable = samplerJson["anisotropyEnable"];
+			createInfo.maxAnisotropy = samplerJson["maxAnisotropy"];
 			createInfo.compareEnable = samplerJson["compareEnable"];
 			createInfo.compareOp = samplerJson["compareOp"];
 			createInfo.minLod = samplerJson["minLod"];
@@ -428,7 +446,7 @@ namespace vka
 		}
 
 		VkDescriptorSetLayout CreateDescriptorSetLayout(
-			const json& descriptorSetLayoutJson,
+			json descriptorSetLayoutJson,
 			const gsl::span<VkSampler> immutableSamplers)
 		{
 			VkDescriptorSetLayoutCreateInfo createInfo = {};
@@ -438,12 +456,11 @@ namespace vka
 			std::vector<VkDescriptorSetLayoutBinding> bindings;
 			for (const auto& bindingJson : descriptorSetLayoutJson["bindings"])
 			{
-				auto bindingModule = GetModule(bindingJson);
 				auto& binding = bindings.emplace_back(VkDescriptorSetLayoutBinding());
-				binding.binding = bindingModule["binding"];
-				binding.descriptorType = bindingModule["descriptorType"];
-				binding.descriptorCount = bindingModule["descriptorCount"];
-				for (const auto& flag : bindingModule["stageFlags"])
+				binding.binding = bindingJson["binding"];
+				binding.descriptorType = bindingJson["descriptorType"];
+				binding.descriptorCount = bindingJson["descriptorCount"];
+				for (const auto& flag : bindingJson["stageFlags"])
 				{
 					binding.stageFlags |= flag;
 				}
@@ -467,7 +484,7 @@ namespace vka
 		}
 
 		VkDescriptorPool CreateDescriptorPool(
-			const json& descriptorSetLayoutJson,
+			json descriptorSetLayoutJson,
 			const uint32_t& maxSets = 1,
 			const bool& freeDescriptorSet = false)
 		{
@@ -484,6 +501,7 @@ namespace vka
 			createInfo.pNext = nullptr;
 			createInfo.poolSizeCount = gsl::narrow<uint32_t>(poolSizes.size());
 			createInfo.pPoolSizes = poolSizes.data();
+			createInfo.maxSets = maxSets;
 			if (freeDescriptorSet)
 			{
 				createInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
@@ -517,7 +535,7 @@ namespace vka
 
 		VkPipelineLayout CreatePipelineLayout(
 			const gsl::span<VkDescriptorSetLayout> setLayouts,
-			const json& pipelineLayoutJson)
+			json pipelineLayoutJson)
 		{
 			VkPipelineLayoutCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -528,7 +546,7 @@ namespace vka
 				auto& range = pushConstantRanges.emplace_back(VkPushConstantRange());
 				range.offset = rangeJson["offset"];
 				range.size = rangeJson["size"];
-				for (const auto& flag : rangeJson["stage"])
+				for (const auto& flag : rangeJson["stageFlags"])
 				{
 					range.stageFlags |= flag;
 				}
@@ -551,7 +569,7 @@ namespace vka
 			const VkRenderPass& renderPass,
 			std::map<std::string, VkShaderModule>& shaderModules,
 			std::map<VkShaderModule, gsl::span<gsl::byte>>& shaderSpecializationData,
-			const json& pipelineJson)
+			json pipelineJson)
 		{
 			auto colorBlendConfigJson = pipelineJson["colorBlendConfig"];
 			VkPipelineColorBlendStateCreateInfo colorBlendState = {};
@@ -775,13 +793,11 @@ namespace vka
 		}
 
 	private:
-		VkInstance instance;
-		std::vector<const char *> deviceExtensions;
+		VkPhysicalDevice physicalDevice;
+		std::vector<const char*> deviceExtensions;
 		VkSurfaceKHR surface;
 
-		VkPhysicalDevice physicalDevice;
 		std::vector<VkQueueFamilyProperties> queueFamilyProperties;
-
 		VkDeviceQueueCreateInfo graphicsQueueCreateInfo;
 		VkDeviceQueueCreateInfo presentQueueCreateInfo;
 		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
@@ -805,18 +821,6 @@ namespace vka
 		std::map<VkDescriptorPool, VkDescriptorPoolUnique> descriptorPools;
 		std::map<VkPipelineLayout, VkPipelineLayoutUnique> pipelineLayouts;
 		std::map<VkPipeline, VkPipelineUnique> pipelines;
-
-
-		void SelectPhysicalDevice()
-		{
-			std::vector<VkPhysicalDevice> physicalDevices;
-			uint32_t physicalDeviceCount;
-			vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, nullptr);
-			physicalDevices.resize(physicalDeviceCount);
-			auto result = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data());
-
-			physicalDevice = physicalDevices[0];
-		}
 
 		void GetQueueFamilyProperties()
 		{
@@ -884,6 +888,10 @@ namespace vka
 
 		void CreateDevice()
 		{
+			GetQueueFamilyProperties();
+			SelectGraphicsQueue();
+			SelectPresentQueue();
+
 			queueCreateInfos.push_back(graphicsQueueCreateInfo);
 			auto graphicsQueueID = GetGraphicsQueueID();
 			auto presentQueueID = GetPresentQueueID();
@@ -912,12 +920,14 @@ namespace vka
 			{
 				vkGetDeviceQueue(device, presentQueueID, 0, &presentQueue);
 			}
+
+			CreateAllocator();
 		}
 
 		void CreateAllocator()
 		{
 			constexpr auto allocSize = 512000U;
-			allocator = Allocator(physicalDevice, GetDevice(), allocSize);
+			allocator = Allocator(physicalDevice, device, allocSize);
 		}
 	};
 } // namespace vka

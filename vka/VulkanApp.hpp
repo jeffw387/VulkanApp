@@ -104,9 +104,9 @@ class VulkanApp
 	VkDebugReportCallbackEXTUnique debugCallbackUnique;
 	VkPhysicalDevice physicalDevice;
 	VkDevice device;
-	std::optional<Device> deviceOptional;
+	std::optional<DeviceManager> deviceOptional;
 	VkSurfaceKHR surface;
-	std::optional<Surface> surfaceOptional;
+	std::optional<SurfaceManager> surfaceOptional;
 
 	struct 
 	{
@@ -187,6 +187,12 @@ class VulkanApp
 	virtual void Update(TimePoint_ms) = 0;
 	virtual void Draw() = 0;
 
+	void CleanUpSwapchain();
+
+	void CreateSwapchain();
+
+	void CreateSurface();
+
 	void Run(std::string vulkanInitJsonPath, std::string vertexShaderPath, std::string fragmentShaderPath);
 
 	void LoadModelFromFile(std::string path, entt::HashedString fileName);
@@ -220,6 +226,41 @@ class VulkanApp
 
 	void UpdateCameraSize();
 };
+
+enum class RenderResults
+{
+	Continue,
+	Return
+};
+
+static RenderResults HandleRenderErrors(VkResult result)
+{
+	switch (result)
+	{
+		// successes
+	case VK_NOT_READY:
+		return RenderResults::Return;
+	case VK_SUCCESS:
+		return RenderResults::Continue;
+
+		// recoverable errors
+	case VK_SUBOPTIMAL_KHR:
+		throw Results::Suboptimal();
+	case VK_ERROR_OUT_OF_DATE_KHR:
+		throw Results::ErrorOutOfDate();
+	case VK_ERROR_SURFACE_LOST_KHR:
+		throw Results::ErrorSurfaceLost();
+
+		// unrecoverable errors
+	case VK_ERROR_OUT_OF_HOST_MEMORY:
+		throw Results::ErrorOutOfHostMemory();
+	case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+		throw Results::ErrorOutOfDeviceMemory();
+	case VK_ERROR_DEVICE_LOST:
+		throw Results::ErrorDeviceLost();
+	}
+	return RenderResults::Continue;
+}
 
 static void FrameRender(const VkDevice& device,
 	uint32_t& nextImage,

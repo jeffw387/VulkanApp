@@ -97,7 +97,7 @@ namespace vka
 }
 
 // Instance
-// Surface, Device
+// SurfaceManager, DeviceManager
 // RenderPass, Swapchain, Descriptor Set Layouts/Pools/Sets, Shader Modules  
 // Framebuffers
 // Pipeline

@@ -209,8 +209,18 @@ namespace vka
 		}
 
 		VkRenderPass CreateRenderPass(
+			VkSurfaceFormatKHR& surfaceFormat,
 			json renderPassConfig)
 		{
+
+			std::vector<VkSurfaceFormatKHR> formats;
+			uint32_t formatCount = 0;
+			vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
+			formats.resize(formatCount);
+			vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, formats.data());
+			// TODO: possibly pass this in so that the application can choose the defaults
+			surfaceFormat = SelectSurfaceFormat(formats, VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
+
 			std::vector<VkAttachmentDescription> attachmentDescriptions;
 			for (const auto& attachmentJson : renderPassConfig["attachments"])
 			{
@@ -218,7 +228,7 @@ namespace vka
 				description.initialLayout = attachmentJson["initialLayout"];
 				description.finalLayout = attachmentJson["finalLayout"];
 				description.samples = attachmentJson["samples"];
-				description.format = attachmentJson["format"];
+				description.format = surfaceFormat.format;
 				description.loadOp = attachmentJson["loadOp"];
 				description.storeOp = attachmentJson["storeOp"];
 				description.stencilLoadOp = attachmentJson["stencilLoadOp"];
@@ -346,11 +356,60 @@ namespace vka
 			return renderPass;
 		}
 
+	private:
+		VkSurfaceFormatKHR SelectSurfaceFormat(
+			const std::vector<VkSurfaceFormatKHR>& supported,
+			VkFormat preferredFormat,
+			VkColorSpaceKHR preferredColorSpace)
+		{
+			VkSurfaceFormatKHR result = {};
+			VkSurfaceFormatKHR preferred;
+			preferred.format = preferredFormat;
+			preferred.colorSpace = preferredColorSpace;
+			if (supported.at(0).format == VK_FORMAT_UNDEFINED)
+			{
+				return preferred;
+			}
+			for (const auto& supportedElement : supported)
+			{
+				if (supportedElement.format == preferred.format && 
+					supportedElement.colorSpace == preferred.colorSpace)
+				{
+					return preferred;
+				}
+			}
+			return supported.at(0);
+		}
+
+		::VkPresentModeKHR SelectPresentMode(
+			const std::vector<::VkPresentModeKHR>& supported,
+			::VkPresentModeKHR preferred)
+		{
+			auto testPreferredSupport = std::find(supported.begin(), supported.end(), preferred);
+			if (testPreferredSupport != supported.end())
+			{
+				return preferred;
+			}
+			return supported.at(0);
+		}
+
+	public:
 		VkSwapchainKHR CreateSwapchain(
 			const VkSurfaceKHR& surface,
-			const VkFormat& imageFormat,
+			const VkSurfaceFormatKHR& surfaceFormat,
 			json swapchainConfig)
 		{
+			VkSurfaceCapabilitiesKHR capabilities = {};
+			vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
+
+			std::vector<::VkPresentModeKHR> presentModes;
+			uint32_t presentCount = 0;
+			vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentCount, nullptr);
+			presentModes.resize(presentCount);
+			vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentCount, presentModes.data());
+			auto selectedPresentMode = SelectPresentMode(presentModes, swapchainConfig["presentMode"]);
+
+
 			VkSwapchainCreateInfoKHR createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 			createInfo.pNext = nullptr;
@@ -359,12 +418,19 @@ namespace vka
 				createInfo.flags |= flagBit;
 			}
 			createInfo.clipped = swapchainConfig["clipped"];
-			createInfo.compositeAlpha = swapchainConfig["compositeAlpha"];
+			auto preferredCompositeAlpha = swapchainConfig["compositeAlpha"].get<VkCompositeAlphaFlagsKHR>();
+			if (capabilities.supportedCompositeAlpha & preferredCompositeAlpha)
+			{
+				createInfo.compositeAlpha = static_cast<VkCompositeAlphaFlagBitsKHR>(preferredCompositeAlpha);
+			}
+			else
+			{
+				createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+			}
 			createInfo.imageArrayLayers = swapchainConfig["imageArrayLayers"];
-			createInfo.imageColorSpace = swapchainConfig["imageColorSpace"];
-			createInfo.imageExtent.width = swapchainConfig["imageExtent"]["width"];
-			createInfo.imageExtent.height = swapchainConfig["imageExtent"]["height"];
-			createInfo.imageFormat = imageFormat;
+			createInfo.imageFormat = surfaceFormat.format;
+			createInfo.imageColorSpace = surfaceFormat.colorSpace;
+			createInfo.imageExtent = capabilities.currentExtent;
 			std::vector<uint32_t> queueFamilyIndices;
 			if (GetGraphicsQueueID() == GetPresentQueueID())
 			{
@@ -380,9 +446,8 @@ namespace vka
 			createInfo.minImageCount = swapchainConfig["minImageCount"];
 			createInfo.queueFamilyIndexCount = gsl::narrow<uint32_t>(queueFamilyIndices.size());
 			createInfo.pQueueFamilyIndices = queueFamilyIndices.data();
-			// TODO: add check in for present mode support here
-			createInfo.presentMode = swapchainConfig["presentMode"];
-			createInfo.preTransform = swapchainConfig["preTransform"];
+			createInfo.presentMode = selectedPresentMode;
+			createInfo.preTransform = capabilities.currentTransform;
 			createInfo.surface = surface;
 			createInfo.oldSwapchain = VK_NULL_HANDLE;
 
@@ -673,19 +738,16 @@ namespace vka
 			inputAssemblyState.topology = inputAssemblyJson["topology"];
 
 			VkPipelineMultisampleStateCreateInfo multisampleState = {};
-			if (pipelineJson.find("multisampleConfig") != pipelineJson.end())
-			{
-				auto multisampleJson = pipelineJson["multisampleConfig"];
-				VkSampleMask sampleMask = {};
-				multisampleState.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-				multisampleState.pNext = nullptr;
-				multisampleState.sampleShadingEnable = multisampleJson["sampleShadingEnable"];
-				multisampleState.minSampleShading = multisampleJson["minSampleShading"];
-				multisampleState.rasterizationSamples = multisampleJson["rasterizationSamples"];
-				multisampleState.alphaToCoverageEnable = multisampleJson["alphaToCoverageEnable"];
-				multisampleState.alphaToOneEnable = multisampleJson["alphaToOneEnable"];
-				multisampleState.pSampleMask = &sampleMask;
-			}
+			auto multisampleJson = pipelineJson["multisampleConfig"];
+			multisampleState.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+			VkSampleMask sampleMask = {};
+			multisampleState.pNext = nullptr;
+			multisampleState.sampleShadingEnable = multisampleJson["sampleShadingEnable"];
+			multisampleState.minSampleShading = multisampleJson["minSampleShading"];
+			multisampleState.rasterizationSamples = multisampleJson["rasterizationSamples"];
+			multisampleState.alphaToCoverageEnable = multisampleJson["alphaToCoverageEnable"];
+			multisampleState.alphaToOneEnable = multisampleJson["alphaToOneEnable"];
+			multisampleState.pSampleMask = &sampleMask;
 
 			auto rasterizationJson = pipelineJson["rasterizationConfig"];
 			VkPipelineRasterizationStateCreateInfo rasterizationState = {};

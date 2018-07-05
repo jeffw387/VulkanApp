@@ -21,7 +21,7 @@ namespace vka
 		swapchain = StoreHandle(
 			deviceOptional->CreateSwapchain(
 				surface,
-				surfaceOptional->GetFormat(),
+				surfaceFormat,
 				jsonConfigs.swapchainConfig),
 			jsonConfigs.swapchainConfig,
 			swapchains);
@@ -39,7 +39,7 @@ namespace vka
 			auto& fbView = framebufferImageViews[i];
 			auto& fb = framebuffers[i];
 
-			fbView = deviceOptional->CreateColorImageView2D(fbImage, surfaceOptional->GetFormat());
+			fbView = deviceOptional->CreateColorImageView2D(fbImage, surfaceFormat.format);
 			fb = deviceOptional->CreateFramebuffer(renderPass, surfaceOptional->GetExtent(), fbView);
 		}
 	}
@@ -272,6 +272,7 @@ namespace vka
 
 		renderPass = StoreHandle(
 			deviceOptional->CreateRenderPass(
+				surfaceFormat,
 				jsonConfigs.renderPass),
 			jsonConfigs.renderPass,
 			renderPasses);
@@ -621,7 +622,7 @@ namespace vka
 					nextImage,
 					swapchain,
 					imagePresentedFencePool,
-					[this]() { return deviceOptional->CreateFence(true); },
+					[this]() { return deviceOptional->CreateFence(false); },
 					renderCommandBuffers,
 					renderCommandBufferExecutedFences,
 					framebuffers,

@@ -183,5 +183,12 @@ int main()
             cmp::Color(glm::vec4(0.5f)));
     }
 
-    app.Run(std::string(ConfigPath), std::string(VertexShaderPath), std::string(FragmentShaderPath));
+	try
+	{
+		app.Run(std::string(ConfigPath), std::string(VertexShaderPath), std::string(FragmentShaderPath));
+	}
+	catch (const std::exception& e)
+	{
+		std::cout << e.what();
+	}
 }

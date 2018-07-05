@@ -128,6 +128,7 @@ class VulkanApp
 	std::map<std::string, VkPipelineLayout> pipelineLayouts;
 	std::map<std::string, VkPipeline> pipelines;
 
+	VkSurfaceFormatKHR surfaceFormat;
 	VkRenderPass renderPass;
 	VkSwapchainKHR swapchain;
 	std::vector<VkFramebuffer> framebuffers;
@@ -294,6 +295,7 @@ static void FrameRender(const VkDevice& device,
 	auto successResult = HandleRenderErrors(acquireResult);
 	if (successResult == RenderResults::Return)
 	{
+		fencePool.pool(imagePresentedFence);
 		return;
 	}
 
@@ -400,6 +402,7 @@ static void FrameRender(const VkDevice& device,
 		&presentInfo);
 
 	HandleRenderErrors(presentResult);
+	fencePool.pool(imagePresentedFence);
 }
 
 static VulkanApp *GetUserPointer(GLFWwindow *window)

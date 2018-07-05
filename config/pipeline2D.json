@@ -59,12 +59,39 @@
     },
     "inputAssemblyConfig": {
         "primitiveRestartEnable": false,
-        "primitiveTopology": 3
+        "topology": 3
     },
     "viewportConfig": {
-        "viewports": [],
-        "scissors": [],
-        "viewportScissorCount": 1
+        "viewports": [
+            {
+                "height": 0,
+                "width": 0,
+                "minDepth": 0,
+                "maxDepth": 0,
+                "x": 0,
+                "y": 0
+            }
+        ],
+        "scissors": [
+            {
+                "extent": {
+                    "width": 0,
+                    "height": 0
+                },
+                "offset": {
+                    "x": 0,
+                    "y": 0
+                }
+            }
+        ]
+    },
+    "multisampleConfig": {
+        "sampleShadingEnable": false,
+        "alphaToCoverageEnable": false,
+        "alphaToOneEnable": false,
+        "rasterizationSamples": 1,
+        "minSampleShading": 0,
+        "sampleMask": {}
     },
     "rasterizationConfig": {
         "depthClampEnable": false,
@@ -77,6 +104,9 @@
         "depthBiasClamp": 0,
         "depthBiasSlopeFactor": 0,
         "lineWidth": 1
+    },
+    "tesselationConfig": {
+        "patchControlPoints": 0
     },
     "depthStencilConfig": {
         "depthTestEnable": false,
@@ -101,11 +131,11 @@
         "colorBlendAttachments": [
             {
                 "blendEnable": true,
-                "sourceColorBlendFactor": 6,
-                "destinationColorBlendFactor": 8,
+                "srcColorBlendFactor": 6,
+                "dstColorBlendFactor": 8,
                 "colorBlendOp": 0,
-                "sourceAlphaBlendFactor": 0,
-                "destinationAlphaBlendFactor": 0,
+                "srcAlphaBlendFactor": 0,
+                "dstAlphaBlendFactor": 0,
                 "alphaBlendOp": 0,
                 "colorWriteMask": {
                     "R": true,

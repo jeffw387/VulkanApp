@@ -841,7 +841,7 @@ namespace vka
 			createInfo.pRasterizationState = &rasterizationState;
 			createInfo.stageCount = gsl::narrow<uint32_t>(shaderStages.size());
 			createInfo.pStages = shaderStages.data();
-			createInfo.pTessellationState = &tesselationState;
+			createInfo.pTessellationState = nullptr;
 			createInfo.pVertexInputState = &vertexInputState;
 			createInfo.pViewportState = &viewportState;
 			createInfo.renderPass = renderPass;

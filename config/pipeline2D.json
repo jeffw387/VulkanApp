@@ -98,7 +98,7 @@
         "rasterizerDiscardEnable": false,
         "polygonMode": 0,
         "cullMode": 2,
-        "frontFace": 1,
+        "frontFace": 0,
         "depthBiasEnable": false,
         "depthBiasConstantFactor": 0,
         "depthBiasClamp": 0,
@@ -106,7 +106,7 @@
         "lineWidth": 1
     },
     "tesselationConfig": {
-        "patchControlPoints": 0
+        "patchControlPoints": 1
     },
     "depthStencilConfig": {
         "depthTestEnable": false,

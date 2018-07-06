@@ -21,18 +21,18 @@
             "dependencyFlags": [
                 1
             ],
-            "srcAccessMask": [
-                32768
-            ],
-            "dstAccessMask": [
-                32768,
-                65536
-            ],
             "srcStageMask": [
                 8192
             ],
             "dstStageMask": [
                 1024
+            ],
+            "srcAccessMask": [
+                32768
+            ],
+            "dstAccessMask": [
+                128,
+                256
             ],
             "srcSubpass": 0,
             "dstSubpass": 0
@@ -41,20 +41,20 @@
             "dependencyFlags": [
                 1
             ],
-            "dstAccessMask": [
-                32768
+            "srcStageMask": [
+                1024
             ],
             "dstStageMask": [
                 8192
             ],
-            "dstSubpass": 0,
             "srcAccessMask": [
-                32768,
-                65536
+                128,
+                256
             ],
-            "srcStageMask": [
-                1024
+            "dstAccessMask": [
+                32768
             ],
+            "dstSubpass": 0,
             "srcSubpass": 0
         }
     ],

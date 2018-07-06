@@ -97,7 +97,7 @@
         "depthClampEnable": false,
         "rasterizerDiscardEnable": false,
         "polygonMode": 0,
-        "cullMode": 2,
+        "cullMode": 0,
         "frontFace": 0,
         "depthBiasEnable": false,
         "depthBiasConstantFactor": 0,

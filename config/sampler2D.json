@@ -14,7 +14,7 @@
     "minFilter": 1,
     "magFilter": 1,
     "mipmapMode": 1,
-    "maxAnisotropy": 0,
+    "maxAnisotropy": 16,
     "minLod": 0,
     "maxLod": 0,
     "mipLodBias": 0,

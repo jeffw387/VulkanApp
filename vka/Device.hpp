@@ -747,7 +747,7 @@ namespace vka
 			multisampleState.rasterizationSamples = multisampleJson["rasterizationSamples"];
 			multisampleState.alphaToCoverageEnable = multisampleJson["alphaToCoverageEnable"];
 			multisampleState.alphaToOneEnable = multisampleJson["alphaToOneEnable"];
-			multisampleState.pSampleMask = &sampleMask;
+			multisampleState.pSampleMask = nullptr;
 
 			auto rasterizationJson = pipelineJson["rasterizationConfig"];
 			VkPipelineRasterizationStateCreateInfo rasterizationState = {};

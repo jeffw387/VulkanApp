@@ -3,6 +3,7 @@
 #include <vector>
 #include <optional>
 #include <algorithm>
+#include <functional>
 
 template <typename T>
 class Pool
@@ -23,6 +24,20 @@ public:
         }
         return result;
     }
+
+	T unpoolOrCreate(std::function<T()> createFunc)
+	{
+		if (size() > 0)
+		{
+			auto result = storage.back();
+			storage.pop_back();
+			return result;
+		}
+		else
+		{
+			return createFunc();
+		}
+	}
 
     void pool(const T& value)
     {

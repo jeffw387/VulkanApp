@@ -89,7 +89,7 @@ namespace vka
             swapchainCreateInfo.pNext = nullptr;
             swapchainCreateInfo.flags = 0;
             swapchainCreateInfo.surface = surface;
-            swapchainCreateInfo.minImageCount = Surface::BufferCount;
+            swapchainCreateInfo.minImageCount = SurfaceManager::BufferCount;
             swapchainCreateInfo.imageFormat = surfaceFormat;
             swapchainCreateInfo.imageColorSpace = surfaceColorSpace;
             swapchainCreateInfo.imageExtent = surfaceExtent;

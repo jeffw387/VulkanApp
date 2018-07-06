@@ -1666,7 +1666,7 @@ PFNCLGETPLATFORMINFO)(cl_platform_id   /* platform */,
                   void *           /* param_value */,
                   size_t *         /* param_value_size_ret */) CL_API_SUFFIX__VERSION_1_0;
 
-/* Device APIs */
+/* DeviceManager APIs */
 typedef CL_API_ENTRY cl_int (CL_API_CALL *
 PFNCLGETDEVICEIDS)(cl_platform_id   /* platform */,
                cl_device_type   /* device_type */, 

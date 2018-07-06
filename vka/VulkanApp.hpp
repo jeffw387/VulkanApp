@@ -13,6 +13,7 @@
 #include "Input.hpp"
 #include "Instance.hpp"
 #include "Device.hpp"
+#include "Surface.hpp"
 #include "Image2D.hpp"
 #include "Bitmap.hpp"
 #include "Sprite.hpp"
@@ -68,6 +69,24 @@ using IndexType = uint8_t;
 using PositionType = glm::vec3;
 using NormalType = glm::vec3;
 
+struct VertexPushConstants
+{
+	glm::mat4 mvp;
+};
+
+struct FragmentPushConstants
+{
+	glm::uint32 imageOffset;
+	glm::vec3 padding;
+	glm::vec4 color;
+};
+
+struct PushConstants
+{
+	VertexPushConstants vertexPushConstants;
+	FragmentPushConstants fragmentPushConstants;
+};
+
 class VulkanApp
 {
 	friend class FrameRender;
@@ -80,42 +99,78 @@ class VulkanApp
 	LibraryHandle VulkanLibrary;
 	Camera2D camera;
 
+	VkInstance instance;
 	std::optional<Instance> instanceOptional;
 	VkDebugReportCallbackEXTUnique debugCallbackUnique;
+	VkPhysicalDevice physicalDevice;
+	std::optional<SurfaceManager> surfaceOptional;
+	VkSurfaceKHR surface;
+	std::optional<DeviceManager> deviceOptional;
 	VkDevice device;
-	std::optional<Device> deviceOptional;
+
+	struct 
+	{
+		json renderPass;
+		json fragmentShader2D;
+		json vertexShader2D;
+		json fragmentDescriptorSetLayout2D;
+		json sampler2D;
+		json swapchainConfig;
+		json pipelineLayout2D;
+		json pipeline2D;
+	} jsonConfigs;
 
 	std::map<std::string, VkRenderPass> renderPasses;
+	std::map<std::string, VkSwapchainKHR> swapchains;
 	std::map<std::string, VkSampler> samplers;
 	std::map<std::string, VkShaderModule> shaderModules;
 	std::map<std::string, VkDescriptorSetLayout> descriptorSetLayouts;
 	std::map<std::string, VkPipelineLayout> pipelineLayouts;
 	std::map<std::string, VkPipeline> pipelines;
 
+	VkSurfaceFormatKHR surfaceFormat;
+	VkRenderPass renderPass;
+	VkSwapchainKHR swapchain;
+	std::vector<VkFramebuffer> framebuffers;
+	std::vector<VkImage> framebufferImages;
+	std::vector<VkImageView> framebufferImageViews;
+
+	VkSampler sampler2D;
+	VkShaderModule vertexShader2D;
+	VkDescriptorSetLayout fragmentDescriptorSetLayout2D;
+	VkDescriptorPool fragmentDescriptorPool2D;
+	VkDescriptorSet fragmentDescriptorSet2D;
+	VkShaderModule fragmentShader2D;
+	VkPipelineLayout pipelineLayout2D;
+	VkPipeline pipeline2D;
+
+	VkShaderModule vertexShader3D;
+	VkShaderModule fragmentShader3D;
+	VkPipelineLayout pipelineLayout3D;
+	VkPipeline pipeline3D;
+
 	VkCommandPool utilityCommandPool;
 	VkCommandBuffer utilityCommandBuffer;
 	VkFence utilityCommandFence;
 
-	std::map<uint64_t, UniqueImage2D> images;
-	std::map<uint64_t, Sprite> sprites;
-	std::map<uint64_t, Model> models;
-	std::vector<IndexType> vertexIndices;
-	std::vector<PositionType> vertexPositions;
-	std::vector<NormalType> vertexNormals;
-	UniqueAllocatedBuffer indexBuffer;
-	UniqueAllocatedBuffer positionBuffer;
-	UniqueAllocatedBuffer normalBuffer;
-	std::vector<Quad> quads;
+	std::map<uint64_t, Sprite> sprites2D;
+	std::map<uint64_t, Model> models3D;
+	std::vector<IndexType> vertexIndices3D;
+	std::vector<PositionType> vertexPositions3D;
+	std::vector<NormalType> vertexNormals3D;
+	UniqueAllocatedBuffer indexBuffer3D;
+	UniqueAllocatedBuffer positionBuffer3D;
+	UniqueAllocatedBuffer normalBuffer3D;
 
-	UniqueAllocatedBuffer vertexBufferUnique;
-	VkDescriptorSet fragmentDescriptorSet;
+	std::map<uint64_t, UniqueImage2D> images2D;
+	std::vector<Quad> quads2D;
+	UniqueAllocatedBuffer vertexBuffer2D;
 
 	VkCommandPool renderCommandPool;
 	std::vector<VkCommandBuffer> renderCommandBuffers;
-	std::array<VkFence, Surface::BufferCount> renderCommandBufferExecutedFences;
+	std::vector<VkFence> renderCommandBufferExecutedFences;
+	std::vector<VkSemaphore> imageRenderedSemaphores;
 	Pool<VkFence> imagePresentedFencePool;
-	std::array<VkFence, Surface::BufferCount> imagePresentedFences;
-	std::array<VkSemaphore, Surface::BufferCount> imageRenderedSemaphores;
 	uint32_t nextImage;
 
 	VkClearValue clearValue;
@@ -133,6 +188,12 @@ class VulkanApp
 	virtual void Update(TimePoint_ms) = 0;
 	virtual void Draw() = 0;
 
+	void CleanUpSwapchain();
+
+	void CreateSwapchain();
+
+	void CreateSurface();
+
 	void Run(std::string vulkanInitJsonPath, std::string vertexShaderPath, std::string fragmentShaderPath);
 
 	void LoadModelFromFile(std::string path, entt::HashedString fileName);
@@ -146,12 +207,17 @@ class VulkanApp
 		glm::mat4 transform,
 		glm::vec4 color);
 
+	void RenderModelInstance(
+		uint64_t modelIndex,
+		glm::mat4 transform,
+		glm::vec4 color);
+
   private:
 	void FinalizeImageOrder();
 
 	void FinalizeSpriteOrder();
 
-	void CreateVertexBuffer();
+	void Create2DVertexBuffer();
 
 	void Create3DVertexBuffers();
 
@@ -160,36 +226,184 @@ class VulkanApp
 	void GameThread();
 
 	void UpdateCameraSize();
-
-	VkFence GetFenceFromImagePresentedPool();
-
-	void ReturnFenceToImagePresentedPool(VkFence fence);
 };
 
-class FrameRender
+enum class RenderResults
 {
-	VulkanApp &app;
-
-	VkDevice device;
-	VkSwapchainKHR swapchain;
-	VkRenderPass renderPass;
-	VkFramebuffer framebuffer;
-	VkDescriptorSet fragmentDescriptorSet;
-	VkPipelineLayout pipelineLayout;
-	VkPipeline pipeline;
-	VkFence imagePresentedFence;
-	VkFence renderCommandBufferExecutedFence;
-	VkCommandBuffer renderCommandBuffer;
-	VkBuffer vertexBuffer;
-	VkQueue graphicsQueue;
-	VkSemaphore imageRenderedSemaphore;
-	VkExtent2D extent;
-	VkClearValue clearValue;
-
-  public:
-	FrameRender(VulkanApp &app);
-	~FrameRender();
+	Continue,
+	Return
 };
+
+static RenderResults HandleRenderErrors(VkResult result)
+{
+	switch (result)
+	{
+		// successes
+	case VK_NOT_READY:
+		return RenderResults::Return;
+	case VK_SUCCESS:
+		return RenderResults::Continue;
+
+		// recoverable errors
+	case VK_SUBOPTIMAL_KHR:
+		throw Results::Suboptimal();
+	case VK_ERROR_OUT_OF_DATE_KHR:
+		throw Results::ErrorOutOfDate();
+	case VK_ERROR_SURFACE_LOST_KHR:
+		throw Results::ErrorSurfaceLost();
+
+		// unrecoverable errors
+	case VK_ERROR_OUT_OF_HOST_MEMORY:
+		throw Results::ErrorOutOfHostMemory();
+	case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+		throw Results::ErrorOutOfDeviceMemory();
+	case VK_ERROR_DEVICE_LOST:
+		throw Results::ErrorDeviceLost();
+	}
+	return RenderResults::Continue;
+}
+
+static void FrameRender(const VkDevice& device,
+	uint32_t& nextImage,
+	const VkSwapchainKHR& swapchain,
+	Pool<VkFence>& fencePool,
+	std::function<VkFence()> fenceCreateFunc,
+	const std::vector<VkCommandBuffer>& renderCommandBuffers,
+	const std::vector<VkFence>& renderCommandBufferExecutedFences,
+	const std::vector<VkFramebuffer> framebuffers,
+	std::function<void()> drawFunc,
+	const std::vector<VkSemaphore>& imageRenderedSemaphores,
+	const VkRenderPass& renderPass,
+	const VkDescriptorSet& fragmentDescriptorSet2D,
+	const VkPipelineLayout& pipelineLayout2D,
+	const VkPipelineLayout& pipelineLayout3D,
+	const VkPipeline& pipeline2D,
+	const VkPipeline& pipeline3D,
+	const VkBuffer& vertexBuffer2D,
+	const VkBuffer& indexBuffer3D,
+	const VkBuffer& positionBuffer3D,
+	const VkBuffer& normalBuffer3D,
+	const VkQueue& graphicsQueue,
+	const VkExtent2D& extent,
+	const VkClearValue& clearValue)
+{
+	auto imagePresentedFence = fencePool.unpoolOrCreate(fenceCreateFunc);
+	auto acquireResult = vkAcquireNextImageKHR(device, swapchain,
+		0, VK_NULL_HANDLE,
+		imagePresentedFence, &nextImage);
+
+	auto successResult = HandleRenderErrors(acquireResult);
+	if (successResult == RenderResults::Return)
+	{
+		fencePool.pool(imagePresentedFence);
+		return;
+	}
+
+	// frame-dependent resources
+	auto renderCommandBuffer = renderCommandBuffers[nextImage];
+	auto renderCommandBufferExecutedFence = renderCommandBufferExecutedFences[nextImage];
+	auto framebuffer = framebuffers.at(nextImage);
+	auto imageRenderedSemaphore = imageRenderedSemaphores[nextImage];
+
+	VkViewport viewport = {};
+	viewport.x = 0.f;
+	viewport.y = 0.f;
+	viewport.width = static_cast<float>(extent.width);
+	viewport.height = static_cast<float>(extent.height);
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+
+	VkRect2D scissorRect = {};
+	scissorRect.offset.x = 0;
+	scissorRect.offset.y = 0;
+	scissorRect.extent = extent;
+
+	// Wait for this frame's render command buffer to finish executing
+	vkWaitForFences(device,
+		1,
+		&renderCommandBufferExecutedFence,
+		true, std::numeric_limits<uint64_t>::max());
+	vkResetFences(device, 1, &renderCommandBufferExecutedFence);
+
+	// record the command buffer
+	VkCommandBufferBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.pNext = nullptr;
+	beginInfo.flags = 0;
+	beginInfo.pInheritanceInfo = nullptr;
+	vkBeginCommandBuffer(renderCommandBuffer, &beginInfo);
+
+	VkRenderPassBeginInfo renderPassBeginInfo = {};
+	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassBeginInfo.pNext = nullptr;
+	renderPassBeginInfo.renderPass = renderPass;
+	renderPassBeginInfo.framebuffer = framebuffer;
+	renderPassBeginInfo.renderArea = scissorRect;
+	renderPassBeginInfo.clearValueCount = 1;
+	renderPassBeginInfo.pClearValues = &clearValue;
+	vkCmdBeginRenderPass(renderCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline2D);
+
+	vkCmdSetViewport(renderCommandBuffer, 0, 1, &viewport);
+	vkCmdSetScissor(renderCommandBuffer, 0, 1, &scissorRect);
+
+	VkDeviceSize vertexBufferOffset = 0;
+	vkCmdBindVertexBuffers(renderCommandBuffer, 0, 1,
+		&vertexBuffer2D,
+		&vertexBufferOffset);
+
+	// bind sampler and images uniforms
+	vkCmdBindDescriptorSets(renderCommandBuffer,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		pipelineLayout2D,
+		0,
+		1, &fragmentDescriptorSet2D,
+		0, nullptr);
+
+	drawFunc();
+
+	// Finish recording draw command buffer
+	vkCmdEndRenderPass(renderCommandBuffer);
+	vkEndCommandBuffer(renderCommandBuffer);
+
+	// Submit draw command buffer
+	auto stageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = nullptr;
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = nullptr;
+	submitInfo.pWaitDstStageMask = nullptr;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &renderCommandBuffer;
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &imageRenderedSemaphore;
+
+	vkWaitForFences(device, 1, &imagePresentedFence, true, std::numeric_limits<uint64_t>::max());
+	vkResetFences(device, 1, &imagePresentedFence);
+
+	auto drawSubmitResult = vkQueueSubmit(graphicsQueue, 1,
+		&submitInfo, renderCommandBufferExecutedFence);
+
+	// Present image
+	VkPresentInfoKHR presentInfo = {};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.pNext = nullptr;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = &imageRenderedSemaphore;
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = &swapchain;
+	presentInfo.pImageIndices = &nextImage;
+	presentInfo.pResults = nullptr;
+
+	auto presentResult = vkQueuePresentKHR(
+		graphicsQueue,
+		&presentInfo);
+
+	HandleRenderErrors(presentResult);
+	fencePool.pool(imagePresentedFence);
+}
 
 static VulkanApp *GetUserPointer(GLFWwindow *window)
 {

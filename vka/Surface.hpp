@@ -12,12 +12,12 @@
 
 namespace vka
 {
-    class Surface
+    class SurfaceManager
     {
     public:
         static constexpr size_t BufferCount = 3U;
 
-        Surface(VkInstance instance, VkPhysicalDevice physicalDevice, GLFWwindow* window) : 
+        SurfaceManager(VkInstance instance, VkPhysicalDevice physicalDevice, GLFWwindow* window) : 
             instance(instance), physicalDevice(physicalDevice), window(window)
         {
             CreateSurface();
@@ -27,8 +27,8 @@ namespace vka
             ChoosePresentMode();
         }
 
-        Surface(Surface&&) = default;
-        Surface& operator =(Surface&&) = default;
+        SurfaceManager(SurfaceManager&&) = default;
+        SurfaceManager& operator =(SurfaceManager&&) = default;
 
         VkSurfaceKHR GetSurface()
         {
@@ -95,7 +95,7 @@ namespace vka
 
         void BufferSupportCheck()
         {
-            if (surfaceCapabilities.maxImageCount != 0 && surfaceCapabilities.maxImageCount < Surface::BufferCount)
+            if (surfaceCapabilities.maxImageCount != 0 && surfaceCapabilities.maxImageCount < SurfaceManager::BufferCount)
             {
                 std::runtime_error("Error: surface does not support enough swap images!");
             }

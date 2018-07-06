@@ -8,15 +8,46 @@ add_executable(VulkanApp
     vka/VulkanFunctions.cpp 
     vka/Allocator.cpp)
 
+list(APPEND ShaderSources Shaders/fragmentShader2D.glsl)
+list(APPEND ShaderSources Shaders/vertexShader2D.glsl)
+
+
+set(VulkanSDKPath C:/VulkanSDK/1.1.70.1)
+
+add_custom_target(vertexShader2D
+	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V vertexShader2D.glsl -o ${CMAKE_CURRENT_BINARY_DIR}/vertexShader2D.spv -S vert
+	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Shaders")
+
+add_custom_target(fragmentShader2D
+	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V fragmentShader2D.glsl -o ${CMAKE_CURRENT_BINARY_DIR}/fragmentShader2D.spv -S frag
+	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Shaders")
+
 set(contentSourceDir "${CMAKE_SOURCE_DIR}/Content")
-set(contentDestinationDir "${CMAKE_CURRENT_BINARY_DIR}")
-file(INSTALL ${contentSourceDir} DESTINATION ${contentDestinationDir})
+set(contentDestinationDir "${CMAKE_CURRENT_BINARY_DIR}/Content")
+add_custom_target(ContentCopyTarget ALL
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+	"${contentSourceDir}" "${contentDestinationDir}"
+	COMMENT "Copy content dir to build dir."
+	VERBATIM)
 
-set(shaderSourceDir "${CMAKE_SOURCE_DIR}/Shaders")
-set(shaderDestinationDir "${CMAKE_CURRENT_BINARY_DIR}")
-file(INSTALL ${shaderSourceDir} DESTINATION ${shaderDestinationDir})
+#set(shaderSourceDir "${CMAKE_SOURCE_DIR}/Shaders")
+#set(shaderDestinationDir "${CMAKE_CURRENT_BINARY_DIR}/Shaders")
+#add_custom_target(ShaderCopyTarget ALL
+#	COMMAND ${CMAKE_COMMAND} -E copy_directory
+#	"${shaderSourceDir}" "${shaderDestinationDir}"
+#	COMMENT "Copy shader dir to build dir."
+#	VERBATIM)
 
-file(INSTALL ${CMAKE_SOURCE_DIR}/config DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+
+set(configSourceDir "${CMAKE_SOURCE_DIR}/config")
+set(configDestinationDir "${CMAKE_CURRENT_BINARY_DIR}/config")
+add_custom_target(ConfigCopyTarget ALL
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+	"${configSourceDir}" "${configDestinationDir}"
+	COMMENT "Copy config dir to build dir."
+	VERBATIM)
+
+add_dependencies(VulkanApp ContentCopyTarget vertexShader2D fragmentShader2D ConfigCopyTarget)
 
 target_include_directories(VulkanApp PUBLIC vka .)
 target_compile_definitions(VulkanApp PRIVATE VK_NO_PROTOTYPES VK_USE_PLATFORM_WIN32_KHR)

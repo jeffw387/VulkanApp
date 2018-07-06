@@ -1,78 +1,76 @@
 {
-  "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/renderPassConfig.schema.json",
-  "attachments": [
-    {
-      "finalLayout": 1000001002,
-      "format": 30,
-      "initialLayout": 0,
-      "loadOp": 1,
-      "samples": 1,
-      "stencilLoadOp": 2,
-      "stencilStoreOp": 1,
-      "storeOp": 0,
-      "uri": "colorAttachment"
-    }
-  ],
-  "dependencies": [
-    {
-      "dependencyFlags": [
-        1
-      ],
-      "dstAccessMask": [
-        32768,
-        65536
-      ],
-      "dstStageMask": [
-        1024
-      ],
-      "dstSubpass": 0,
-      "srcAccessMask": [
-        32768
-      ],
-      "srcStageMask": [
-        8192
-      ],
-      "srcSubpass": 0,
-      "uri": "dep1"
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/renderPassConfig.schema.json",
+    "jsonID": {
+        "uri": "config/renderPass.json",
+        "inline": true
     },
-    {
-      "dependencyFlags": [
-        1
-      ],
-      "dstAccessMask": [
-        32768
-      ],
-      "dstStageMask": [
-        8192
-      ],
-      "dstSubpass": 0,
-      "srcAccessMask": [
-        32768,
-        65536
-      ],
-      "srcStageMask": [
-        1024
-      ],
-      "srcSubpass": 0,
-      "uri": "dep2"
-    }
-  ],
-  "subpasses": [
-    {
-      "colorAttachments": [
+    "attachments": [
         {
-          "uri": "colorAttachmentRef",
-          "attachment": 0,
-          "layout": 2
+            "initialLayout": 0,
+            "finalLayout": 1000001002,
+            "format": 30,
+            "samples": 1,
+            "loadOp": 1,
+            "storeOp": 0,
+            "stencilLoadOp": 2,
+            "stencilStoreOp": 1
         }
-      ],
-      "depthStencilAttachment": null,
-      "inputAttachments": [],
-      "pipelineBindPoint": 0,
-      "preserveAttachments": [],
-      "resolveAttachments": [],
-      "uri": "subpass2D"
-    }
-  ],
-  "uri": "renderPass.json"
+    ],
+    "dependencies": [
+        {
+            "dependencyFlags": [
+                1
+            ],
+            "srcStageMask": [
+                8192
+            ],
+            "dstStageMask": [
+                1024
+            ],
+            "srcAccessMask": [
+                32768
+            ],
+            "dstAccessMask": [
+                128,
+                256
+            ],
+            "srcSubpass": 0,
+            "dstSubpass": 0
+        },
+        {
+            "dependencyFlags": [
+                1
+            ],
+            "srcStageMask": [
+                1024
+            ],
+            "dstStageMask": [
+                8192
+            ],
+            "srcAccessMask": [
+                128,
+                256
+            ],
+            "dstAccessMask": [
+                32768
+            ],
+            "dstSubpass": 0,
+            "srcSubpass": 0
+        }
+    ],
+    "subpasses": [
+        {
+            "pipelineBindPoint": 0,
+            "colorAttachments": [
+                {
+                    "attachment": 0,
+                    "layout": 2
+                }
+            ],
+            "depthStencilAttachment": null,
+            "inputAttachments": [],
+            "preserveAttachments": [],
+            "resolveAttachments": []
+        }
+    ]
 }

@@ -1,0 +1,35 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/descriptorSetLayout.schema.json",
+    "jsonID": {
+        "uri": "config/fragmentDescriptorSetLayout2D.json",
+        "inline": true
+    },
+    "bindings": [
+        {
+            "binding": 0,
+            "descriptorCount": 1,
+            "descriptorType": 0,
+            "stageFlags": [
+                16
+            ],
+            "immutableSamplers": [
+                {
+                    "jsonID": {
+                        "uri": "config/sampler2D.json",
+                        "inline": false
+                    }
+                }
+            ]
+        },
+        {
+            "binding": 1,
+            "descriptorCount": 1,
+            "descriptorType": 2,
+            "immutableSamplers": [],
+            "stageFlags": [
+                16
+            ]
+        }
+    ],
+    "flags": []
+}

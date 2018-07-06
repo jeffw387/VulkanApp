@@ -20,7 +20,6 @@ namespace vka
         SurfaceManager(VkInstance instance, VkPhysicalDevice physicalDevice, GLFWwindow* window) : 
             instance(instance), physicalDevice(physicalDevice), window(window)
         {
-            GetPlatformHandle();
             CreateSurface();
             surfaceCapabilities = GetCapabilities();
             BufferSupportCheck();
@@ -67,11 +66,6 @@ namespace vka
         }
 
     private:
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-        HWND hwnd;
-        HINSTANCE hinstance;
-        VkWin32SurfaceCreateInfoKHR surfaceCreateInfoWin32;
-#endif
         VkInstance instance;
         VkPhysicalDevice physicalDevice;
         VkSurfaceKHRUnique surfaceUnique;
@@ -91,31 +85,12 @@ namespace vka
             return capabilities;
         }
 
-        void GetPlatformHandle()
-        {
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-            hwnd = glfwGetWin32Window(window);
-            hinstance = GetModuleHandle(NULL);
-#endif
-        }
-
         void CreateSurface()
         {
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-            surfaceCreateInfoWin32.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-            surfaceCreateInfoWin32.pNext = nullptr;
-            surfaceCreateInfoWin32.flags = 0;
-            surfaceCreateInfoWin32.hinstance = hinstance;
-            surfaceCreateInfoWin32.hwnd = hwnd;
 
             VkSurfaceKHR surface;
-            vkCreateWin32SurfaceKHR(
-                instance,
-                &surfaceCreateInfoWin32,
-                nullptr,
-                &surface);
+			glfwCreateWindowSurface(instance, window, nullptr, &surface);
             surfaceUnique = VkSurfaceKHRUnique(surface, VkSurfaceKHRDeleter(instance));
-#endif
         }
 
         void BufferSupportCheck()

@@ -13,13 +13,14 @@ list(APPEND ShaderSources Shaders/vertexShader2D.glsl)
 
 
 set(VulkanSDKPath C:/VulkanSDK/1.1.70.1)
-
+set(ShaderOutput ${CMAKE_CURRENT_BINARY_DIR}/Shaders)
+file(MAKE_DIRECTORY ${ShaderOutput})
 add_custom_target(vertexShader2D
-	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V vertexShader2D.glsl -o ${CMAKE_CURRENT_BINARY_DIR}/Shaders/vertexShader2D.spv -S vert
+	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V vertexShader2D.glsl -o ${ShaderOutput}/vertexShader2D.spv -S vert
 	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Shaders")
 
 add_custom_target(fragmentShader2D
-	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V fragmentShader2D.glsl -o ${CMAKE_CURRENT_BINARY_DIR}/Shaders/fragmentShader2D.spv -S frag
+	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V fragmentShader2D.glsl -o ${ShaderOutput}/fragmentShader2D.spv -S frag
 	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Shaders")
 
 set(contentSourceDir "${CMAKE_SOURCE_DIR}/Content")

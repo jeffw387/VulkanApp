@@ -8,15 +8,43 @@ add_executable(VulkanApp
     vka/VulkanFunctions.cpp 
     vka/Allocator.cpp)
 
+
 set(contentSourceDir "${CMAKE_SOURCE_DIR}/Content")
-set(contentDestinationDir "${CMAKE_CURRENT_BINARY_DIR}")
-file(INSTALL ${contentSourceDir} DESTINATION ${contentDestinationDir})
+set(contentDestinationDir "${CMAKE_CURRENT_BINARY_DIR}/Content")
+add_custom_target(ContentCopyTarget ALL
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+	"${contentSourceDir}" "${contentDestinationDir}"
+	COMMENT "Copy content dir to build dir."
+	VERBATIM)
 
 set(shaderSourceDir "${CMAKE_SOURCE_DIR}/Shaders")
-set(shaderDestinationDir "${CMAKE_CURRENT_BINARY_DIR}")
-file(INSTALL ${shaderSourceDir} DESTINATION ${shaderDestinationDir})
+set(shaderDestinationDir "${CMAKE_CURRENT_BINARY_DIR}/Shaders")
+add_custom_target(ShaderCopyTarget ALL
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+	"${shaderSourceDir}" "${shaderDestinationDir}"
+	COMMENT "Copy shader dir to build dir."
+	VERBATIM)
 
-file(INSTALL ${CMAKE_SOURCE_DIR}/config DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+#set(configFiles 
+#	config/fragmentDescriptorSetLayout2D.json 
+#	config/fragmentShader2D.json
+#	config/pipeline2D.json
+#	config/pipelineLayout2D.json
+#	config/renderPass.json
+#	config/sampler2D.json
+#	config/swapchainConfig.json
+#	config/vertexShader2D.json
+#	config/vk_layer_settings.txt
+#	config/VulkanInitInfo.json)
+set(configSourceDir "${CMAKE_SOURCE_DIR}/config")
+set(configDestinationDir "${CMAKE_CURRENT_BINARY_DIR}/config")
+add_custom_target(ConfigCopyTarget ALL
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+	"${configSourceDir}" "${configDestinationDir}"
+	COMMENT "Copy config dir to build dir."
+	VERBATIM)
+
+add_dependencies(VulkanApp ContentCopyTarget ShaderCopyTarget ConfigCopyTarget)
 
 target_include_directories(VulkanApp PUBLIC vka .)
 target_compile_definitions(VulkanApp PRIVATE VK_NO_PROTOTYPES VK_USE_PLATFORM_WIN32_KHR)

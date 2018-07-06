@@ -103,10 +103,10 @@ class VulkanApp
 	std::optional<Instance> instanceOptional;
 	VkDebugReportCallbackEXTUnique debugCallbackUnique;
 	VkPhysicalDevice physicalDevice;
-	VkDevice device;
-	std::optional<DeviceManager> deviceOptional;
-	VkSurfaceKHR surface;
 	std::optional<SurfaceManager> surfaceOptional;
+	VkSurfaceKHR surface;
+	std::optional<DeviceManager> deviceOptional;
+	VkDevice device;
 
 	struct 
 	{

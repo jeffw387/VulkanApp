@@ -1,0 +1,24 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/pipelineLayoutConfig.schema.json",
+    "jsonID": {
+        "uri": "config/pipelineLayout3D.json",
+        "inline": true
+    },
+    "descriptorSetLayouts": [
+        {
+            "jsonID": {
+                "uri": "config/vertexDescriptorSetLayout3D.json",
+                "inline": false
+            }
+        }
+    ],
+    "pushConstantRanges": [
+        {
+            "stageFlags": [
+                16
+            ],
+            "offset": 0,
+            "size": 16
+        }
+    ]
+}

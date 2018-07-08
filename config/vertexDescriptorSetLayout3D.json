@@ -1,0 +1,37 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/descriptorSetLayout.schema.json",
+    "jsonID": {
+        "uri": "config/vertexDescriptorSetLayout3D.json",
+        "inline": true
+    },
+    "bindings": [
+        {
+            "binding": 0,
+            "descriptorType": 8,
+            "descriptorCount": 1,
+            "immutableSamplers": [],
+            "stageFlags": [
+                1
+            ]
+        },
+        {
+            "binding": 1,
+            "descriptorType": 6,
+            "descriptorCount": 1,
+            "immutableSamplers": [],
+            "stageFlags": [
+                1
+            ]
+        },
+        {
+            "binding": 2,
+            "descriptorType": 6,
+            "descriptorCount": 1,
+            "immutableSamplers": [],
+            "stageFlags": [
+                1
+            ]
+        }
+    ],
+    "flags": []
+}

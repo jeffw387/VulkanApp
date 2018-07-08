@@ -333,8 +333,8 @@ namespace vka
 				{
 					dependency.dstStageMask |= maskBit.get<uint32_t>();
 				}
-				dependency.srcSubpass = dependencyJson["srcSubpass"];
-				dependency.dstSubpass = dependencyJson["dstSubpass"];
+				dependency.srcSubpass = dependencyJson["srcSubpass"].get<int>();
+				dependency.dstSubpass = dependencyJson["dstSubpass"].get<int>();
 			}
 			VkRenderPassCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;

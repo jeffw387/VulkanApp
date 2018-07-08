@@ -14,6 +14,16 @@
             "storeOp": 0,
             "stencilLoadOp": 2,
             "stencilStoreOp": 1
+        },
+        {
+            "initialLayout": 0,
+            "finalLayout": 3,
+            "format": 126,
+            "loadOp": 1,
+            "storeOp": 1,
+            "stencilLoadOp": 2,
+            "stencilStoreOp": 1,
+            "samples": 1
         }
     ],
     "dependencies": [
@@ -54,11 +64,46 @@
             "dstAccessMask": [
                 32768
             ],
-            "dstSubpass": 0,
-            "srcSubpass": 0
+            "srcSubpass": 0,
+            "dstSubpass": 0
+        },
+        {
+            "srcSubpass": 0,
+            "dstSubpass": 1,
+            "srcStageMask": [
+                1024
+            ],
+            "dstStageMask": [
+                256
+            ],
+            "srcAccessMask": [
+                128
+            ],
+            "dstAccessMask": [
+                256
+            ],
+            "dependencyFlags": [
+                1
+            ]
         }
     ],
     "subpasses": [
+        {
+            "pipelineBindPoint": 0,
+            "colorAttachments": [
+                {
+                    "attachment": 0,
+                    "layout": 2
+                }
+            ],
+            "depthStencilAttachment": {
+                "attachment": 1,
+                "layout": 3
+            },
+            "inputAttachments": [],
+            "preserveAttachments": [],
+            "resolveAttachments": []
+        },
         {
             "pipelineBindPoint": 0,
             "colorAttachments": [

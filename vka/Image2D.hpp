@@ -6,7 +6,6 @@
 #include "Allocator.hpp"
 #include "Buffer.hpp"
 #include "Bitmap.hpp"
-#include "entt.hpp"
 #include "UniqueVulkan.hpp"
 #include <limits>
 

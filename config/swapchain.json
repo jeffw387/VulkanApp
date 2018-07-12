@@ -1,0 +1,16 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/swapchainConfig.schema.json",
+    "clipped": false,
+    "compositeAlpha": 8,
+    "imageArrayLayers": 1,
+    "imageFormat": 0,
+    "imageColorSpace": 0,
+    "imageExtent": {
+        "width": 900,
+        "height": 900
+    },
+    "imageUsage": 16,
+    "minImageCount": 2,
+    "presentMode": 2,
+    "preTransform": 1
+}

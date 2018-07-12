@@ -7,6 +7,9 @@
 
 namespace cmp
 {
+	struct Light
+	{};
+
     struct Sprite
     {
         uint64_t index;
@@ -15,29 +18,22 @@ namespace cmp
         Sprite(uint64_t index) : index(std::move(index)) {}
     };
 
-    struct Position
+    struct Transform
     {
-        glm::vec2 position;
+        glm::mat4 matrix;
 
-        Position() noexcept = default;
-        Position(glm::vec2 position) : position(std::move(position)) {}
-    };
+        Transform() noexcept = default;
+        Transform(glm::mat4 matrix) : matrix(std::move(matrix)) {}
 
-    struct PositionMatrix
-    {
-        std::optional<glm::mat4> matrix;
+		operator const glm::mat4&() const
+		{
+			return matrix;
+		}
 
-        PositionMatrix() noexcept = default;
-        PositionMatrix(glm::mat4 matrix) : matrix(std::move(matrix)) {}
-    };
-
-    struct RectSize
-    {
-        float width;
-        float height;
-
-        RectSize() noexcept = default;
-        RectSize(float width, float height) : width(std::move(width)), height(std::move(height)) {}
+		operator glm::mat4&()
+		{
+			return matrix;
+		}
     };
 
     struct Color
@@ -46,36 +42,19 @@ namespace cmp
 
         Color() noexcept = default;
         Color(glm::vec4 rgba) : rgba(std::move(rgba)) {}
-    };
 
-    struct CollisionMesh
-    {
-        
-    };
+		operator const glm::vec4&() const
+		{
+			return rgba;
+		}
 
-    // do collision testing for each awake object
-    // add velocity where needed from collisions and wake objects that have velocity added
-    // add velocity to physics entities based on ai or player input
-    // wake physics entities if velocity was added
-    // simulate motion for awake objects
-    // update transform for awake objects
-    // apply drag to awake objects
-
-    struct Velocity
-    {
-        glm::vec2 velocity;
-        bool awake = false;
+		operator glm::vec4&()
+		{
+			return rgba;
+		}
     };
 
     struct PlayerControl
     {
-    };
-
-    struct Engine
-    {
-        glm::vec2 thrustDirection;
-
-        Engine() noexcept = default;
-        Engine(glm::vec2 thrustDirection) : thrustDirection(std::move(thrustDirection)) {}
     };
 }

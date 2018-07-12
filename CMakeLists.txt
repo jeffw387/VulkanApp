@@ -9,28 +9,24 @@ add_executable(VulkanApp
     vka/Allocator.cpp)
 
 set(VulkanSDKPath C:/VulkanSDK/1.1.70.1)
-set(ShaderOutput ${CMAKE_CURRENT_BINARY_DIR}/Shaders)
+set(ShaderOutput ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 file(MAKE_DIRECTORY ${ShaderOutput})
 
-add_custom_target(vertexShader2D
-	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V vertexShader2D.glsl -o ${ShaderOutput}/vertexShader2D.spv -S vert
-	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Shaders")
+set(shaderGroup 2D 3D)
+set(shaderStages vert frag)
+foreach(stage ${shaderStages})
+	foreach(group ShaderGroup)
+		add_custom_target(${stage}Shader${group}
+			COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V 
+				shader.${stage} -o ${ShaderOutput}/${group}
+			WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/shaders/${group})
+		add_dependencies(VulkanApp ${stage}Shader${group})
+	endforeach(group)
+endforeach(stage)
 
-add_custom_target(fragmentShader2D
-	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V fragmentShader2D.glsl -o ${ShaderOutput}/fragmentShader2D.spv -S frag
-	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Shaders")
-
-add_custom_target(vertexShader3D
-	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V vertexShader3D.glsl -o ${ShaderOutput}/vertexShader3D.spv -S vert
-	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Shaders")
-
-add_custom_target(fragmentShader3D
-	COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V fragmentShader3D.glsl -o ${ShaderOutput}/fragmentShader3D.spv -S frag
-	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Shaders")
-
-set(contentSourceDir "${CMAKE_SOURCE_DIR}/Content")
-set(contentDestinationDir "${CMAKE_CURRENT_BINARY_DIR}/Content")
-add_custom_target(ContentCopyTarget ALL
+set(contentSourceDir "${CMAKE_SOURCE_DIR}/content")
+set(contentDestinationDir "${CMAKE_CURRENT_BINARY_DIR}/content")
+add_custom_target(contentCopyTarget ALL
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
 	"${contentSourceDir}" "${contentDestinationDir}"
 	COMMENT "Copy content dir to build dir."
@@ -44,7 +40,7 @@ add_custom_target(ConfigCopyTarget ALL
 	COMMENT "Copy config dir to build dir."
 	VERBATIM)
 
-add_dependencies(VulkanApp ContentCopyTarget vertexShader2D fragmentShader2D vertexShader3D fragmentShader3D ConfigCopyTarget)
+add_dependencies(VulkanApp contentCopyTarget ConfigCopyTarget)
 
 target_include_directories(VulkanApp PUBLIC vka .)
 target_compile_definitions(VulkanApp PRIVATE VK_NO_PROTOTYPES VK_USE_PLATFORM_WIN32_KHR)

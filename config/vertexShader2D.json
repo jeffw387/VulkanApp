@@ -1,8 +1,0 @@
-{
-    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/shaderModule.schema.json",
-    "jsonID": {
-        "uri": "config/vertexShader2D.json",
-        "inline": true
-    },
-    "path": "Shaders/vertexShader2D.spv"
-}

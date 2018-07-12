@@ -3262,7 +3262,7 @@ void			btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 		break;
 	case	fCollision::VF_SS:
 		{
-			//only self-collision for Cluster, not Vertex-Face yet
+			//only self-collision for Cluster, not Vertex2D-Face yet
 			if (this!=psb)
 			{
 				btSoftColliders::CollideVF_SS	docollide;

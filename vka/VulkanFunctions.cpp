@@ -1,3 +1,5 @@
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include "vulkan/vulkan.h"
 
 #define VK_EXPORTED_FUNCTION( fun ) PFN_##fun fun;

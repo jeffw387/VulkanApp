@@ -1,9 +1,5 @@
 {
     "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/renderPassConfig.schema.json",
-    "jsonID": {
-        "uri": "config/renderPass.json",
-        "inline": true
-    },
     "attachments": [
         {
             "initialLayout": 0,

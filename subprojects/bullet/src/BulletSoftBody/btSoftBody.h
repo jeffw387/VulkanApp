@@ -82,10 +82,10 @@ public:
 
 	///eAeroModel 
 	struct eAeroModel { enum _ {
-		V_Point,			///Vertex normals are oriented toward velocity
-		V_TwoSided,			///Vertex normals are flipped to match velocity	
-		V_TwoSidedLiftDrag, ///Vertex normals are flipped to match velocity and lift and drag forces are applied
-		V_OneSided,			///Vertex normals are taken as it is	
+		V_Point,			///Vertex2D normals are oriented toward velocity
+		V_TwoSided,			///Vertex2D normals are flipped to match velocity	
+		V_TwoSidedLiftDrag, ///Vertex2D normals are flipped to match velocity and lift and drag forces are applied
+		V_OneSided,			///Vertex2D normals are taken as it is	
 		F_TwoSided,			///Face normals are flipped to match velocity
 		F_TwoSidedLiftDrag,	///Face normals are flipped to match velocity and lift and drag forces are applied 
 		F_OneSided,			///Face normals are taken as it is		
@@ -139,7 +139,7 @@ public:
 		CL_RS	=	0x0002, ///Cluster vs convex rigid vs soft
 
 		SVSmask	=	0x0030,	///Rigid versus soft mask		
-		VF_SS	=	0x0010,	///Vertex vs face soft vs soft handling
+		VF_SS	=	0x0010,	///Vertex2D vs face soft vs soft handling
 		CL_SS	=	0x0020, ///Cluster vs cluster soft vs soft handling
 		CL_SELF =	0x0040, ///Cluster soft body self collision
 		/* presets	*/ 

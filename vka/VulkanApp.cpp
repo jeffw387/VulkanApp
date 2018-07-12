@@ -1,3 +1,5 @@
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include "VulkanApp.hpp"
 
 namespace vka
@@ -5,13 +7,10 @@ namespace vka
 	void VulkanApp::CleanUpSwapchain()
 	{
 		vkDeviceWaitIdle(device);
-		for (const auto& fb : framebuffers)
+		for (const auto& imageResources : perImageResources)
 		{
-			deviceOptional->DestroyFramebuffer(fb);
-		}
-		for (const auto& view : framebufferImageViews)
-		{
-			deviceOptional->DestroyImageView(view);
+			deviceOptional->DestroyFramebuffer(imageResources.swap.framebuffer);
+			deviceOptional->DestroyImageView(imageResources.swap.view);
 		}
 		deviceOptional->DestroySwapchain(swapchain);
 	}
@@ -22,35 +21,57 @@ namespace vka
 			deviceOptional->CreateSwapchain(
 				surface,
 				surfaceFormat,
-				jsonConfigs.swapchainConfig),
-			jsonConfigs.swapchainConfig,
+				configs.swapchain),
+			configs.swapchain,
 			swapchains);
 
 		uint32_t swapImageCount;
 		vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, nullptr);
-		framebufferImages.resize(swapImageCount);
-		framebufferImageViews.resize(swapImageCount);
-		framebuffers.resize(swapImageCount);
-		vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, framebufferImages.data());
+		std::vector<VkImage> swapImages;
+		swapImages.resize(BufferCount);
+		vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, swapImages.data());
 
-		for (auto i = 0U; i < swapImageCount; ++i)
+		for (auto i = 0U; i < BufferCount; ++i)
 		{
-			auto& fbImage = framebufferImages[i];
-			auto& fbView = framebufferImageViews[i];
-			auto& fb = framebuffers[i];
+			auto& fbImage = perImageResources[i].swap.image;
+			auto& fbView = perImageResources[i].swap.view;
+			auto& fb = perImageResources[i].swap.framebuffer;
 
+			fbImage = swapImages[i];
 			fbView = deviceOptional->CreateColorImageView2D(fbImage, surfaceFormat.format);
-			fb = deviceOptional->CreateFramebuffer(renderPass, surfaceOptional->GetExtent(), fbView);
+			fb = deviceOptional->CreateFramebuffer(renderPass, surfaceExtent, fbView);
 		}
 	}
 
 	void VulkanApp::CreateSurface()
 	{
-		surfaceOptional = SurfaceManager(instance, physicalDevice, window);
-		surface = surfaceOptional->GetSurface();
+		VkSurfaceKHR surface;
+		glfwCreateWindowSurface(instance, window, nullptr, &surface);
+		surfaceUnique = VkSurfaceKHRUnique(surface, VkSurfaceKHRDeleter(instance));
+
+		
 	}
 
-	void VulkanApp::Run(std::string vulkanInitJsonPath, std::string vertexShaderPath, std::string fragmentShaderPath)
+	void VulkanApp::UpdateSurfaceSize()
+	{
+		VkSurfaceCapabilitiesKHR surfaceCapabilities;
+		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
+
+		surfaceExtent = surfaceCapabilities.currentExtent;
+
+		viewport.x = 0.f;
+		viewport.y = 0.f;
+		viewport.width = static_cast<float>(surfaceExtent.width);
+		viewport.height = static_cast<float>(surfaceExtent.height);
+		viewport.minDepth = 0.f;
+		viewport.maxDepth = 1.f;
+
+		scissorRect.offset.x = 0;
+		scissorRect.offset.y = 0;
+		scissorRect.extent = surfaceExtent;
+	}
+
+	void VulkanApp::Run(std::string vulkanInitJsonPath)
 	{
 		json vulkanInitData = json::parse(fileIO::readFile(vulkanInitJsonPath));
 		VulkanLibrary = LoadVulkanLibrary();
@@ -161,14 +182,15 @@ namespace vka
 		instanceCreateInfo.enabledExtensionCount = gsl::narrow<uint32_t>(instanceExtensionsCstrings.size());
 		instanceCreateInfo.ppEnabledExtensionNames = instanceExtensionsCstrings.data();
 
-		jsonConfigs.swapchainConfig = LoadJson("config/swapchainConfig.json");
-		jsonConfigs.renderPass = LoadJson("config/renderPass.json");
-		jsonConfigs.fragmentShader2D = LoadJson("config/fragmentShader2D.json");
-		jsonConfigs.vertexShader2D = LoadJson("config/vertexShader2D.json");
-		jsonConfigs.fragmentDescriptorSetLayout2D = LoadJson("config/fragmentDescriptorSetLayout2D.json");
-		jsonConfigs.sampler2D = LoadJson("config/sampler2D.json");
-		jsonConfigs.pipelineLayout2D = LoadJson("config/pipelineLayout2D.json");
-		jsonConfigs.pipeline2D = LoadJson("config/pipeline2D.json");
+		configs.swapchain = LoadJson("config/swapchainConfig.json");
+		configs.renderPass = LoadJson("config/renderPass.json");
+
+		configs.c2D.sampler = LoadJson("config/2D/sampler.json");
+		configs.c2D.pipelineLayout = LoadJson("config/2D/pipelineLayout.json");
+		configs.c2D.pipeline = LoadJson("config/2D/pipeline.json");
+
+		configs.c3D.pipelineLayout = LoadJson("config/3D/pipelineLayout.json");
+		configs.c3D.pipeline = LoadJson("config/3D/pipeline.json");
 
 		instanceOptional = Instance(instanceCreateInfo);
 		instance = instanceOptional->GetInstance();
@@ -176,6 +198,9 @@ namespace vka
 		debugCallbackUnique = InitDebugCallback(instanceOptional->GetInstance());
 
 		physicalDevice = SelectPhysicalDevice(instance);
+		VkPhysicalDeviceProperties physicalDeviceProperties;
+		vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+		uniformBufferAlignment = physicalDeviceProperties.limits.minUniformBufferOffsetAlignment;
 
 		CreateSurface();
 
@@ -192,50 +217,47 @@ namespace vka
 		LoadModels();
 		LoadImages();
 
-		FinalizeImageOrder();
-		FinalizeSpriteOrder();
+		CreateVertexBuffers2D();
 
-		Create2DVertexBuffer();
-
-		sampler2D = StoreHandle(
-			deviceOptional->CreateSampler(jsonConfigs.sampler2D),
-			jsonConfigs.sampler2D,
+		data2D.sampler = StoreHandle(
+			deviceOptional->CreateSampler(configs.c2D.sampler),
+			configs.c2D.sampler,
 			samplers);
 
-		fragmentDescriptorSetLayout2D = StoreHandle(
+		data2D.fragmentDescriptorSetLayout = StoreHandle(
 			deviceOptional->CreateDescriptorSetLayout(
-				jsonConfigs.fragmentDescriptorSetLayout2D,
-				sampler2D),
-			jsonConfigs.fragmentDescriptorSetLayout2D,
+				configs.fragmentDescriptorSetLayout2D,
+				data2D.sampler),
+			configs.fragmentDescriptorSetLayout2D,
 			descriptorSetLayouts);
 
-		fragmentDescriptorPool2D = deviceOptional->CreateDescriptorPool(
-			jsonConfigs.fragmentDescriptorSetLayout2D,
+		data2D.fragmentDescriptorPool = deviceOptional->CreateDescriptorPool(
+			configs.fragmentDescriptorSetLayout2D,
 			1,
 			true);
 
 		auto fragmentDescriptorSets = deviceOptional->AllocateDescriptorSets(
-			fragmentDescriptorPool2D,
-			fragmentDescriptorSetLayout2D,
+			data2D.fragmentDescriptorPool,
+			data2D.fragmentDescriptorSetLayout,
 			1);
-		fragmentDescriptorSet2D = fragmentDescriptorSets.at(0);
+		data2D.fragmentDescriptorSet = fragmentDescriptorSets.at(0);
 
-		vertexShader2D = StoreHandle(
+		data2D.vertexShader = StoreHandle(
 			deviceOptional->CreateShaderModule(
-				jsonConfigs.vertexShader2D),
-			jsonConfigs.vertexShader2D,
+				configs.vertexShader2D),
+			configs.vertexShader2D,
 			shaderModules);
 
-		fragmentShader2D = StoreHandle(
+		data2D.fragmentShader = StoreHandle(
 			deviceOptional->CreateShaderModule(
-				jsonConfigs.fragmentShader2D),
-			jsonConfigs.fragmentShader2D,
+				configs.fragmentShader2D),
+			configs.fragmentShader2D,
 			shaderModules);
 
 		auto imageInfos = std::vector<VkDescriptorImageInfo>();
-		uint32_t imageCount = gsl::narrow<uint32_t>(images2D.size());
+		uint32_t imageCount = gsl::narrow<uint32_t>(data2D.images.size());
 		imageInfos.reserve(imageCount);
-		for (auto &imagePair : images2D)
+		for (auto &imagePair : data2D.images)
 		{
 			VkDescriptorImageInfo imageInfo = {};
 			imageInfo.sampler = VK_NULL_HANDLE;
@@ -247,7 +269,7 @@ namespace vka
 		VkWriteDescriptorSet samplerDescriptorWrite = {};
 		samplerDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		samplerDescriptorWrite.pNext = nullptr;
-		samplerDescriptorWrite.dstSet = fragmentDescriptorSet2D;
+		samplerDescriptorWrite.dstSet = data2D.fragmentDescriptorSet;
 		samplerDescriptorWrite.dstBinding = 1;
 		samplerDescriptorWrite.dstArrayElement = 0;
 		samplerDescriptorWrite.descriptorCount = gsl::narrow<uint32_t>(imageCount);
@@ -259,13 +281,12 @@ namespace vka
 		vkUpdateDescriptorSets(device, 1, &samplerDescriptorWrite, 0, nullptr);
 
 		renderCommandPool = deviceOptional->CreateCommandPool(graphicsQueueID, false, true);
-		renderCommandBuffers = deviceOptional->AllocateCommandBuffers(renderCommandPool, SurfaceManager::BufferCount);
-		renderCommandBufferExecutedFences.resize(SurfaceManager::BufferCount);
-		imageRenderedSemaphores.resize(SurfaceManager::BufferCount);
-		for (auto i = 0; i < SurfaceManager::BufferCount; ++i)
+		std::vector<VkCommandBuffer> renderCommandBuffers = 
+			deviceOptional->AllocateCommandBuffers(renderCommandPool, BufferCount);
+		for (auto i = 0; i < BufferCount; ++i)
 		{
-			renderCommandBufferExecutedFences[i] = deviceOptional->CreateFence(true);
-			imageRenderedSemaphores[i] = deviceOptional->CreateSemaphore();
+			perImageResources[i].renderCommandBufferExecutedFence = deviceOptional->CreateFence(true);
+			perImageResources[i].imageRenderedSemaphore = deviceOptional->CreateSemaphore();
 		}
 
 		SetClearColor(0.f, 0.f, 0.f, 0.f);
@@ -273,30 +294,30 @@ namespace vka
 		renderPass = StoreHandle(
 			deviceOptional->CreateRenderPass(
 				surfaceFormat,
-				jsonConfigs.renderPass),
-			jsonConfigs.renderPass,
+				configs.renderPass),
+			configs.renderPass,
 			renderPasses);
 
 		CreateSwapchain();
 
-		pipelineLayout2D = StoreHandle(
+		data2D.pipelineLayout = StoreHandle(
 			deviceOptional->CreatePipelineLayout(
-				fragmentDescriptorSetLayout2D,
-				jsonConfigs.pipelineLayout2D),
-			jsonConfigs.pipelineLayout2D,
+				data2D.fragmentDescriptorSetLayout,
+				configs.pipelineLayout2D),
+			configs.pipelineLayout2D,
 			pipelineLayouts);
 
 		std::map<VkShaderModule, gsl::span<gsl::byte>> specData;
-		specData[fragmentShader2D] = gsl::make_span((gsl::byte*)&imageCount, sizeof(uint32_t));
+		specData[data2D.fragmentShader] = gsl::make_span((gsl::byte*)&imageCount, sizeof(uint32_t));
 
-		pipeline2D = StoreHandle(
+		data2D.pipeline = StoreHandle(
 			deviceOptional->CreateGraphicsPipeline(
-				pipelineLayout2D,
+				data2D.pipelineLayout,
 				renderPass,
 				shaderModules,
 				specData,
-				jsonConfigs.pipeline2D),
-			jsonConfigs.pipeline2D,
+				configs.pipeline2D),
+			configs.pipeline2D,
 			pipelines);
 
 		startupTimePoint = NowMilliseconds();
@@ -328,7 +349,7 @@ namespace vka
 			buffers.push_back(fileIO::readFile(path + bufferFileName));
 		}
 
-		auto &model = models3D[fileName];
+		auto &model = data3D.models[fileName];
 
 		for (const auto &node : j["nodes"])
 		{
@@ -343,9 +364,11 @@ namespace vka
 		}
 	}
 
-	void VulkanApp::LoadImage2D(const HashType imageID, const Bitmap &bitmap)
+	void VulkanApp::CreateImage2D(
+		const HashType imageID, 
+		const Bitmap &bitmap)
 	{
-		images2D[imageID] = CreateImage2D(
+		data2D.images[imageID] = vka::CreateImage2D(
 			device,
 			utilityCommandBuffer,
 			utilityCommandFence,
@@ -355,74 +378,133 @@ namespace vka
 			deviceOptional->GetGraphicsQueue());
 	}
 
-	void VulkanApp::CreateSprite(const HashType imageID, const HashType spriteName, const Quad quad)
+	void VulkanApp::CreateSprite(
+		const HashType imageID, 
+		const HashType spriteName, 
+		const Quad quad)
 	{
 		Sprite sprite;
 		sprite.imageID = imageID;
 		sprite.quad = quad;
-		sprites2D[spriteName] = sprite;
+		data2D.sprites[spriteName] = sprite;
 	}
 
-	void VulkanApp::RenderSpriteInstance(
-		uint64_t spriteIndex,
-		glm::mat4 transform,
-		glm::vec4 color)
+	void VulkanApp::AcquireNextImage(VkFence & fence)
 	{
-		// TODO: may need to change sprites.at() access to array index access for performance
-		auto sprite = sprites2D.at(spriteIndex);
-		auto &renderCommandBuffer = renderCommandBuffers.at(nextImage);
-		auto vp = camera.getMatrix();
-		auto m = transform;
-		auto mvp = vp * m;
+		auto imagePresentedFence = imagePresentedFencePool.unpoolOrCreate(deviceOptional->CreateFence);
+		auto acquireResult = vkAcquireNextImageKHR(device, swapchain,
+			0, VK_NULL_HANDLE,
+			imagePresentedFence, &nextImage);
 
-		PushConstants pushConstants;
-		pushConstants.vertexPushConstants.mvp = mvp;
-		pushConstants.fragmentPushConstants.imageOffset = gsl::narrow<glm::uint32>(sprite.imageOffset);
-		pushConstants.fragmentPushConstants.color = color;
-
-		vkCmdPushConstants(
-			renderCommandBuffer,
-			pipelineLayout2D,
-			VK_SHADER_STAGE_VERTEX_BIT,
-			offsetof(PushConstants, vertexPushConstants),
-			sizeof(VertexPushConstants),
-			&pushConstants.vertexPushConstants);
-
-		vkCmdPushConstants(
-			renderCommandBuffer,
-			pipelineLayout2D,
-			VK_SHADER_STAGE_FRAGMENT_BIT,
-			offsetof(PushConstants, fragmentPushConstants),
-			sizeof(FragmentPushConstants),
-			&pushConstants.fragmentPushConstants);
-
-		// draw the sprite
-		vkCmdDraw(renderCommandBuffer, VerticesPerQuad, 1, gsl::narrow<uint32_t>(sprite.vertexOffset), 0);
-	}
-
-	void VulkanApp::RenderModelInstance(uint64_t modelIndex, glm::mat4 transform, glm::vec4 color)
-	{
-	}
-
-	void VulkanApp::FinalizeImageOrder()
-	{
-		auto imageOffset = 0;
-		for (auto &image : images2D)
+		auto successResult = HandleRenderErrors(acquireResult);
+		if (successResult == RenderResults::Return)
 		{
-			image.second.imageOffset = imageOffset;
-			++imageOffset;
+			imagePresentedFencePool.pool(imagePresentedFence);
+			return;
 		}
 	}
 
-	void VulkanApp::FinalizeSpriteOrder()
+	void VulkanApp::BeginRenderPass(const uint32_t & instanceCount)
 	{
-		auto spriteOffset = 0;
-		for (auto &[spriteID, sprite] : sprites2D)
+		VkFence imagePresentedFence = 0;
+		AcquireNextImage(imagePresentedFence);
+
+		auto renderCommandBufferExecutedFence = perImageResources[nextImage].renderCommandBufferExecutedFence;
+		auto renderCommandBuffer = perImageResources[nextImage].renderCommandBuffer;
+		auto framebuffer = perImageResources[nextImage].swap.framebuffer;
+
+
+
+		// Wait for this frame's render command buffer to finish executing
+		vkWaitForFences(device,
+			1,
+			&renderCommandBufferExecutedFence,
+			true, std::numeric_limits<uint64_t>::max());
+		vkResetFences(device, 1, &renderCommandBufferExecutedFence);
+
+		// record the command buffer
+		VkCommandBufferBeginInfo beginInfo = {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.pNext = nullptr;
+		beginInfo.flags = 0;
+		beginInfo.pInheritanceInfo = nullptr;
+		vkBeginCommandBuffer(renderCommandBuffer, &beginInfo);
+
+		VkRenderPassBeginInfo renderPassBeginInfo = {};
+		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		renderPassBeginInfo.pNext = nullptr;
+		renderPassBeginInfo.renderPass = renderPass;
+		renderPassBeginInfo.framebuffer = framebuffer;
+		renderPassBeginInfo.renderArea = scissorRect;
+		renderPassBeginInfo.clearValueCount = 1;
+		renderPassBeginInfo.pClearValues = &clearValue;
+		vkCmdBeginRenderPass(renderCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+	}
+
+	void VulkanApp::BindPipeline2D()
+	{
+		auto renderCommandBuffer = perImageResources[nextImage].renderCommandBuffer;
+		vkCmdBindPipeline(renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data2D.pipeline);
+
+		vkCmdSetViewport(renderCommandBuffer, 0, 1, &viewport);
+		vkCmdSetScissor(renderCommandBuffer, 0, 1, &scissorRect);
+
+		VkDeviceSize vertexBufferOffset = 0;
+		auto vertexBuffer = data2D.vertexBuffer.buffer.get();
+		vkCmdBindVertexBuffers(
+			renderCommandBuffer, 
+			0, 
+			1,
+			&vertexBuffer,
+			&vertexBufferOffset);
+
+		std::array<VkDescriptorSet, 2> sets = { data2D.fragmentDescriptorSet, data2D.vertexDescriptorSet };
+
+		// bind sampler and images uniforms
+		vkCmdBindDescriptorSets(
+			renderCommandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			data2D.pipelineLayout,
+			0,
+			2, 
+			sets.data(),
+			0, 
+			nullptr);
+	}
+
+	void VulkanApp::BindPipeline3D()
+	{
+	}
+
+	void VulkanApp::RenderModel(const uint64_t modelIndex, const glm::mat4 modelMatrix, const glm::vec4 modelColor)
+	{
+	}
+
+	void VulkanApp::EndRenderPass()
+	{
+	}
+
+	void VulkanApp::PresentImage()
+	{
+	}
+
+	void VulkanApp::PrepareRender(uint32_t instanceCount)
+	{
+		if (perImageResources[nextImage].uniforms.matrices.dynamic.capacity < instanceCount)
 		{
-			quads2D.push_back(sprite.quad);
-			sprite.vertexOffset = spriteOffset;
-			sprite.imageOffset = images2D[sprite.imageID].imageOffset;
-			++spriteOffset;
+			VkDeviceSize alignment = 0;
+			auto dynamicBufferSize = sizeof(glm::mat4) * 2;
+			if (dynamicBufferSize < uniformBufferAlignment)
+			{
+				alignment = uniformBufferAlignment;
+			}
+			else
+			{
+				auto multiple = (float)dynamicBufferSize / (float)uniformBufferAlignment;
+				alignment = (VkDeviceSize)std::ceil(multiple) * uniformBufferAlignment;
+			}
+			VkDeviceSize newSize = instanceCount * alignment;
+			CreateMatrixBuffer(nextImage, newSize);
 		}
 	}
 
@@ -504,39 +586,39 @@ namespace vka
 		return std::move(buffer);
 	}
 
-	void VulkanApp::Create2DVertexBuffer()
+	void VulkanApp::CreateVertexBuffers2D()
 	{
 		auto graphicsQueueFamilyID = deviceOptional->GetGraphicsQueueID();
 		auto graphicsQueue = deviceOptional->GetGraphicsQueue();
 
-		if (quads2D.size() == 0)
+		if (data2D.quads.size() == 0)
 		{
 			std::runtime_error("Error: no vertices loaded.");
 		}
 		// create vertex buffers
 
-		vertexBuffer2D = CreateVertexBufferStageData(device,
+		data2D.vertexBuffer = CreateVertexBufferStageData(device,
 			deviceOptional->GetAllocator(),
 			graphicsQueueFamilyID,
 			graphicsQueue,
-			quads2D,
+			data2D.quads,
 			BufferType::Vertex,
 			utilityCommandBuffer,
 			utilityCommandFence);
 	}
 
-	void VulkanApp::Create3DVertexBuffers()
+	void VulkanApp::CreateVertexBuffers3D()
 	{
 		auto graphicsQueueFamilyID = deviceOptional->GetGraphicsQueueID();
 		auto graphicsQueue = deviceOptional->GetGraphicsQueue();
 
-		if (models3D.size() == 0)
+		if (data3D.models.size() == 0)
 		{
 			std::runtime_error("Error: no vertices loaded.");
 		}
 		size_t indexCount = 0;
 		size_t vertexCount = 0;
-		for (auto &[id, model] : models3D)
+		for (auto &[id, model] : data3D.models)
 		{
 			model.full.firstIndex = indexCount;
 			model.full.firstVertex = vertexCount;
@@ -546,50 +628,67 @@ namespace vka
 			indexCount += newIndicesCount;
 			vertexCount += newVerticesCount;
 
-			vertexIndices3D.insert(std::end(vertexIndices3D),
+			data3D.vertexIndices.insert(std::end(data3D.vertexIndices),
 				model.full.indices.begin(),
 				model.full.indices.end());
 
-			vertexPositions3D.insert(std::end(vertexPositions3D),
+			data3D.vertexPositions.insert(std::end(data3D.vertexPositions),
 				model.full.positions.begin(),
 				model.full.positions.end());
 
-			vertexNormals3D.insert(std::end(vertexNormals3D),
+			data3D.vertexNormals.insert(std::end(data3D.vertexNormals),
 				model.full.normals.begin(),
 				model.full.normals.end());
 		}
 
-		auto indexBufferSize = vertexIndices3D.size() * sizeof(IndexType);
-		auto positionBufferSize = vertexPositions3D.size() * sizeof(PositionType);
-		auto normalBufferSize = vertexNormals3D.size() * sizeof(NormalType);
+		auto indexBufferSize = data3D.vertexIndices.size() * sizeof(IndexType);
+		auto positionBufferSize = data3D.vertexPositions.size() * sizeof(PositionType);
+		auto normalBufferSize = data3D.vertexNormals.size() * sizeof(NormalType);
 		auto& allocator = deviceOptional->GetAllocator();
 
-		indexBuffer3D = CreateVertexBufferStageData<IndexType>(device,
+		data3D.indexBuffer = CreateVertexBufferStageData<IndexType>(device,
 			allocator,
 			graphicsQueueFamilyID,
 			graphicsQueue,
-			vertexIndices3D,
+			data3D.vertexIndices,
 			BufferType::Index,
 			utilityCommandBuffer,
 			utilityCommandFence);
 
-		positionBuffer3D = CreateVertexBufferStageData<PositionType>(device,
+		data3D.positionBuffer = CreateVertexBufferStageData<PositionType>(device,
 			allocator,
 			graphicsQueueFamilyID,
 			graphicsQueue,
-			vertexPositions3D,
+			data3D.vertexPositions,
 			BufferType::Vertex,
 			utilityCommandBuffer,
 			utilityCommandFence);
 
-		normalBuffer3D = CreateVertexBufferStageData<NormalType>(device,
+		data3D.normalBuffer = CreateVertexBufferStageData<NormalType>(device,
 			allocator,
 			graphicsQueueFamilyID,
 			graphicsQueue,
-			vertexNormals3D,
+			data3D.vertexNormals,
 			BufferType::Vertex,
 			utilityCommandBuffer,
 			utilityCommandFence);
+	}
+
+	void VulkanApp::CreateMatrixBuffer(size_t imageIndex, VkDeviceSize newSize)
+	{
+		VkMemoryPropertyFlags memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		if (deviceOptional->HostDeviceCombined())
+		{
+			memProps |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		}
+		perImageResources[imageIndex].uniforms.matrices.dynamic.buffer = CreateBufferUnique(
+			device,
+			deviceOptional->GetAllocator(),
+			newSize,
+			VkBufferUsageFlagBits::VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			deviceOptional->GetGraphicsQueueID(),
+			memProps,
+			false);
 	}
 
 	void VulkanApp::SetClearColor(float r, float g, float b, float a)
@@ -617,29 +716,32 @@ namespace vka
 			}
 			try
 			{
+				VkFence imagePresentedFence = 0;
+				AcquireNextImage(nextImage, imagePresentedFence);
 				FrameRender(
 					device,
 					nextImage,
 					swapchain,
-					imagePresentedFencePool,
-					[this]() { return deviceOptional->CreateFence(false); },
-					renderCommandBuffers,
-					renderCommandBufferExecutedFences,
-					framebuffers,
+					imagePresentedFence,
+					perImageResources[nextImage].renderCommandBuffer,
+					perImageResources[nextImage].renderCommandBufferExecutedFence,
+					perImageResources[nextImage].swap.framebuffer,
+					perImageResources[nextImage].imageRenderedSemaphore,
 					[this]() { Draw(); },
-					imageRenderedSemaphores,
 					renderPass,
-					fragmentDescriptorSet2D,
-					pipelineLayout2D,
-					pipelineLayout3D,
-					pipeline2D,
-					pipeline3D,
-					vertexBuffer2D.buffer.get(),
-					indexBuffer3D.buffer.get(),
-					positionBuffer3D.buffer.get(),
-					normalBuffer3D.buffer.get(),
+					data2D.fragmentDescriptorSet,
+					data2D.vertexDescriptorSet,
+					data3D.vertexDescriptorSet,
+					data2D.pipelineLayout,
+					data3D.pipelineLayout,
+					data2D.pipeline,
+					data3D.pipeline,
+					data2D.vertexBuffer.buffer.get(),
+					data3D.indexBuffer.buffer.get(),
+					data3D.positionBuffer.buffer.get(),
+					data3D.normalBuffer.buffer.get(),
 					deviceOptional->GetGraphicsQueue(),
-					surfaceOptional->GetExtent(),
+					surfaceExtent,
 					clearValue);
 			}
 			catch (Results::ErrorDeviceLost)
@@ -649,18 +751,21 @@ namespace vka
 			catch (Results::ErrorSurfaceLost)
 			{
 				CreateSurface();
+				UpdateSurfaceSize();
 				CleanUpSwapchain();
 				CreateSwapchain();
 				UpdateCameraSize();
 			}
 			catch (Results::Suboptimal)
 			{
+				UpdateSurfaceSize();
 				CleanUpSwapchain();
 				CreateSwapchain();
 				UpdateCameraSize();
 			}
 			catch (Results::ErrorOutOfDate)
 			{
+				UpdateSurfaceSize();
 				CleanUpSwapchain();
 				CreateSwapchain();
 				UpdateCameraSize();
@@ -670,7 +775,6 @@ namespace vka
 
 	void VulkanApp::UpdateCameraSize()
 	{
-		auto &extent = surfaceOptional->GetExtent();
-		camera.setSize(glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)));
+		camera.setSize(glm::vec2(static_cast<float>(surfaceExtent.width), static_cast<float>(surfaceExtent.height)));
 	}
 } // namespace vka

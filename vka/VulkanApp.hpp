@@ -1,9 +1,7 @@
 #pragma once
-
-#undef max
-#undef min
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "VulkanFunctionLoader.hpp"
@@ -13,7 +11,6 @@
 #include "Input.hpp"
 #include "Instance.hpp"
 #include "Device.hpp"
-#include "Surface.hpp"
 #include "Image2D.hpp"
 #include "Bitmap.hpp"
 #include "Sprite.hpp"
@@ -30,7 +27,6 @@
 #include "Results.hpp"
 #include "Debug.hpp"
 #include "Pool.hpp"
-#include "entt.hpp"
 #include "GLTF.hpp"
 #include "gsl.hpp"
 
@@ -68,24 +64,12 @@ namespace vka
 	using IndexType = uint8_t;
 	using PositionType = glm::vec3;
 	using NormalType = glm::vec3;
-	constexpr size_t MaxLights = 3;
-
-	struct VertexPushConstants
-	{
-		glm::mat4 mvp;
-	};
+	constexpr size_t MaxLights = 3U;
+	constexpr size_t BufferCount = 3U;
 
 	struct FragmentPushConstants
 	{
-		glm::uint32 imageOffset;
-		glm::vec3 padding;
 		glm::vec4 color;
-	};
-
-	struct PushConstants
-	{
-		VertexPushConstants vertexPushConstants;
-		FragmentPushConstants fragmentPushConstants;
 	};
 
 	class VulkanApp
@@ -104,106 +88,111 @@ namespace vka
 		std::optional<Instance> instanceOptional;
 		VkDebugReportCallbackEXTUnique debugCallbackUnique;
 		VkPhysicalDevice physicalDevice;
-		std::optional<SurfaceManager> surfaceOptional;
+		VkSurfaceKHRUnique surfaceUnique;
 		VkSurfaceKHR surface;
+		VkExtent2D surfaceExtent;
+		VkViewport viewport;
+		VkRect2D scissorRect;
 		std::optional<DeviceManager> deviceOptional;
 		VkDevice device;
 
-		struct
-		{
+		struct {
+			struct {
+				json sampler;
+				json pipelineLayout;
+				json pipeline;
+			} c2D;
+			struct {
+				json pipelineLayout;
+				json pipeline;
+			} c3D;
 			json renderPass;
-			json swapchainConfig;
-			json fragmentShader2D;
-			json vertexShader2D;
-			json fragmentDescriptorSetLayout2D;
-			json sampler2D;
-			json pipelineLayout2D;
-			json pipeline2D;
-			json vertexShader3D;
-			json fragmentShader3D;
-			json vertexDescriptorSetLayout3D;
-			json pipelineLayout3D;
-			json pipeline3D;
-		} jsonConfigs;
-
-		std::map<std::string, VkRenderPass> renderPasses;
-		std::map<std::string, VkSwapchainKHR> swapchains;
-		std::map<std::string, VkSampler> samplers;
-		std::map<std::string, VkShaderModule> shaderModules;
-		std::map<std::string, VkDescriptorSetLayout> descriptorSetLayouts;
-		std::map<std::string, VkPipelineLayout> pipelineLayouts;
-		std::map<std::string, VkPipeline> pipelines;
+			json swapchain;
+		} configs;
 
 		VkSurfaceFormatKHR surfaceFormat;
 		VkRenderPass renderPass;
 		VkSwapchainKHR swapchain;
-		std::vector<VkFramebuffer> framebuffers;
-		std::vector<VkImage> framebufferImages;
-		std::vector<VkImageView> framebufferImageViews;
 
-		VkSampler sampler2D;
-		VkShaderModule vertexShader2D;
-		VkDescriptorSetLayout fragmentDescriptorSetLayout2D;
-		VkDescriptorPool fragmentDescriptorPool2D;
-		VkDescriptorSet fragmentDescriptorSet2D;
-		VkShaderModule fragmentShader2D;
-		VkPipelineLayout pipelineLayout2D;
-		VkPipeline pipeline2D;
+		struct {
+			VkSampler sampler;
+			VkDescriptorSetLayout staticDescriptorSetLayout;
+			VkDescriptorPool staticDescriptorPool;
+			VkDescriptorSet staticDescriptorSet;
+			VkDescriptorSetLayout dynamicDescriptorSetLayout;
+			VkDescriptorPool dynamicDescriptorPool;
+			VkDescriptorSet dynamicDescriptorSet;
+			VkShaderModule vertexShader;
+			VkShaderModule fragmentShader;
+			VkPipelineLayout pipelineLayout;
+			VkPipeline pipeline;
+			std::map<uint64_t, UniqueImage2D> images;
+			std::map<uint64_t, Sprite> sprites;
+			std::vector<Quad> quads;
+			UniqueAllocatedBuffer vertexBuffer;
+		} data2D;
 
-		VkShaderModule vertexShader3D;
-		VkShaderModule fragmentShader3D;
-		VkPipelineLayout pipelineLayout3D;
-		VkPipeline pipeline3D;
+		struct {
+			std::map<uint64_t, Model> models;
+			std::vector<IndexType> vertexIndices;
+			std::vector<PositionType> vertexPositions;
+			std::vector<NormalType> vertexNormals;
+			UniqueAllocatedBuffer indexBuffer;
+			UniqueAllocatedBuffer positionBuffer;
+			UniqueAllocatedBuffer normalBuffer;
+			VkDescriptorSetLayout staticDescriptorSetLayout;
+			VkDescriptorPool staticDescriptorPool;
+			VkDescriptorSet staticDescriptorSet;
+			VkDescriptorSetLayout dynamicDescriptorSetLayout;
+			VkDescriptorPool dynamicDescriptorPool;
+			VkDescriptorSet dynamicDescriptorSet; 
+			VkShaderModule vertexShader;
+			VkShaderModule fragmentShader;
+			VkPipelineLayout pipelineLayout;
+			VkPipeline pipeline;
+		} data3D;
 
 		VkCommandPool utilityCommandPool;
 		VkCommandBuffer utilityCommandBuffer;
 		VkFence utilityCommandFence;
 
-		std::map<uint64_t, Sprite> sprites2D;
-		std::map<uint64_t, Model> models3D;
-		std::vector<IndexType> vertexIndices3D;
-		std::vector<PositionType> vertexPositions3D;
-		std::vector<NormalType> vertexNormals3D;
-		UniqueAllocatedBuffer indexBuffer3D;
-		UniqueAllocatedBuffer positionBuffer3D;
-		UniqueAllocatedBuffer normalBuffer3D;
-
-		struct DynamicMatrices
+		struct PerImageResources
 		{
-			glm::mat4 M;
-			glm::mat4 MVP;
+			struct {
+				struct {
+					struct {
+						UniqueAllocatedBuffer buffer;
+						size_t count;
+						size_t capacity;
+					} dynamic;
+					struct {
+						UniqueAllocatedBuffer buffer;
+					} fixed;
+				} matrices;
+				struct {
+					UniqueAllocatedBuffer buffer;
+				} lights;
+			} uniforms;
+			struct {
+				VkImage image;
+				VkImageView view;
+				VkFramebuffer framebuffer;
+
+			} swap;
+			VkCommandBuffer renderCommandBuffer;
+			VkFence renderCommandBufferExecutedFence;
+			VkSemaphore imageRenderedSemaphore;
 		};
-
-		std::vector<DynamicMatrices> dynamicMatrices;
-		struct {
-			glm::mat4 V;
-			glm::mat4 P;
-		} matrices;
-		UniqueAllocatedBuffer dynamicUniformMatrixBuffer3D;
-		UniqueAllocatedBuffer uniformMatrixBuffer3D;
-
-		std::array<glm::vec4, MaxLights> lightPositions_WorldSpace;
-		std::array<glm::vec4, MaxLights> lightColors;
-		UniqueAllocatedBuffer uniformLightBuffer3D;
-
-		std::map<uint64_t, UniqueImage2D> images2D;
-		std::vector<Quad> quads2D;
-		UniqueAllocatedBuffer vertexBuffer2D;
-
+		std::array<PerImageResources, BufferCount> perImageResources;
+		VkDeviceSize uniformBufferAlignment;
 		VkCommandPool renderCommandPool;
-		std::vector<VkCommandBuffer> renderCommandBuffers;
-		std::vector<VkFence> renderCommandBufferExecutedFences;
-		std::vector<VkSemaphore> imageRenderedSemaphores;
 		Pool<VkFence> imagePresentedFencePool;
 		uint32_t nextImage;
-
 		VkClearValue clearValue;
 
 		CircularQueue<InputMessage, 500> inputBuffer;
-
 		InputBindMap inputBindMap;
 		InputStateMap inputStateMap;
-
 		double cursorX;
 		double cursorY;
 
@@ -218,41 +207,43 @@ namespace vka
 
 		void CreateSurface();
 
-		void Run(std::string vulkanInitJsonPath, std::string vertexShaderPath, std::string fragmentShaderPath);
+		void UpdateSurfaceSize();
+
+		void Run(std::string vulkanInitJsonPath);
 
 		void LoadModelFromFile(std::string path, entt::HashedString fileName);
 
-		void LoadImage2D(const HashType imageID, const Bitmap &bitmap);
+		void CreateImage2D(const HashType imageID, const Bitmap &bitmap);
 
 		void CreateSprite(const HashType imageID, const HashType spriteName, const Quad quad);
 
-		void RenderSpriteInstance(
-			uint64_t spriteIndex,
-			glm::mat4 transform,
-			glm::vec4 color);
+		void BeginRenderPass(const uint32_t& instanceCount);
 
-		void RenderModelInstance(
-			uint64_t modelIndex,
-			glm::mat4 transform,
-			glm::vec4 color);
+		void BindPipeline2D();
+
+		void BindPipeline3D();
+
+		void RenderModel(const uint64_t modelIndex, const glm::mat4 modelMatrix, const glm::vec4 modelColor);
+
+		void EndRenderPass();
+
+		void PresentImage();
 
 	private:
-		void FinalizeImageOrder();
+		void AcquireNextImage(VkFence& fence);
 
-		void FinalizeSpriteOrder();
+		void CreateVertexBuffers2D();
 
-		void Create2DVertexBuffer();
+		void CreateVertexBuffers3D();
 
-		void Create3DVertexBuffers();
-
-		void UpdateMatrixBuffers();
+		void CreateMatrixBuffer(size_t imageIndex, VkDeviceSize newSize);
 
 		void SetClearColor(float r, float g, float b, float a);
 
 		void GameThread();
 
 		void UpdateCameraSize();
-	};
+};
 
 	enum class RenderResults
 	{
@@ -289,18 +280,20 @@ namespace vka
 		return RenderResults::Continue;
 	}
 
-	static void FrameRender(const VkDevice& device,
+	static void FrameRender(
+		const VkDevice& device,
 		uint32_t& nextImage,
 		const VkSwapchainKHR& swapchain,
-		Pool<VkFence>& fencePool,
-		std::function<VkFence()> fenceCreateFunc,
-		const std::vector<VkCommandBuffer>& renderCommandBuffers,
-		const std::vector<VkFence>& renderCommandBufferExecutedFences,
-		const std::vector<VkFramebuffer> framebuffers,
+		const VkFence& imagePresentedFence,
+		const VkCommandBuffer& renderCommandBuffer,
+		const VkFence& renderCommandBufferExecutedFence,
+		const VkFramebuffer& framebuffer,
+		const VkSemaphore& imageRenderedSemaphore,
 		std::function<void()> drawFunc,
-		const std::vector<VkSemaphore>& imageRenderedSemaphores,
 		const VkRenderPass& renderPass,
 		const VkDescriptorSet& fragmentDescriptorSet2D,
+		const VkDescriptorSet& vertexDescriptorSet2D,
+		const VkDescriptorSet& vertexDescriptorSet3D,
 		const VkPipelineLayout& pipelineLayout2D,
 		const VkPipelineLayout& pipelineLayout3D,
 		const VkPipeline& pipeline2D,
@@ -313,24 +306,6 @@ namespace vka
 		const VkExtent2D& extent,
 		const VkClearValue& clearValue)
 	{
-		auto imagePresentedFence = fencePool.unpoolOrCreate(fenceCreateFunc);
-		auto acquireResult = vkAcquireNextImageKHR(device, swapchain,
-			0, VK_NULL_HANDLE,
-			imagePresentedFence, &nextImage);
-
-		auto successResult = HandleRenderErrors(acquireResult);
-		if (successResult == RenderResults::Return)
-		{
-			fencePool.pool(imagePresentedFence);
-			return;
-		}
-
-		// frame-dependent resources
-		auto renderCommandBuffer = renderCommandBuffers[nextImage];
-		auto renderCommandBufferExecutedFence = renderCommandBufferExecutedFences[nextImage];
-		auto framebuffer = framebuffers.at(nextImage);
-		auto imageRenderedSemaphore = imageRenderedSemaphores[nextImage];
-
 		VkViewport viewport = {};
 		viewport.x = 0.f;
 		viewport.y = 0.f;
@@ -529,5 +504,18 @@ namespace vka
 	// 	void LoadFont(Text::FontID fontID, Text::FontSize fontSize, uint32_t DPI, const char * fontPath);
 	// 	std::vector<Sprite> createTextGroup(const Text::InitInfo & initInfo);
 	// };
+
+	template<typename ...Ts, typename ViewT>
+	inline void VulkanApp::RenderModelInstances(const ViewT & view)
+	{
+		auto count = view.size();
+		for (const auto& entity : view)
+		{
+			const auto&[t, c, m] = view.get<Ts...>(entity);
+			const glm::mat4& transform = t;
+			const glm::vec4& color = c;
+			const uint64_t& modelIndex = m;
+		}
+	}
 
 } // namespace vka

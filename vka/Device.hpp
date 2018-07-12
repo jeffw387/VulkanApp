@@ -49,6 +49,7 @@ namespace vka
 			deviceExtensions(deviceExtensions),
 			surface(surface)
 		{
+			CheckMemoryLocality();
 			CreateDevice();
 			CreateAllocator();
 		}
@@ -57,6 +58,8 @@ namespace vka
 		{
 			return physicalDevice;
 		}
+
+		bool HostDeviceCombined() { return hostDeviceCombined; }
 
 		VkDevice GetDevice()
 		{
@@ -858,6 +861,7 @@ namespace vka
 		VkPhysicalDevice physicalDevice;
 		std::vector<const char*> deviceExtensions;
 		VkSurfaceKHR surface;
+		bool hostDeviceCombined;
 
 		std::vector<VkQueueFamilyProperties> queueFamilyProperties;
 		VkDeviceQueueCreateInfo graphicsQueueCreateInfo;
@@ -982,8 +986,23 @@ namespace vka
 			{
 				vkGetDeviceQueue(device, presentQueueID, 0, &presentQueue);
 			}
+		}
 
-			CreateAllocator();
+		void CheckMemoryLocality()
+		{
+			VkPhysicalDeviceMemoryProperties properties = {};
+			vkGetPhysicalDeviceMemoryProperties(physicalDevice, &properties);
+			for (uint32_t i = 0; i < properties.memoryTypeCount; ++i)
+			{
+				const auto& memType = properties.memoryTypes[i];
+				auto memoryLocalityFlags = VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+					VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+				if (memType.propertyFlags & memoryLocalityFlags)
+				{
+					hostDeviceCombined = true;
+					return;
+				}
+			}
 		}
 
 		void CreateAllocator()

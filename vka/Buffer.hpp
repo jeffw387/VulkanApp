@@ -13,15 +13,17 @@ struct UniqueAllocatedBuffer
     VkBufferUnique buffer;
     UniqueAllocationHandle allocation;
     VkBufferCreateInfo bufferCreateInfo;
+	void* mapPtr;
 };
 
-static UniqueAllocatedBuffer CreateBufferUnique(VkDevice device,
-                                                Allocator &allocator,
-                                                VkDeviceSize size,
-                                                VkBufferUsageFlags usageFlags,
-                                                uint32_t queueFamilyIndex,
-                                                VkMemoryPropertyFlags memoryFlags,
-                                                bool DedicatedAllocation)
+static UniqueAllocatedBuffer CreateBufferUnique(
+	VkDevice device,
+	Allocator &allocator,
+    VkDeviceSize size,
+    VkBufferUsageFlags usageFlags,
+    uint32_t queueFamilyIndex,
+    VkMemoryPropertyFlags memoryFlags,
+    bool DedicatedAllocation)
 {
     UniqueAllocatedBuffer allocatedBuffer;
     allocatedBuffer.bufferCreateInfo = {};

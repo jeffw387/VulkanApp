@@ -1,13 +1,12 @@
 #pragma once
 #include "glm/glm.hpp"
 #include "Image2D.hpp"
-#include "entt.hpp"
 #include "Vertex.hpp"
 
 namespace vka
 {
 	constexpr auto VerticesPerQuad = 6U;
-	using QuadVertices = std::array<Vertex, VerticesPerQuad>;
+	using QuadVertices = std::array<Vertex2D, VerticesPerQuad>;
 
 	struct Quad
 	{
@@ -17,7 +16,7 @@ namespace vka
 	static Quad MakeQuad(float left, float top, float right, float bottom, float leftUV, float topUV, float rightUV, float bottomUV)
 	{
 		Quad quad;
-		Vertex LT, LB, RB, RT;
+		Vertex2D LT, LB, RB, RT;
 		LT.Position = glm::vec2(left, top);
 		LT.UV = glm::vec2(leftUV, topUV);
 
@@ -70,7 +69,7 @@ namespace vka
 			RightBottomUV = { rightUV, bottomUV };
 			RightTopUV    = { rightUV, topUV };
 
-			Vertex LeftTop, LeftBottom, RightBottom, RightTop;
+			Vertex2D LeftTop, LeftBottom, RightBottom, RightTop;
 			LeftTop 	= { LeftTopPos,		LeftTopUV 		};
 			LeftBottom  = { LeftBottomPos,	LeftBottomUV 	};
 			RightBottom = { RightBottomPos,	RightBottomUV 	};

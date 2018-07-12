@@ -1,0 +1,18 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/samplerConfig.schema.json",
+    "addressModeU": 0,
+    "addressModeV": 0,
+    "addressModeW": 0,
+    "anisotropyEnable": false,
+    "borderColor": 0,
+    "compareEnable": false,
+    "compareOp": 0,
+    "minFilter": 1,
+    "magFilter": 1,
+    "mipmapMode": 1,
+    "maxAnisotropy": 16,
+    "minLod": 0,
+    "maxLod": 0,
+    "mipLodBias": 0,
+    "unnormalizedCoordinates": false
+}

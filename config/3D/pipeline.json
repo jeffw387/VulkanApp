@@ -1,35 +1,6 @@
 {
     "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/pipelineConfig.schema.json",
-    "shaderStageConfigs": [
-        {
-            "stage": 1,
-            "name": "main",
-            "module": {
-                "path": "shaders/3D/vert.spv"
-            },
-            "specializationMapEntries": [
-                {
-                    "constantID": 0,
-                    "offset": 0,
-                    "size": 4
-                }
-            ]
-        },
-        {
-            "stage": 16,
-            "name": "main",
-            "module": {
-                "path": "shaders/3D/frag.spv"    
-            },
-            "specializationMapEntries": [
-                {
-                    "constantID": 0,
-                    "offset": 0,
-                    "size": 4
-                }
-            ]
-        }
-    ],
+    "shaderStageConfigs": [],
     "vertexInputConfig": {
         "vertexAttributeDescriptions": [
             {

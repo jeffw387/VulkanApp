@@ -15,7 +15,7 @@ file(MAKE_DIRECTORY ${ShaderOutput})
 set(shaderGroup 2D 3D)
 set(shaderStages vert frag)
 foreach(stage ${shaderStages})
-	foreach(group ShaderGroup)
+	foreach(group ${ShaderGroup})
 		add_custom_target(${stage}Shader${group}
 			COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V 
 				shader.${stage} -o ${ShaderOutput}/${group}
@@ -84,3 +84,7 @@ set(USE_MSVC_RUNTIME_LIBRARY_DLL ON)
 add_subdirectory(${bullet_DIR})
 find_package(bullet CONFIG REQUIRED COMPONENTS BulletDynamics BulletCollision)
 target_link_libraries(VulkanApp PRIVATE BULLET_PHYSICS::BulletDynamics BULLET_PHYSICS::BulletCollision)
+
+add_library(boostGraph INTERFACE)
+target_include_directories(boostGraph INTERFACE subprojects/boost)
+target_link_libraries(VulkanApp PRIVATE boostGraph)

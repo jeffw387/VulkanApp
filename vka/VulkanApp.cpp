@@ -17,13 +17,10 @@ namespace vka
 
 	void VulkanApp::CreateSwapchain()
 	{
-		swapchain = StoreHandle(
-			deviceOptional->CreateSwapchain(
-				surface,
-				surfaceFormat,
-				configs.swapchain),
-			configs.swapchain,
-			swapchains);
+		swapchain = deviceOptional->CreateSwapchain(
+			surface,
+			surfaceFormat,
+			configs.swapchain);
 
 		uint32_t swapImageCount;
 		vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, nullptr);
@@ -219,34 +216,43 @@ namespace vka
 
 		CreateVertexBuffers2D();
 
-		data2D.sampler = StoreHandle(
-			deviceOptional->CreateSampler(configs.c2D.sampler),
-			configs.c2D.sampler,
-			samplers);
+		data2D.sampler = deviceOptional->CreateSampler(configs.c2D.sampler);
 
-		data2D.fragmentDescriptorSetLayout = StoreHandle(
-			deviceOptional->CreateDescriptorSetLayout(
-				configs.fragmentDescriptorSetLayout2D,
-				data2D.sampler),
-			configs.fragmentDescriptorSetLayout2D,
-			descriptorSetLayouts);
+		data2D.staticDescriptorSetLayout = deviceOptional->CreateDescriptorSetLayout(
+			configs.c2D.pipelineLayout["descriptorSetLayouts"][0],
+			data2D.sampler);
 
-		data2D.fragmentDescriptorPool = deviceOptional->CreateDescriptorPool(
-			configs.fragmentDescriptorSetLayout2D,
+		data2D.staticDescriptorPool = deviceOptional->CreateDescriptorPool(
+			configs.c2D.pipelineLayout["descriptorSetLayouts"][0],
 			1,
 			true);
 
-		auto fragmentDescriptorSets = deviceOptional->AllocateDescriptorSets(
-			data2D.fragmentDescriptorPool,
-			data2D.fragmentDescriptorSetLayout,
+		auto staticDescriptorSets = deviceOptional->AllocateDescriptorSets(
+			data2D.staticDescriptorPool,
+			data2D.staticDescriptorSetLayout,
 			1);
-		data2D.fragmentDescriptorSet = fragmentDescriptorSets.at(0);
+		data2D.staticDescriptorSet = staticDescriptorSets.at(0);
 
-		data2D.vertexShader = StoreHandle(
-			deviceOptional->CreateShaderModule(
-				configs.vertexShader2D),
-			configs.vertexShader2D,
-			shaderModules);
+		data2D.dynamicDescriptorSetLayout = deviceOptional->CreateDescriptorSetLayout(
+			configs.c2D.pipelineLayout["descriptorSetLayouts"][1],
+			data2D.sampler);
+
+		data2D.dynamicDescriptorPool = deviceOptional->CreateDescriptorPool(
+			configs.c2D.pipelineLayout["descriptorSetLayouts"][1],
+			1,
+			true);
+
+		auto dynamicDescriptorSets = deviceOptional->AllocateDescriptorSets(
+			data2D.dynamicDescriptorPool,
+			data2D.dynamicDescriptorSetLayout,
+			1);
+		data2D.dynamicDescriptorSet = dynamicDescriptorSets.at(0);
+
+		data2D.vertexShader = deviceOptional->CreateShaderModule(
+			configs.c2D.pipeline["shaderStageConfigs"][0]["module"]);
+
+		data2D.fragmentShader = deviceOptional->CreateShaderModule(
+			configs.c2D.pipeline["shaderStageConfigs"][1]["module"]);
 
 		data2D.fragmentShader = StoreHandle(
 			deviceOptional->CreateShaderModule(

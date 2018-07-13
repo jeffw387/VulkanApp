@@ -29,6 +29,7 @@
 #include "Pool.hpp"
 #include "GLTF.hpp"
 #include "gsl.hpp"
+#include "boost/graph/adjacency_list.hpp"
 
 #include <iostream>
 #include <map>
@@ -243,6 +244,37 @@ namespace vka
 		void GameThread();
 
 		void UpdateCameraSize();
+
+		enum class VulkanType
+		{
+			Instance,
+			PhysicalDevice,
+			Surface,
+			Device,
+			RenderPass,
+			Swapchain,
+			ShaderModule,
+			DescriptorSetLayout,
+			DescriptorPool,
+			DescriptorSet,
+			PushConstantRange,
+			PipelineLayout,
+			Pipeline,
+			CommandPool,
+			CommandBuffer
+		};
+
+		struct NodeProps
+		{
+			VulkanType vulkanType;
+			std::string path;
+		};
+		void GraphTesting()
+		{
+			auto graph = boost::adjacency_list<boost::vecS, boost::vecS, boost::directedS, NodeProps>();
+			boost::add_vertex(NodeProps{ VulkanType::Instance, std::string("config/instance.json") }, graph);
+			boost::add_vertex(NodeProps{ VulkanType::PhysicalDevice, std::string("config/physicalDevice.json") }, graph);
+		}
 };
 
 	enum class RenderResults

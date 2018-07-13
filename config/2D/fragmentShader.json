@@ -1,0 +1,15 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/shaderStageConfig.schema.json",
+    "stage": 16,
+    "name": "main",
+    "module": {
+        "path": "shaders/2D/frag.spv"
+    },
+    "specializationMapEntries": [
+        {
+            "constantID": 0,
+            "offset": 0,
+            "size": 4
+        }
+    ]
+}

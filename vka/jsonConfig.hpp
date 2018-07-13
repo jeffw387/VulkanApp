@@ -1,9 +1,12 @@
 #pragma once
 
 #include "nlohmann/json.hpp"
+#include "vulkan/vulkan.h"
 #include <fstream>
 #include <map>
 #include <string>
+#include <vector>
+#include <map>
 
 namespace vka
 {
@@ -17,7 +20,47 @@ namespace vka
 		return j;
 	}
 
-	/*static json GetModule(const json& inputJson)
+	enum class VulkanType
+	{
+		Instance,
+		PhysicalDevice,
+		Surface,
+		Device,
+		Sampler,
+		Buffer,
+		Image,
+		RenderPass,
+		Subpass,
+		ColorAttachment,
+		DepthAttachment,
+		InputAttachment,
+		Swapchain,
+		Framebuffer,
+		ShaderModule,
+		DescriptorSetLayout,
+		DescriptorPool,
+		DescriptorSet,
+		PushConstantRange,
+		PipelineLayout,
+		Pipeline,
+		CommandPool,
+		CommandBuffer
+	};
+
+	struct NodeProps
+	{
+		VulkanType vulkanType;
+		std::string path;
+	};
+
+	struct Frame
+	{
+		std::vector<VkRenderPass> renderPasses;
+		std::map<VkRenderPass, std::vector<VkPipeline>> subpasses;
+
+	};
+
+	/* static json GetModule(const json& inputJson)
 	{
 		auto jsonID = inputJson.find("jsonID");
 		if (jsonID != inputJson.end())

@@ -1,0 +1,45 @@
+{
+    "commands":
+    [
+        {
+            "name": "UpdateDescriptorSets"
+        },
+        {
+            "name": "GetFenceFromPool"
+        },
+        {
+            "name": "AcquireImage"
+        },
+        {
+            "name": "BeginCommandBuffer"
+        },
+        {
+            "name": "BeginRenderPass"
+        },
+        {
+            "name": "BindPipeline"
+        },
+        {
+            "name": "BindVertexBuffers"
+        },
+        {
+            "name": "BindDescriptorSets"
+        },
+        {
+            "name": "Draw"
+        },
+        {
+            "name": "EndRenderPass"
+        },
+        {
+            "name": "EndCommandBuffer"
+        },
+        {
+            "name": "SubmitCommandBuffer"
+        },
+        {
+            "name": "PresentImage"
+        }
+    ]
+    
+}

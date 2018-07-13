@@ -1,0 +1,31 @@
+{
+    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/instanceCreateInfo.schema.json",
+    "applicationInfo": {
+        "applicationName": "VulkanApp",
+        "engineName": "VulkanEngine",
+        "applicationVersion": {
+            "major": 1,
+            "minor": 0,
+            "patch": 0
+        },
+        "engineVersion": {
+            "major": 1,
+            "minor": 0,
+            "patch": 0
+        },
+        "apiVersion": {
+            "major": 1,
+            "minor": 0,
+            "patch": 0
+        }
+    },
+    "enabledExtensions": [
+        "VK_KHR_surface",
+        "VK_KHR_win32_surface",
+        "VK_EXT_debug_report"
+    ],
+    "enabledLayers": [
+        "VK_LAYER_LUNARG_standard_validation",
+        "VK_LAYER_LUNARG_assistant_layer"
+    ]
+}

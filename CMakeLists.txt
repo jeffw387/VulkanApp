@@ -47,7 +47,7 @@ target_compile_definitions(VulkanApp PRIVATE VK_NO_PROTOTYPES VK_USE_PLATFORM_WI
 target_compile_features(VulkanApp PRIVATE cxx_std_17)
 
 add_library(vulkan INTERFACE)
-target_include_directories(vulkan INTERFACE subprojects/vulkan/include)
+target_include_directories(vulkan INTERFACE "subprojects/vulkan/include")
 target_link_libraries(VulkanApp PUBLIC vulkan)
 
 add_library(glm INTERFACE)
@@ -84,7 +84,3 @@ set(USE_MSVC_RUNTIME_LIBRARY_DLL ON)
 add_subdirectory(${bullet_DIR})
 find_package(bullet CONFIG REQUIRED COMPONENTS BulletDynamics BulletCollision)
 target_link_libraries(VulkanApp PRIVATE BULLET_PHYSICS::BulletDynamics BULLET_PHYSICS::BulletCollision)
-
-add_library(boostGraph INTERFACE)
-target_include_directories(boostGraph INTERFACE subprojects/boost)
-target_link_libraries(VulkanApp PRIVATE boostGraph)

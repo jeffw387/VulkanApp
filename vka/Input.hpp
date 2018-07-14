@@ -139,6 +139,15 @@ namespace vka
         msg.signature.action = action;
         PushBackInput(window, std::move(msg));
     }
+
+	struct InputState
+	{
+		InputBindMap inputBindMap;
+		InputStateMap inputStateMap;
+		CircularQueue<InputMessage, 500> inputBuffer;
+		double cursorX;
+		double cursorY;
+	};
 }
 
 /*[[[cog

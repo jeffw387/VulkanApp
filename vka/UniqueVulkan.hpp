@@ -74,6 +74,21 @@ namespace vka
     };
     using VkBufferUnique = std::unique_ptr<VkBuffer, VkBufferDeleter>;
 
+	struct VkBufferViewDeleter
+	{
+		using pointer = VkBufferView;
+		VkDevice device = VK_NULL_HANDLE;
+
+		void operator()(VkBufferView view)
+		{
+			vkDestroyBufferView(device, view, nullptr);
+		}
+
+		VkBufferViewDeleter(VkDevice device) : device(device)
+		{}
+	};
+	using VkBufferViewUnique = std::unique_ptr<VkBufferView, VkBufferViewDeleter>;
+
     struct VkImageDeleter
 	{
 		using pointer = VkImage;

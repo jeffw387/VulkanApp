@@ -1,8 +1,9 @@
 #pragma once
+#include "vka/GLTF.hpp"
 
 namespace Models
 {
-	const char* Path = "Content/Blender/";
+	const char* Path = "content/models/";
 	struct Cylinder 
 	{
 		static constexpr auto file = entt::HashedString("cylinder.gltf");
@@ -47,5 +48,13 @@ namespace Models
 		{
 			return file;
 		}
+	};
+
+	struct ModelData {
+		vka::Model cube;
+		vka::Model cylinder;
+		vka::Model icosphereSub2;
+		vka::Model pentagon;
+		vka::Model triangle;
 	};
 }

@@ -49,16 +49,11 @@ namespace vka
 	class VulkanApp
 	{
 	public:
-		GLFWwindow * window;
 		LibraryHandle VulkanLibrary;
 
-		VkDebugReportCallbackEXTUnique debugCallbackUnique;
-
-		CircularQueue<InputMessage, 500> inputBuffer;
 		InputBindMap inputBindMap;
 		InputStateMap inputStateMap;
-		double cursorX;
-		double cursorY;
+		
 };
 
 	static VulkanApp *GetUserPointer(GLFWwindow *window)

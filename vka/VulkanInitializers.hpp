@@ -15,6 +15,13 @@
 
 namespace vka
 {
+	inline VkApplicationInfo applicationInfo()
+	{
+		VkApplicationInfo appInfo{};
+		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+		return appInfo;
+	}
+
 	inline VkMemoryAllocateInfo memoryAllocateInfo()
 	{
 		VkMemoryAllocateInfo memAllocInfo{};

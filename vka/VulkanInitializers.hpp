@@ -22,6 +22,27 @@ namespace vka
 		return appInfo;
 	}
 
+	inline VkInstanceCreateInfo instanceCreateInfo()
+	{
+		VkInstanceCreateInfo createInfo{};
+		createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+		return createInfo;
+	}
+
+	inline VkDeviceQueueCreateInfo deviceQueueCreateInfo()
+	{
+		VkDeviceQueueCreateInfo createInfo{};
+		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		return createInfo;
+	}
+
+	inline VkDeviceCreateInfo deviceCreateInfo()
+	{
+		VkDeviceCreateInfo createInfo{};
+		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		return createInfo;
+	}
+
 	inline VkMemoryAllocateInfo memoryAllocateInfo()
 	{
 		VkMemoryAllocateInfo memAllocInfo{};

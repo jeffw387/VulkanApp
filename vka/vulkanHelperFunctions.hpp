@@ -2,19 +2,75 @@
 
 #include "vulkan/vulkan.h"
 #include "UniqueVulkan.hpp"
+#include "GLFW/glfw3.h"
+#include "gsl.hpp"
 
 #include <vector>
 
 namespace vka
 {
-	auto CreateInstanceUnique(VkInstanceCreateInfo createInfo)
+	auto CreateInstanceUnique(const VkInstanceCreateInfo& createInfo)
 	{
 		VkInstance instance;
 		vkCreateInstance(&createInfo, nullptr, &instance);
 		return VkInstanceUnique(instance);
 	}
 
-	auto CreateDeviceUnique(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo createInfo)
+	auto GetPhysicalDevices(VkInstance instance)
+	{
+		std::vector<VkPhysicalDevice> physicalDevices;
+		uint32_t deviceCount = 0;
+		vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+		physicalDevices.resize(deviceCount);
+		vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data());
+		return physicalDevices;
+	}
+
+	auto GetQueueFamilyProperties(VkPhysicalDevice physicalDevice)
+	{
+		std::vector<VkQueueFamilyProperties> queueFamilyProperties;
+		uint32_t count = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, nullptr);
+		queueFamilyProperties.resize(count);
+		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, queueFamilyProperties.data());
+		return queueFamilyProperties;
+	}
+
+	auto GetMemoryProperties(VkPhysicalDevice physicalDevice)
+	{
+		VkPhysicalDeviceMemoryProperties properties;
+		vkGetPhysicalDeviceMemoryProperties(physicalDevice, &properties);
+		return properties;
+	}
+
+	auto GetProperties(VkPhysicalDevice physicalDevice)
+	{
+		VkPhysicalDeviceProperties properties;
+		vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+		return properties;
+	}
+
+	auto GetSurfaceFormats(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
+	{
+		std::vector<VkSurfaceFormatKHR> surfaceFormats;
+		uint32_t count = 0;
+		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &count, nullptr);
+		surfaceFormats.resize(count);
+		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &count, surfaceFormats.data());
+		return surfaceFormats;
+	}
+
+	auto GetPresentModes(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
+	{
+		std::vector<VkPresentModeKHR> supported;
+		uint32_t count = 0;
+		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &count, nullptr);
+		supported.resize(count);
+		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &count, supported.data());
+		return supported;
+	}
+
+	auto CreateDeviceUnique(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo& createInfo)
 	{
 		VkDevice device;
 		vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
@@ -28,35 +84,35 @@ namespace vka
 		return VkSurfaceKHRUnique(surface, VkSurfaceKHRDeleter(instance));
 	}
 
-	auto CreateRenderPassUnique(VkDevice device, VkRenderPassCreateInfo createInfo)
+	auto CreateRenderPassUnique(VkDevice device, const VkRenderPassCreateInfo& createInfo)
 	{
 		VkRenderPass renderPass;
 		vkCreateRenderPass(device, &createInfo, nullptr, &renderPass);
 		return VkRenderPassUnique(renderPass, VkRenderPassDeleter(device));
 	}
 
-	auto CreateSwapchainUnique(VkDevice device, VkSwapchainCreateInfoKHR createInfo)
+	auto CreateSwapchainUnique(VkDevice device, const VkSwapchainCreateInfoKHR& createInfo)
 	{
 		VkSwapchainKHR swapchain;
 		vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain);
 		return VkSwapchainKHRUnique(swapchain, VkSwapchainKHRDeleter(device));
 	}
 
-	auto CreateDescriptorSetLayoutUnique(VkDevice device, VkDescriptorSetLayoutCreateInfo createInfo)
+	auto CreateDescriptorSetLayoutUnique(VkDevice device, const VkDescriptorSetLayoutCreateInfo& createInfo)
 	{
 		VkDescriptorSetLayout layout;
 		vkCreateDescriptorSetLayout(device, &createInfo, nullptr, &layout);
 		return VkDescriptorSetLayoutUnique(layout, VkDescriptorSetLayoutDeleter(device));
 	}
 
-	auto CreateDescriptorPoolUnique(VkDevice device, VkDescriptorPoolCreateInfo createInfo)
+	auto CreateDescriptorPoolUnique(VkDevice device, const VkDescriptorPoolCreateInfo& createInfo)
 	{
 		VkDescriptorPool pool;
 		vkCreateDescriptorPool(device, &createInfo, nullptr, &pool);
 		return VkDescriptorPoolUnique(pool, VkDescriptorPoolDeleter(device));
 	}
 
-	auto AllocateDescriptorSets(VkDevice device, VkDescriptorSetAllocateInfo allocateInfo)
+	auto AllocateDescriptorSets(VkDevice device, const VkDescriptorSetAllocateInfo& allocateInfo)
 	{
 		std::vector<VkDescriptorSet> sets;
 		sets.resize(allocateInfo.descriptorSetCount);
@@ -64,14 +120,14 @@ namespace vka
 		return sets;
 	}
 
-	auto CreateCommandPoolUnique(VkDevice device, VkCommandPoolCreateInfo createInfo)
+	auto CreateCommandPoolUnique(VkDevice device, const VkCommandPoolCreateInfo& createInfo)
 	{
 		VkCommandPool pool;
 		vkCreateCommandPool(device, &createInfo, nullptr, &pool);
 		return VkCommandPoolUnique(pool, VkCommandPoolDeleter(device));
 	}
 
-	auto AllocateCommandBuffers(VkDevice device, VkCommandBufferAllocateInfo allocateInfo)
+	auto AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo& allocateInfo)
 	{
 		std::vector<VkCommandBuffer> commandBuffers;
 		commandBuffers.resize(allocateInfo.commandBufferCount);
@@ -79,7 +135,7 @@ namespace vka
 		return commandBuffers;
 	}
 
-	auto CreatePipelineLayoutUnique(VkDevice device, VkPipelineLayoutCreateInfo createInfo)
+	auto CreatePipelineLayoutUnique(VkDevice device, const VkPipelineLayoutCreateInfo& createInfo)
 	{
 		VkPipelineLayout layout;
 		vkCreatePipelineLayout(device, &createInfo, nullptr, &layout);
@@ -99,55 +155,55 @@ namespace vka
 		return std::move(pipelines);
 	}
 
-	auto CreateSamplerUnique(VkDevice device, VkSamplerCreateInfo createInfo)
+	auto CreateSamplerUnique(VkDevice device, const VkSamplerCreateInfo& createInfo)
 	{
 		VkSampler sampler;
 		vkCreateSampler(device, &createInfo, nullptr, &sampler);
 		return VkSamplerUnique(sampler, VkSamplerDeleter(device));
 	}
 
-	auto CreateBufferUnique(VkDevice device, VkBufferCreateInfo createInfo)
+	auto CreateBufferUnique(VkDevice device, const VkBufferCreateInfo& createInfo)
 	{
 		VkBuffer buffer;
 		vkCreateBuffer(device, &createInfo, nullptr, &buffer);
 		return VkBufferUnique(buffer, VkBufferDeleter(device));
 	}
 
-	auto CreateBufferViewUnique(VkDevice device, VkBufferViewCreateInfo createInfo)
+	auto CreateBufferViewUnique(VkDevice device, const VkBufferViewCreateInfo& createInfo)
 	{
 		VkBufferView view;
 		vkCreateBufferView(device, &createInfo, nullptr, &view);
 	}
 
-	auto CreateImageUnique(VkDevice device, VkImageCreateInfo createInfo)
+	auto CreateImageUnique(VkDevice device, const VkImageCreateInfo& createInfo)
 	{
 		VkImage image;
 		vkCreateImage(device, &createInfo, nullptr, &image);
 		return VkImageUnique(image, VkImageDeleter(device));
 	}
 
-	auto CreateImageView(VkDevice device, VkImageViewCreateInfo createInfo)
+	auto CreateImageView(VkDevice device, const VkImageViewCreateInfo& createInfo)
 	{
 		VkImageView view;
 		vkCreateImageView(device, &createInfo, nullptr, &view);
 		return VkImageViewUnique(view, VkImageViewDeleter(device));
 	}
 
-	auto CreateFramebufferUnique(VkDevice device, VkFramebufferCreateInfo createInfo)
+	auto CreateFramebufferUnique(VkDevice device, const VkFramebufferCreateInfo& createInfo)
 	{
 		VkFramebuffer framebuffer;
 		vkCreateFramebuffer(device, &createInfo, nullptr, &framebuffer);
 		return VkFramebufferUnique(framebuffer, VkFramebufferDeleter(device));
 	}
 
-	auto CreateSemaphoreUnique(VkDevice device, VkSemaphoreCreateInfo createInfo)
+	auto CreateSemaphoreUnique(VkDevice device, const VkSemaphoreCreateInfo& createInfo)
 	{
 		VkSemaphore semaphore;
 		vkCreateSemaphore(device, &createInfo, nullptr, &semaphore);
 		return VkSemaphoreUnique(semaphore, VkSemaphoreDeleter(device));
 	}
 
-	auto CreateFenceUnique(VkDevice device, VkFenceCreateInfo createInfo)
+	auto CreateFenceUnique(VkDevice device, const VkFenceCreateInfo& createInfo)
 	{
 		VkFence fence;
 		vkCreateFence(device, &createInfo, nullptr, &fence);

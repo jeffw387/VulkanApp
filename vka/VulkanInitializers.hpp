@@ -43,6 +43,13 @@ namespace vka
 		return createInfo;
 	}
 
+	inline VkSwapchainCreateInfoKHR swapchainCreateInfoKHR()
+	{
+		VkSwapchainCreateInfoKHR createInfo{};
+		createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+		return createInfo;
+	}
+
 	inline VkMemoryAllocateInfo memoryAllocateInfo()
 	{
 		VkMemoryAllocateInfo memAllocInfo{};

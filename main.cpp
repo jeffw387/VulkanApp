@@ -27,6 +27,7 @@ namespace Fonts
 {
 	constexpr auto AeroviasBrasil = entt::HashedString("Content/Fonts/AeroviasBrasilNF.ttf");
 }
+constexpr VkExtent2D DefaultWindowSize = { 900, 900 };
 
 class ClientApp
 {
@@ -45,6 +46,7 @@ public:
 	std::vector<const char*> deviceExtensions = {
 		"VK_KHR_swapchain"
 	};
+
 	GLFWwindow* window;
 	vka::VS vs;
 	entt::DefaultRegistry ecs;
@@ -253,13 +255,36 @@ public:
 		subpassDescriptions.push_back(subpass3D);
 		subpassDescriptions.push_back(subpass2D);
 
+		VkSubpassDependency dep3Dto2D = {};
+		dep3Dto2D.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dep3Dto2D.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+		dep3Dto2D.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		dep3Dto2D.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+		dep3Dto2D.srcSubpass = 0;
+		dep3Dto2D.dstSubpass = 1;
+		dep3Dto2D.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
 		auto renderPassCreateInfo = vka::renderPassCreateInfo();
 		renderPassCreateInfo.attachmentCount = gsl::narrow_cast<uint32_t>(attachmentDescriptions.size());
 		renderPassCreateInfo.pAttachments = attachmentDescriptions.data();
 		renderPassCreateInfo.subpassCount = gsl::narrow_cast<uint32_t>(subpassDescriptions.size());
 		renderPassCreateInfo.pSubpasses = subpassDescriptions.data();
-		renderPassCreateInfo.dependencyCount = ;
-		renderPassCreateInfo.pDependencies = ;
+		renderPassCreateInfo.dependencyCount = 1;
+		renderPassCreateInfo.pDependencies = &dep3Dto2D;
+
+		vs.unique.renderPass = vka::CreateRenderPassUnique(vs.device, renderPassCreateInfo);
+		vs.renderPass = vs.unique.renderPass.get();
+
+		auto swapchainCreateInfo = vka::swapchainCreateInfoKHR();
+		swapchainCreateInfo.surface = vs.surface;
+		swapchainCreateInfo.minImageCount = BufferCount;
+		swapchainCreateInfo.imageArrayLayers = 1;
+		swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+		swapchainCreateInfo.imageColorSpace = vs.surfaceFormat.colorSpace;
+		swapchainCreateInfo.imageFormat = vs.surfaceFormat.format;
+		swapchainCreateInfo.imageExtent = DefaultWindowSize;
+		swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		swapchainCreateInfo.imageSharingMode = 
 	}
 };
 

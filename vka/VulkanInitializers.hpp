@@ -50,6 +50,13 @@ namespace vka
 		return createInfo;
 	}
 
+	inline VkShaderModuleCreateInfo shaderModuleCreateInfo()
+	{
+		VkShaderModuleCreateInfo createInfo{};
+		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		return createInfo;
+	}
+
 	inline VkMemoryAllocateInfo memoryAllocateInfo()
 	{
 		VkMemoryAllocateInfo memAllocInfo{};

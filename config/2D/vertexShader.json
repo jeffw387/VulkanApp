@@ -1,9 +1,0 @@
-{
-    "$schema": "https://gitcdn.xyz/repo/jeffw387/VulkanSchema/master/schema/shaderStageConfig.schema.json",
-    "stage": 1,
-    "name": "main",
-    "module": {
-        "path": "shaders/2D/vert.spv"
-    },
-    "specializationMapEntries": []
-}

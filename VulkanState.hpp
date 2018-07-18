@@ -45,15 +45,25 @@ namespace vka
 		struct {
 			struct {
 				struct {
+					VkSamplerUnique sampler;
 					VkDescriptorSetLayoutUnique staticLayout;
-					VkDescriptorSetLayoutUnique dynamicLayout;
+					VkDescriptorSetLayoutUnique frameLayout;
+					VkDescriptorSetLayoutUnique modelLayout;
+					VkDescriptorSetLayoutUnique drawLayout;
 					VkShaderModuleUnique vertex;
 					VkShaderModuleUnique fragment;
 					VkPipelineLayoutUnique pipelineLayout;
 					VkPipelineUnique pipeline;
 			} unique;
+				VkSampler sampler;
+				std::vector<VkDescriptorSetLayoutBinding> staticBindings;
+				std::vector<VkDescriptorSetLayoutBinding> frameBindings;
+				std::vector<VkDescriptorSetLayoutBinding> modelBindings;
+				std::vector<VkDescriptorSetLayoutBinding> drawBindings;
 				VkDescriptorSetLayout staticLayout;
-				VkDescriptorSetLayout dynamicLayout;
+				VkDescriptorSetLayout frameLayout;
+				VkDescriptorSetLayout modelLayout;
+				VkDescriptorSetLayout drawLayout;
 				VkShaderModule vertex;
 				VkShaderModule fragment;
 				VkPipelineLayout pipelineLayout;
@@ -62,14 +72,22 @@ namespace vka
 			struct {
 				struct {
 					VkDescriptorSetLayoutUnique staticLayout;
-					VkDescriptorSetLayoutUnique dynamicLayout;
+					VkDescriptorSetLayoutUnique frameLayout;
+					VkDescriptorSetLayoutUnique modelLayout;
+					VkDescriptorSetLayoutUnique drawLayout;
 					VkShaderModuleUnique vertex;
 					VkShaderModuleUnique fragment;
 					VkPipelineLayoutUnique pipelineLayout;
 					VkPipelineUnique pipeline;
 				} unique;
+				std::vector<VkDescriptorSetLayoutBinding> staticBindings;
+				std::vector<VkDescriptorSetLayoutBinding> frameBindings;
+				std::vector<VkDescriptorSetLayoutBinding> modelBindings;
+				std::vector<VkDescriptorSetLayoutBinding> drawBindings;
 				VkDescriptorSetLayout staticLayout;
-				VkDescriptorSetLayout dynamicLayout;
+				VkDescriptorSetLayout frameLayout;
+				VkDescriptorSetLayout modelLayout;
+				VkDescriptorSetLayout drawLayout;
 				VkShaderModule vertex;
 				VkShaderModule fragment;
 				VkPipelineLayout pipelineLayout;

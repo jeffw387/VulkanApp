@@ -46,7 +46,19 @@ public:
 	std::vector<const char*> deviceExtensions = {
 		"VK_KHR_swapchain"
 	};
+	std::vector<const char*> imagePaths = {
 
+	};
+
+	struct {
+		const char* vertex = "shaders/2D/vert.spv";
+		const char* fragment = "shaders/2D/frag.spv";
+	} shader2D;
+
+	struct {
+		const char* vertex = "shaders/3D/vert.spv";
+		const char* fragment = "shaders/3D/frag.spv";
+	} shader3D;
 	GLFWwindow* window;
 	vka::VS vs;
 	entt::DefaultRegistry ecs;
@@ -82,12 +94,8 @@ public:
 	{
 	}
 
-	void initVulkan()
+	void createInstance()
 	{
-		vs.VulkanLibrary = vka::LoadVulkanLibrary();
-		vka::LoadExportedEntryPoints(vs.VulkanLibrary);
-		vka::LoadGlobalLevelEntryPoints();
-
 		auto appInfo = vka::applicationInfo();
 		appInfo.pApplicationName = appName;
 		appInfo.pEngineName = engineName;
@@ -105,14 +113,10 @@ public:
 		vs.instance = vs.unique.instance.get();
 
 		vka::LoadInstanceLevelEntryPoints(vs.instance);
+	}
 
-		auto physicalDevices = vka::GetPhysicalDevices(vs.instance);
-		// TODO: error handling if no physical devices found
-		auto physicalDevice = physicalDevices.at(0);
-
-		vs.unique.surface = vka::CreateSurfaceUnique(vs.instance, window);
-		vs.surface = vs.unique.surface.get();
-
+	void createDevice()
+	{
 		auto queueSearch = [](
 			std::vector<VkQueueFamilyProperties>& properties,
 			VkPhysicalDevice physicalDevice,
@@ -138,10 +142,10 @@ public:
 		};
 
 		vs.graphicsQueueFamilyIndex = queueSearch(
-			vs.queueFamilyProperties, 
-			vs.physicalDevice, 
-			vs.surface, 
-			VK_QUEUE_GRAPHICS_BIT, 
+			vs.queueFamilyProperties,
+			vs.physicalDevice,
+			vs.surface,
+			VK_QUEUE_GRAPHICS_BIT,
 			false).value();
 
 		vs.presentQueueFamilyIndex = queueSearch(
@@ -170,10 +174,19 @@ public:
 		deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 		deviceCreateInfo.queueCreateInfoCount = gsl::narrow_cast<uint32_t>(queueCreateInfos.size());
 		deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
-		vs.unique.device = vka::CreateDeviceUnique(physicalDevice, deviceCreateInfo);
+		vs.unique.device = vka::CreateDeviceUnique(vs.physicalDevice, deviceCreateInfo);
 		vs.device = vs.unique.device.get();
 
 		vka::LoadDeviceLevelEntryPoints(vs.device);
+
+		vkGetDeviceQueue(vs.device, vs.graphicsQueueFamilyIndex, 0, &vs.graphicsQueue);
+		vkGetDeviceQueue(vs.device, vs.presentQueueFamilyIndex, 0, &vs.presentQueue);
+	}
+
+	void createSurface()
+	{
+		vs.unique.surface = vka::CreateSurfaceUnique(vs.instance, window);
+		vs.surface = vs.unique.surface.get();
 
 		auto chooseSurfaceFormat = [](const std::vector<VkSurfaceFormatKHR> supportedFormats, VkFormat preferredFormat, VkColorSpaceKHR preferredColorSpace)
 		{
@@ -193,7 +206,7 @@ public:
 
 		vs.supportedSurfaceFormats = vka::GetSurfaceFormats(vs.physicalDevice, vs.surface);
 		vs.surfaceFormat = chooseSurfaceFormat(vs.supportedSurfaceFormats, VK_FORMAT_R8G8B8A8_SNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
-		
+
 		auto choosePresentMode = [](const std::vector<VkPresentModeKHR>& supported, VkPresentModeKHR preferredPresentMode)
 		{
 			for (const auto& presentMode : supported)
@@ -206,7 +219,10 @@ public:
 
 		vs.supportedPresentModes = vka::GetPresentModes(vs.physicalDevice, vs.surface);
 		vs.presentMode = choosePresentMode(vs.supportedPresentModes, VK_PRESENT_MODE_FIFO_KHR);
+	}
 
+	void createRenderPass()
+	{
 		VkAttachmentDescription colorAttachment = {};
 		colorAttachment.format = vs.surfaceFormat.format;
 		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -227,14 +243,14 @@ public:
 		depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-		
+
 		std::vector<VkAttachmentDescription> attachmentDescriptions;
 		attachmentDescriptions.push_back(colorAttachment);
 		attachmentDescriptions.push_back(depthAttachment);
 
 		VkAttachmentReference colorRef = {};
 		colorRef.attachment = 0;
-		colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; 
+		colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 		VkAttachmentReference depthRef = {};
 		depthRef.attachment = 1;
@@ -245,7 +261,7 @@ public:
 		subpass3D.pColorAttachments = &colorRef;
 		subpass3D.pDepthStencilAttachment = &depthRef;
 		subpass3D.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		
+
 		VkSubpassDescription subpass2D = {};
 		subpass2D.colorAttachmentCount = 1;
 		subpass2D.pColorAttachments = &colorRef;
@@ -274,17 +290,133 @@ public:
 
 		vs.unique.renderPass = vka::CreateRenderPassUnique(vs.device, renderPassCreateInfo);
 		vs.renderPass = vs.unique.renderPass.get();
+	}
 
-		auto swapchainCreateInfo = vka::swapchainCreateInfoKHR();
-		swapchainCreateInfo.surface = vs.surface;
-		swapchainCreateInfo.minImageCount = BufferCount;
-		swapchainCreateInfo.imageArrayLayers = 1;
-		swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-		swapchainCreateInfo.imageColorSpace = vs.surfaceFormat.colorSpace;
-		swapchainCreateInfo.imageFormat = vs.surfaceFormat.format;
-		swapchainCreateInfo.imageExtent = DefaultWindowSize;
-		swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-		swapchainCreateInfo.imageSharingMode = 
+	void createSwapchain(const VkExtent2D& swapExtent)
+	{
+		std::vector<uint32_t> queueFamilyIndices;
+		queueFamilyIndices.push_back(vs.graphicsQueueFamilyIndex);
+		VkSharingMode imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		if (vs.graphicsQueueFamilyIndex == vs.presentQueueFamilyIndex)
+		{
+			queueFamilyIndices.push_back(vs.presentQueueFamilyIndex);
+			VkSharingMode imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		}
+		auto createInfo = vka::swapchainCreateInfoKHR();
+		createInfo.surface = vs.surface;
+		createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+		createInfo.imageColorSpace = vs.surfaceFormat.colorSpace;
+		createInfo.imageFormat = vs.surfaceFormat.format;
+		createInfo.imageExtent = swapExtent;
+		createInfo.presentMode = vs.presentMode;
+		createInfo.minImageCount = BufferCount;
+		createInfo.imageArrayLayers = 1;
+		createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		createInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+		createInfo.imageSharingMode = imageSharingMode;
+		createInfo.queueFamilyIndexCount = gsl::narrow_cast<uint32_t>(queueFamilyIndices.size());
+		createInfo.pQueueFamilyIndices = queueFamilyIndices.data();
+
+		vs.unique.swapchain = vka::CreateSwapchainUnique(vs.device, createInfo);
+		vs.swapchain = vs.unique.swapchain.get();
+	}
+
+	void createSampler()
+	{
+		auto createInfo = vka::samplerCreateInfo();
+		createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		createInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+		createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+		vs.pipelines.pipeline2D.unique.sampler = vka::CreateSamplerUnique(vs.device, createInfo);
+		vs.pipelines.pipeline2D.sampler = vs.pipelines.pipeline2D.unique.sampler.get();
+	}
+
+	void createPipeline2D()
+	{
+		auto& staticBinding0 = vs.pipelines.pipeline2D.staticBindings.emplace_back();
+		staticBinding0.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		staticBinding0.binding = 0;
+		staticBinding0.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+		staticBinding0.descriptorCount = 1;
+		staticBinding0.pImmutableSamplers = &vs.pipelines.pipeline2D.sampler;
+		auto& staticBinding1 = vs.pipelines.pipeline2D.staticBindings.emplace_back();
+		staticBinding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		staticBinding1.binding = 1;
+		staticBinding1.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		staticBinding1.descriptorCount = imagePaths.size();
+		auto staticLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.pipelines.pipeline2D.staticBindings);
+		vs.pipelines.pipeline2D.unique.staticLayout = vka::CreateDescriptorSetLayoutUnique(vs.device, staticLayoutCreateInfo);
+		vs.pipelines.pipeline2D.staticLayout = vs.pipelines.pipeline2D.unique.staticLayout.get();
+
+		auto& frameBinding0 = vs.pipelines.pipeline2D.frameBindings.emplace_back();
+		frameBinding0.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		frameBinding0.binding = 0;
+		frameBinding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		frameBinding0.descriptorCount = 1;
+		auto frameLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.pipelines.pipeline2D.frameBindings);
+		vs.pipelines.pipeline2D.unique.frameLayout = vka::CreateDescriptorSetLayoutUnique(vs.device, frameLayoutCreateInfo);
+		vs.pipelines.pipeline2D.frameLayout = vs.pipelines.pipeline2D.unique.frameLayout.get();
+
+		auto& modelBinding0 = vs.pipelines.pipeline2D.modelBindings.emplace_back();
+		modelBinding0.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		modelBinding0.binding = 0;
+		modelBinding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		modelBinding0.descriptorCount = 1;
+		auto modelLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.pipelines.pipeline2D.modelBindings);
+		vs.pipelines.pipeline2D.unique.modelLayout = vka::CreateDescriptorSetLayoutUnique(vs.device, modelLayoutCreateInfo);
+		vs.pipelines.pipeline2D.modelLayout = vs.pipelines.pipeline2D.unique.modelLayout.get();
+
+		auto& drawBinding0 = vs.pipelines.pipeline2D.drawBindings.emplace_back();
+		drawBinding0.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		drawBinding0.binding = 0;
+		drawBinding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		drawBinding0.descriptorCount = 1;
+		auto drawLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.pipelines.pipeline2D.drawBindings);
+		vs.pipelines.pipeline2D.unique.drawLayout = vka::CreateDescriptorSetLayoutUnique(vs.device, drawLayoutCreateInfo);
+		vs.pipelines.pipeline2D.drawLayout = vs.pipelines.pipeline2D.unique.drawLayout.get();
+
+		std::vector<VkDescriptorSetLayout> layouts;
+		layouts.push_back(vs.pipelines.pipeline2D.staticLayout);
+		layouts.push_back(vs.pipelines.pipeline2D.frameLayout);
+		layouts.push_back(vs.pipelines.pipeline2D.modelLayout);
+		layouts.push_back(vs.pipelines.pipeline2D.drawLayout);
+		auto pipelineLayoutCreateInfo = vka::pipelineLayoutCreateInfo(layouts.data(), gsl::narrow_cast<uint32_t>(layouts.size()));
+		vs.pipelines.pipeline2D.unique.pipelineLayout = vka::CreatePipelineLayoutUnique(vs.device, pipelineLayoutCreateInfo);
+		vs.pipelines.pipeline2D.pipelineLayout = vs.pipelines.pipeline2D.unique.pipelineLayout.get();
+
+		auto vertexCreateInfo = vka::shaderModuleCreateInfo();
+		auto vertexBytes = fileIO::readFile(std::string(shader2D.vertex));
+		vertexCreateInfo.codeSize = vertexBytes.size();
+		vertexCreateInfo.pCode = reinterpret_cast<const uint32_t*>(vertexBytes.data());
+	}
+
+	void initVulkan()
+	{
+		vs.VulkanLibrary = vka::LoadVulkanLibrary();
+		vka::LoadExportedEntryPoints(vs.VulkanLibrary);
+		vka::LoadGlobalLevelEntryPoints();
+
+		createInstance();
+
+		auto physicalDevices = vka::GetPhysicalDevices(vs.instance);
+		// TODO: error handling if no physical devices found
+		vs.physicalDevice = physicalDevices.at(0);
+
+		createSurface();
+
+		createDevice();
+
+		createRenderPass();
+
+		createSwapchain(DefaultWindowSize);
+
+		createSampler();
+		
+
+		
 	}
 };
 

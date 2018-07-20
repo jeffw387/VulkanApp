@@ -3,8 +3,8 @@
 #extension GL_KHR_vulkan_glsl : enable
 
 // vertex attributes
-layout(location = 0) in vec2 inPosition;
-layout(location = 1) in vec2 inTexCoord;
+layout(binding = 0, location = 0) in vec2 inPosition;
+layout(binding = 0, location = 1) in vec2 inTexCoord;
 
 // uniform buffers
 // per frame update

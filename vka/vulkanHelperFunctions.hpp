@@ -4,19 +4,20 @@
 #include "UniqueVulkan.hpp"
 #include "GLFW/glfw3.h"
 #include "gsl.hpp"
+#include "vka/Image2D.hpp"
 
 #include <vector>
 
 namespace vka
 {
-	auto CreateInstanceUnique(const VkInstanceCreateInfo& createInfo)
+	inline auto CreateInstanceUnique(const VkInstanceCreateInfo& createInfo)
 	{
 		VkInstance instance;
 		vkCreateInstance(&createInfo, nullptr, &instance);
 		return VkInstanceUnique(instance);
 	}
 
-	auto GetPhysicalDevices(VkInstance instance)
+	inline auto GetPhysicalDevices(VkInstance instance)
 	{
 		std::vector<VkPhysicalDevice> physicalDevices;
 		uint32_t deviceCount = 0;
@@ -26,7 +27,7 @@ namespace vka
 		return physicalDevices;
 	}
 
-	auto GetQueueFamilyProperties(VkPhysicalDevice physicalDevice)
+	inline auto GetQueueFamilyProperties(VkPhysicalDevice physicalDevice)
 	{
 		std::vector<VkQueueFamilyProperties> queueFamilyProperties;
 		uint32_t count = 0;
@@ -36,21 +37,28 @@ namespace vka
 		return queueFamilyProperties;
 	}
 
-	auto GetMemoryProperties(VkPhysicalDevice physicalDevice)
+	inline auto GetMemoryProperties(VkPhysicalDevice physicalDevice)
 	{
 		VkPhysicalDeviceMemoryProperties properties;
 		vkGetPhysicalDeviceMemoryProperties(physicalDevice, &properties);
 		return properties;
 	}
 
-	auto GetProperties(VkPhysicalDevice physicalDevice)
+	inline auto GetProperties(VkPhysicalDevice physicalDevice)
 	{
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(physicalDevice, &properties);
 		return properties;
 	}
 
-	auto GetSurfaceFormats(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
+	inline auto GetSurfaceCapabilities(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
+	{
+		VkSurfaceCapabilitiesKHR capabilities;
+		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
+		return capabilities;
+	}
+
+	inline auto GetSurfaceFormats(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
 	{
 		std::vector<VkSurfaceFormatKHR> surfaceFormats;
 		uint32_t count = 0;
@@ -60,7 +68,7 @@ namespace vka
 		return surfaceFormats;
 	}
 
-	auto GetPresentModes(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
+	inline auto GetPresentModes(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
 	{
 		std::vector<VkPresentModeKHR> supported;
 		uint32_t count = 0;
@@ -70,49 +78,179 @@ namespace vka
 		return supported;
 	}
 
-	auto CreateDeviceUnique(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo& createInfo)
+	inline auto CreateDeviceUnique(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo& createInfo)
 	{
 		VkDevice device;
 		vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
 		return VkDeviceUnique(device);
 	}
 
-	auto CreateSurfaceUnique(VkInstance instance, GLFWwindow* window)
+	inline auto CreateImage2DUnique(
+		VkDevice device,
+		VkImageUsageFlags usage,
+		VkFormat format,
+		uint32_t width,
+		uint32_t height,
+		uint32_t graphicsQueueFamilyIndex,
+		VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		VkImageCreateFlags flags = 0)
+	{
+		auto createInfo = vka::imageCreateInfo();
+		createInfo.imageType = VK_IMAGE_TYPE_2D;
+		createInfo.format = format;
+		createInfo.extent = { width, height, 1 };
+		createInfo.mipLevels = 1;
+		createInfo.arrayLayers = 1;
+		createInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		createInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		createInfo.usage = usage;
+		createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		createInfo.queueFamilyIndexCount = 1;
+		createInfo.pQueueFamilyIndices = &graphicsQueueFamilyIndex;
+		createInfo.initialLayout = initialLayout;
+
+		VkImage image;
+		vkCreateImage(device, &createInfo, nullptr, &image);
+		return VkImageUnique(image, VkImageDeleter(device));
+	}
+
+	inline auto CreateImageView2DUnique(
+		VkDevice device,
+		VkImage image,
+		VkFormat format,
+		VkImageAspectFlags aspects)
+	{
+		auto createInfo = vka::imageViewCreateInfo();
+		createInfo.image = image;
+		createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		createInfo.format = format;
+		createInfo.components = {
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY
+		};
+		createInfo.subresourceRange = {
+			aspects,
+			0,
+			1,
+			0,
+			1
+		};
+
+		VkImageView view;
+		vkCreateImageView(
+			device,
+			&createInfo,
+			nullptr,
+			&view);
+		return VkImageViewUnique(view, VkImageViewDeleter(device));
+	}
+
+	inline auto AllocateImage2D(
+		VkDevice device,
+		Allocator& allocator,
+		VkImage image)
+	{
+		auto handle = allocator.AllocateForImage(
+			true, 
+			image, 
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		vkBindImageMemory(
+			device,
+			image,
+			handle.get().memory,
+			handle.get().offsetInDeviceMemory);
+		return std::move(handle);
+	}
+
+	inline auto CreateImage2DExtended(
+		VkDevice device,
+		Allocator& allocator,
+		VkImageUsageFlags usage,
+		VkFormat format,
+		uint32_t width,
+		uint32_t height,
+		uint32_t graphicsQueueFamilyIndex,
+		VkImageAspectFlags aspects,
+		VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		VkImageCreateFlags flags = 0)
+	{
+		vka::Image2D image{};
+		image.imageUnique = CreateImage2DUnique(
+			device, usage,
+			format,
+			width,
+			height,
+			graphicsQueueFamilyIndex,
+			initialLayout,
+			flags);
+		image.image = image.imageUnique.get();
+
+		image.viewUnique = CreateImageView2DUnique(
+			device,
+			image.image,
+			format,
+			aspects);
+		image.view = image.viewUnique.get();
+		image.allocation = AllocateImage2D(
+			device,
+			allocator,
+			image.image);
+		image.currentLayout = initialLayout;
+		image.format = format;
+		image.height = height;
+		image.width = width;
+		image.usage = usage;
+		return std::move(image);
+	}
+
+	inline auto CreateSurfaceUnique(VkInstance instance, GLFWwindow* window)
 	{
 		VkSurfaceKHR surface;
 		glfwCreateWindowSurface(instance, window, nullptr, &surface);
 		return VkSurfaceKHRUnique(surface, VkSurfaceKHRDeleter(instance));
 	}
 
-	auto CreateRenderPassUnique(VkDevice device, const VkRenderPassCreateInfo& createInfo)
+	inline auto CreateRenderPassUnique(VkDevice device, const VkRenderPassCreateInfo& createInfo)
 	{
 		VkRenderPass renderPass;
 		vkCreateRenderPass(device, &createInfo, nullptr, &renderPass);
 		return VkRenderPassUnique(renderPass, VkRenderPassDeleter(device));
 	}
 
-	auto CreateSwapchainUnique(VkDevice device, const VkSwapchainCreateInfoKHR& createInfo)
+	inline auto CreateSwapchainUnique(VkDevice device, const VkSwapchainCreateInfoKHR& createInfo)
 	{
 		VkSwapchainKHR swapchain;
 		vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain);
 		return VkSwapchainKHRUnique(swapchain, VkSwapchainKHRDeleter(device));
 	}
 
-	auto CreateDescriptorSetLayoutUnique(VkDevice device, const VkDescriptorSetLayoutCreateInfo& createInfo)
+	inline auto GetSwapImages(VkDevice device, VkSwapchainKHR swapchain)
+	{
+		std::vector<VkImage> swapImages;
+		uint32_t count = 0;
+		vkGetSwapchainImagesKHR(device, swapchain, &count, nullptr);
+		swapImages.resize(count);
+		vkGetSwapchainImagesKHR(device, swapchain, &count, swapImages.data());
+		return swapImages;
+	}
+
+	inline auto CreateDescriptorSetLayoutUnique(VkDevice device, const VkDescriptorSetLayoutCreateInfo& createInfo)
 	{
 		VkDescriptorSetLayout layout;
 		vkCreateDescriptorSetLayout(device, &createInfo, nullptr, &layout);
 		return VkDescriptorSetLayoutUnique(layout, VkDescriptorSetLayoutDeleter(device));
 	}
 
-	auto CreateDescriptorPoolUnique(VkDevice device, const VkDescriptorPoolCreateInfo& createInfo)
+	inline auto CreateDescriptorPoolUnique(VkDevice device, const VkDescriptorPoolCreateInfo& createInfo)
 	{
 		VkDescriptorPool pool;
 		vkCreateDescriptorPool(device, &createInfo, nullptr, &pool);
 		return VkDescriptorPoolUnique(pool, VkDescriptorPoolDeleter(device));
 	}
 
-	auto AllocateDescriptorSets(VkDevice device, const VkDescriptorSetAllocateInfo& allocateInfo)
+	inline auto AllocateDescriptorSets(VkDevice device, const VkDescriptorSetAllocateInfo& allocateInfo)
 	{
 		std::vector<VkDescriptorSet> sets;
 		sets.resize(allocateInfo.descriptorSetCount);
@@ -120,14 +258,14 @@ namespace vka
 		return sets;
 	}
 
-	auto CreateCommandPoolUnique(VkDevice device, const VkCommandPoolCreateInfo& createInfo)
+	inline auto CreateCommandPoolUnique(VkDevice device, const VkCommandPoolCreateInfo& createInfo)
 	{
 		VkCommandPool pool;
 		vkCreateCommandPool(device, &createInfo, nullptr, &pool);
 		return VkCommandPoolUnique(pool, VkCommandPoolDeleter(device));
 	}
 
-	auto AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo& allocateInfo)
+	inline auto AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo& allocateInfo)
 	{
 		std::vector<VkCommandBuffer> commandBuffers;
 		commandBuffers.resize(allocateInfo.commandBufferCount);
@@ -135,14 +273,21 @@ namespace vka
 		return commandBuffers;
 	}
 
-	auto CreatePipelineLayoutUnique(VkDevice device, const VkPipelineLayoutCreateInfo& createInfo)
+	inline auto CreatePipelineLayoutUnique(VkDevice device, const VkPipelineLayoutCreateInfo& createInfo)
 	{
 		VkPipelineLayout layout;
 		vkCreatePipelineLayout(device, &createInfo, nullptr, &layout);
 		return VkPipelineLayoutUnique(layout, VkPipelineLayoutDeleter(device));
 	}
 
-	auto CreateGraphicsPipelinesUnique(VkDevice device, gsl::span<VkGraphicsPipelineCreateInfo> createInfos)
+	inline auto CreateShaderModuleUnique(VkDevice device, const VkShaderModuleCreateInfo& createInfo)
+	{
+		VkShaderModule shader;
+		vkCreateShaderModule(device, &createInfo, nullptr, &shader);
+		return VkShaderModuleUnique(shader, VkShaderModuleDeleter(device));
+	}
+
+	inline auto CreateGraphicsPipelinesUnique(VkDevice device, gsl::span<VkGraphicsPipelineCreateInfo> createInfos)
 	{
 		std::vector<VkPipeline> pipelines;
 		pipelines.resize(createInfos.size());
@@ -152,58 +297,58 @@ namespace vka
 		{
 			pipelinesUnique.push_back(VkPipelineUnique(pipeline, VkPipelineDeleter(device)));
 		}
-		return std::move(pipelines);
+		return pipelinesUnique;
 	}
 
-	auto CreateSamplerUnique(VkDevice device, const VkSamplerCreateInfo& createInfo)
+	inline auto CreateSamplerUnique(VkDevice device, const VkSamplerCreateInfo& createInfo)
 	{
 		VkSampler sampler;
 		vkCreateSampler(device, &createInfo, nullptr, &sampler);
 		return VkSamplerUnique(sampler, VkSamplerDeleter(device));
 	}
 
-	auto CreateBufferUnique(VkDevice device, const VkBufferCreateInfo& createInfo)
+	inline auto CreateBufferUnique(VkDevice device, const VkBufferCreateInfo& createInfo)
 	{
 		VkBuffer buffer;
 		vkCreateBuffer(device, &createInfo, nullptr, &buffer);
 		return VkBufferUnique(buffer, VkBufferDeleter(device));
 	}
 
-	auto CreateBufferViewUnique(VkDevice device, const VkBufferViewCreateInfo& createInfo)
+	inline auto CreateBufferViewUnique(VkDevice device, const VkBufferViewCreateInfo& createInfo)
 	{
 		VkBufferView view;
 		vkCreateBufferView(device, &createInfo, nullptr, &view);
 	}
 
-	auto CreateImageUnique(VkDevice device, const VkImageCreateInfo& createInfo)
+	inline auto CreateImageUnique(VkDevice device, const VkImageCreateInfo& createInfo)
 	{
 		VkImage image;
 		vkCreateImage(device, &createInfo, nullptr, &image);
 		return VkImageUnique(image, VkImageDeleter(device));
 	}
 
-	auto CreateImageView(VkDevice device, const VkImageViewCreateInfo& createInfo)
+	inline auto CreateImageView(VkDevice device, const VkImageViewCreateInfo& createInfo)
 	{
 		VkImageView view;
 		vkCreateImageView(device, &createInfo, nullptr, &view);
 		return VkImageViewUnique(view, VkImageViewDeleter(device));
 	}
 
-	auto CreateFramebufferUnique(VkDevice device, const VkFramebufferCreateInfo& createInfo)
+	inline auto CreateFramebufferUnique(VkDevice device, const VkFramebufferCreateInfo& createInfo)
 	{
 		VkFramebuffer framebuffer;
 		vkCreateFramebuffer(device, &createInfo, nullptr, &framebuffer);
 		return VkFramebufferUnique(framebuffer, VkFramebufferDeleter(device));
 	}
 
-	auto CreateSemaphoreUnique(VkDevice device, const VkSemaphoreCreateInfo& createInfo)
+	inline auto CreateSemaphoreUnique(VkDevice device, const VkSemaphoreCreateInfo& createInfo)
 	{
 		VkSemaphore semaphore;
 		vkCreateSemaphore(device, &createInfo, nullptr, &semaphore);
 		return VkSemaphoreUnique(semaphore, VkSemaphoreDeleter(device));
 	}
 
-	auto CreateFenceUnique(VkDevice device, const VkFenceCreateInfo& createInfo)
+	inline auto CreateFenceUnique(VkDevice device, const VkFenceCreateInfo& createInfo)
 	{
 		VkFence fence;
 		vkCreateFence(device, &createInfo, nullptr, &fence);

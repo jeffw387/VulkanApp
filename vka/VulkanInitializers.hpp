@@ -57,6 +57,13 @@ namespace vka
 		return createInfo;
 	}
 
+	inline VkPipelineShaderStageCreateInfo pipelineShaderStageCreateInfo()
+	{
+		VkPipelineShaderStageCreateInfo createInfo{};
+		createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		return createInfo;
+	}
+
 	inline VkMemoryAllocateInfo memoryAllocateInfo()
 	{
 		VkMemoryAllocateInfo memAllocInfo{};

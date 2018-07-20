@@ -3,12 +3,15 @@
 #include "vulkan/vulkan.h"
 #include "vka/VulkanFunctionLoader.hpp"
 #include "vka/UniqueVulkan.hpp"
+#include "vka/Buffer.hpp"
+#include "vka/Image2D.hpp"
+#include "Pool.hpp"
+#include "vka/Allocator.hpp"
 
 #include <array>
 #include <vector>
 
-constexpr size_t BufferCount = 3;
-
+constexpr uint32_t BufferCount = 3;
 namespace vka
 {
 	struct VS
@@ -25,6 +28,7 @@ namespace vka
 
 		VkInstance instance;
 		VkPhysicalDevice physicalDevice;
+		bool unifiedMemory = false;
 		std::vector<VkQueueFamilyProperties> queueFamilyProperties;
 		float graphicsQueuePriority = 0.f;
 		float presentQueuePriority = 0.f;
@@ -33,7 +37,9 @@ namespace vka
 		VkDevice device;
 		VkQueue graphicsQueue;
 		VkQueue presentQueue;
+		vka::Allocator allocator;
 		VkSurfaceKHR surface;
+		VkExtent2D swapExtent;
 		std::vector<VkSurfaceFormatKHR> supportedSurfaceFormats;
 		VkSurfaceFormatKHR surfaceFormat;
 		VkFormat depthFormat;
@@ -41,6 +47,15 @@ namespace vka
 		VkPresentModeKHR presentMode;
 		VkSwapchainKHR swapchain;
 		VkRenderPass renderPass;
+		struct {
+			struct {
+				VkCommandPoolUnique pool;
+				VkFenceUnique fence;
+			} unique;
+			VkCommandBuffer buffer;
+			VkFence fence;
+		} utility;
+		vka::Image2D depthImage;
 
 		struct {
 			struct {
@@ -48,7 +63,7 @@ namespace vka
 					VkSamplerUnique sampler;
 					VkDescriptorSetLayoutUnique staticLayout;
 					VkDescriptorSetLayoutUnique frameLayout;
-					VkDescriptorSetLayoutUnique modelLayout;
+					VkDescriptorSetLayoutUnique materialLayout;
 					VkDescriptorSetLayoutUnique drawLayout;
 					VkShaderModuleUnique vertex;
 					VkShaderModuleUnique fragment;
@@ -58,11 +73,11 @@ namespace vka
 				VkSampler sampler;
 				std::vector<VkDescriptorSetLayoutBinding> staticBindings;
 				std::vector<VkDescriptorSetLayoutBinding> frameBindings;
-				std::vector<VkDescriptorSetLayoutBinding> modelBindings;
+				std::vector<VkDescriptorSetLayoutBinding> materialBindings;
 				std::vector<VkDescriptorSetLayoutBinding> drawBindings;
 				VkDescriptorSetLayout staticLayout;
 				VkDescriptorSetLayout frameLayout;
-				VkDescriptorSetLayout modelLayout;
+				VkDescriptorSetLayout materialLayout;
 				VkDescriptorSetLayout drawLayout;
 				VkShaderModule vertex;
 				VkShaderModule fragment;
@@ -71,23 +86,17 @@ namespace vka
 			} pipeline2D;
 			struct {
 				struct {
-					VkDescriptorSetLayoutUnique staticLayout;
+					VkDescriptorSetLayoutUnique materialLayout;
 					VkDescriptorSetLayoutUnique frameLayout;
-					VkDescriptorSetLayoutUnique modelLayout;
-					VkDescriptorSetLayoutUnique drawLayout;
 					VkShaderModuleUnique vertex;
 					VkShaderModuleUnique fragment;
 					VkPipelineLayoutUnique pipelineLayout;
 					VkPipelineUnique pipeline;
 				} unique;
-				std::vector<VkDescriptorSetLayoutBinding> staticBindings;
+				std::vector<VkDescriptorSetLayoutBinding> materialBindings;
 				std::vector<VkDescriptorSetLayoutBinding> frameBindings;
-				std::vector<VkDescriptorSetLayoutBinding> modelBindings;
-				std::vector<VkDescriptorSetLayoutBinding> drawBindings;
-				VkDescriptorSetLayout staticLayout;
+				VkDescriptorSetLayout materialLayout;
 				VkDescriptorSetLayout frameLayout;
-				VkDescriptorSetLayout modelLayout;
-				VkDescriptorSetLayout drawLayout;
 				VkShaderModule vertex;
 				VkShaderModule fragment;
 				VkPipelineLayout pipelineLayout;
@@ -95,6 +104,8 @@ namespace vka
 			} pipeline3D;
 		} pipelines;
 
+		VkViewport viewport;
+		VkRect2D scissor;
 		uint32_t nextImage;
 		std::array<VkFenceUnique, BufferCount> imagePresentedFences;
 		Pool<VkFence> imagePresentedFencePool;
@@ -104,7 +115,6 @@ namespace vka
 				vka::UniqueAllocatedBuffer matrixBuffer;
 				VkDescriptorPoolUnique staticDescriptorPool;
 				VkDescriptorPoolUnique dynamicDescriptorPool;
-				VkImage swapImage;
 				VkImageViewUnique swapView;
 				VkFramebufferUnique framebuffer;
 				VkCommandBuffer renderCommandBuffer;

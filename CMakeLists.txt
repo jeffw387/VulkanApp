@@ -4,7 +4,6 @@ project(VulkanApp)
 
 add_executable(VulkanApp 
     main.cpp 
-    vka/VulkanApp.cpp 
     vka/VulkanFunctions.cpp 
     vka/Allocator.cpp)
 

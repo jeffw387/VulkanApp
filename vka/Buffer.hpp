@@ -3,6 +3,7 @@
 #include "VulkanFunctions.hpp"
 #include "UniqueVulkan.hpp"
 #include "gsl.hpp"
+#include "Allocator.hpp"
 
 #include <vector>
 

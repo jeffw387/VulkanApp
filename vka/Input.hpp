@@ -109,36 +109,6 @@ namespace vka
     using InputBindMap = std::unordered_map<KeySignature, HashType>;
     using InputStateMap = std::unordered_map<HashType, StateVariant>;
 
-    static void PushBackInput(GLFWwindow* window, InputMessage&& msg);
-
-    static void SetCursorPosition(GLFWwindow* window, double x, double y);
-
-    static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
-    {
-        if (action == GLFW_REPEAT)
-            return;
-        InputMessage msg;
-        msg.signature.code = key;
-        msg.signature.action = action;
-        PushBackInput(window, std::move(msg));
-    }
-
-    static void CharacterCallback(GLFWwindow* window, unsigned int codepoint)
-    {
-    }
-
-    static void CursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
-    {
-        SetCursorPosition(window, xpos, ypos);
-    }
-
-    static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
-    {
-        InputMessage msg;
-        msg.signature.code = button;
-        msg.signature.action = action;
-        PushBackInput(window, std::move(msg));
-    }
 
 	struct InputState
 	{

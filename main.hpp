@@ -6,6 +6,7 @@
 #include <variant>
 #include <memory>
 #include <array>
+#include <thread>
 
 #include "vka/UniqueVulkan.hpp"
 #include "vka/vulkanHelperFunctions.hpp"
@@ -13,6 +14,7 @@
 #include "vka/VulkanFunctionLoader.hpp"
 #include "vka/Image2D.hpp"
 #include "vka/GLTF.hpp"
+#include "vka/Quad.hpp"
 #include "VulkanState.hpp"
 #include "vka/Input.hpp"
 #include "TimeHelper.hpp"
@@ -75,48 +77,127 @@ public:
 
 	} paths;
 
-
-
-	using Material = glm::vec4;
+	struct Material
+	{
+		glm::vec4 color;
+	};
 	std::vector<Material> materials;
 
 	GLFWwindow* window;
 	vka::VS vs;
 	entt::DefaultRegistry ecs;
+	std::map<uint64_t, vka::Quad> quads;
 	std::map<uint64_t, vka::glTF> models;
 	vka::InputState is;
+
+	TimePoint_ms startupTimePoint;
+	TimePoint_ms currentSimulationTime;
+
+	bool exitUpdateThread = false;
+
+	void InputThread();
+
+	void UpdateThread();
 
 	void Update(TimePoint_ms updateTime);
 
 	void Draw();
 
+	void cleanup();
+
 	void createInstance();
+
+	void cleanupInstance();
 
 	void selectPhysicalDevice();
 
 	void createDevice();
 
+	void createAllocator();
+
+	void cleanupAllocator();
+
+	void cleanupDevice();
+
 	void createWindow(const char * title, uint32_t width, uint32_t height);
 
+	void cleanupWindow();
+
 	void createSurface();
+
+	void cleanupSurface();
+
+	void createUtilityResources();
+
+	void cleanupUtilityResources();
 
 	void chooseSwapExtent();
 
 	void createRenderPass();
 
-	void createSwapchain(const VkExtent2D& swapExtent);
+	void cleanupRenderPass();
+
+	void createSwapchain();
 
 	void cleanupSwapchain();
 
+	void recreateSwapchain();
+
 	void createSampler();
 
-	void createPipeline2D();
+	void cleanupSampler();
 
-	void createPipeline3D();
+	void createDescriptorSetLayouts();
+
+	void cleanupDescriptorSetLayouts();
+
+	void createStaticDescriptorPool();
+
+	void cleanupStaticDescriptorPool();
+
+	void createPushRanges();
+
+	void createPipelineLayout();
+
+	void cleanupPipelineLayout();
+
+	void createPipelineCommonState();
+
+	void createShader2DModules();
+
+	void createShader3DModules();
+
+	void cleanupShaderModules();
+
+	void setupPipeline2D();
+
+	void setupPipeline3D();
+
+	void createPipelines();
+
+	void cleanupPipelines();
+
+	void loadImages();
+
+	void loadQuads();
 
 	void loadModels();
 
-	void createVertexBuffers();
+	auto createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryProperties, bool dedicatedAllocation);
+
+	void createVertexBuffer2D();
+
+	void createVertexBuffers3D();
+
+	void cleanupVertexBuffers();
+
+	void createStaticUniformBuffer();
+
+	void cleanupStaticUniformBuffer();
+
+	void createFrameResources();
+
+	void cleanupFrameResources();
 
 	void initVulkan();
 };

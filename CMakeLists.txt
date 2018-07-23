@@ -9,17 +9,23 @@ add_executable(VulkanApp
 
 set(VulkanSDKPath C:/VulkanSDK/1.1.70.1)
 set(ShaderOutput ${CMAKE_CURRENT_BINARY_DIR}/shaders)
+set(ShaderWorkingDir ${CMAKE_SOURCE_DIR}/shaders)
 file(MAKE_DIRECTORY ${ShaderOutput})
 
-set(shaderGroup 2D 3D)
+set(shaderGroups 2D 3D)
 set(shaderStages vert frag)
 foreach(stage ${shaderStages})
-	foreach(group ${ShaderGroup})
-		add_custom_target(${stage}Shader${group}
-			COMMAND ${VulkanSDKPath}/Bin/glslangValidator.exe -V 
-				shader.${stage} -o ${ShaderOutput}/${group}
-			WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/shaders/${group})
-		add_dependencies(VulkanApp ${stage}Shader${group})
+	foreach(group ${shaderGroups})
+		file(MAKE_DIRECTORY ${ShaderOutput}/${group})
+		set(shaderTarget ${stage}Shader${group})
+		set(inputShaderFile shader.${stage})
+		set(outputShaderFile ${stage}.spv)
+		set(compileShaderCommand ${VulkanSDKPath}/Bin/glslangValidator.exe -V ${inputShaderFile} -o ${ShaderOutput}/${group}/${outputShaderFile})
+		message("shaderTarget: " ${shaderTarget})
+		add_custom_target(${shaderTarget}
+			COMMAND ${compileShaderCommand}
+			WORKING_DIRECTORY ${ShaderWorkingDir}/${group})
+		add_dependencies(VulkanApp ${shaderTarget})
 	endforeach(group)
 endforeach(stage)
 

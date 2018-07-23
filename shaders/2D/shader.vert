@@ -1,27 +1,20 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
-#extension GL_KHR_vulkan_glsl : enable
+// ---Vertex Shader 2D pipeline---
 
-// vertex attributes
-layout(binding = 0, location = 0) in vec2 inPosition;
-layout(binding = 0, location = 1) in vec2 inTexCoord;
+// --vertex attributes--
+layout(location = 0) in vec2 inPosition;
+layout(location = 1) in vec2 inTexCoord;
 
-// uniform buffers
-// per frame update
-layout(set = 1, binding = 0) uniform Matrices
-{
-    mat4 view;
-    mat4 projection;
-} matrices;
-
+// --uniform buffers--
 // per draw update
-layout(set = 3, binding = 0) uniform DynamicMatrices
+layout(set = 2, binding = 0) uniform Instance
 {
     mat4 M;
     mat4 MVP;
-} dynamicMatrices;
+} instance;
 
-// shader interface
+// --shader interface--
 layout(location = 0) out vec2 outTexCoord;
 out gl_PerVertex
 {
@@ -32,5 +25,5 @@ void main()
 {
     outTexCoord = inTexCoord;
 
-    gl_Position = dynamicMatrices.MVP * vec4(inPosition, 0.0, 1.0);
+    gl_Position = instance.MVP * vec4(inPosition, 0.0, 1.0);
 }

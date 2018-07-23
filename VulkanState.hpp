@@ -18,117 +18,159 @@ namespace vka
 	{
 		LibraryHandle VulkanLibrary;
 
-		struct {
-			VkInstanceUnique instance;
-			VkDeviceUnique device;
-			VkSurfaceKHRUnique surface;
-			VkSwapchainKHRUnique swapchain;
-			VkRenderPassUnique renderPass;
-		} unique;
-
 		VkInstance instance;
 		VkPhysicalDevice physicalDevice;
 		bool unifiedMemory = false;
-		std::vector<VkQueueFamilyProperties> queueFamilyProperties;
-		float graphicsQueuePriority = 0.f;
-		float presentQueuePriority = 0.f;
-		uint32_t graphicsQueueFamilyIndex;
-		uint32_t presentQueueFamilyIndex;
+		VkDeviceSize uniformBufferOffsetAlignment;
+
+		struct Queues {
+			std::vector<VkQueueFamilyProperties> familyProperties;
+			struct Graphics {
+				float priority = 0.f;
+				uint32_t familyIndex;
+				VkQueue queue;
+			} graphics;
+			struct Present {
+				float priority = 0.f;
+				uint32_t familyIndex;
+				VkQueue queue;
+			} present;
+		} queue;
 		VkDevice device;
-		VkQueue graphicsQueue;
-		VkQueue presentQueue;
 		vka::Allocator allocator;
-		VkSurfaceKHR surface;
-		VkExtent2D swapExtent;
-		std::vector<VkSurfaceFormatKHR> supportedSurfaceFormats;
-		VkSurfaceFormatKHR surfaceFormat;
-		VkFormat depthFormat;
-		std::vector<VkPresentModeKHR> supportedPresentModes;
-		VkPresentModeKHR presentMode;
-		VkSwapchainKHR swapchain;
-		VkRenderPass renderPass;
-		struct {
-			struct {
-				VkCommandPoolUnique pool;
-				VkFenceUnique fence;
-			} unique;
+
+		struct Utility {
+			VkCommandPool pool;
 			VkCommandBuffer buffer;
 			VkFence fence;
 		} utility;
+
+		VkSurfaceKHR surface;
+		struct SurfaceData {
+			VkExtent2D extent;
+			std::vector<VkSurfaceFormatKHR> supportedFormats;
+			VkSurfaceFormatKHR swapFormat;
+			VkFormat depthFormat;
+			std::vector<VkPresentModeKHR> supportedPresentModes;
+			VkPresentModeKHR presentMode;
+		} surfaceData;
+
+		VkRenderPass renderPass;
+		VkSwapchainKHR swapchain;
 		vka::Image2D depthImage;
 
-		struct {
-			struct {
-				struct {
-					VkSamplerUnique sampler;
-					VkDescriptorSetLayoutUnique staticLayout;
-					VkDescriptorSetLayoutUnique frameLayout;
-					VkDescriptorSetLayoutUnique materialLayout;
-					VkDescriptorSetLayoutUnique drawLayout;
-					VkShaderModuleUnique vertex;
-					VkShaderModuleUnique fragment;
-					VkPipelineLayoutUnique pipelineLayout;
-					VkPipelineUnique pipeline;
-			} unique;
-				VkSampler sampler;
-				std::vector<VkDescriptorSetLayoutBinding> staticBindings;
-				std::vector<VkDescriptorSetLayoutBinding> frameBindings;
-				std::vector<VkDescriptorSetLayoutBinding> materialBindings;
-				std::vector<VkDescriptorSetLayoutBinding> drawBindings;
-				VkDescriptorSetLayout staticLayout;
-				VkDescriptorSetLayout frameLayout;
-				VkDescriptorSetLayout materialLayout;
-				VkDescriptorSetLayout drawLayout;
-				VkShaderModule vertex;
-				VkShaderModule fragment;
-				VkPipelineLayout pipelineLayout;
-				VkPipeline pipeline;
-			} pipeline2D;
-			struct {
-				struct {
-					VkDescriptorSetLayoutUnique materialLayout;
-					VkDescriptorSetLayoutUnique frameLayout;
-					VkShaderModuleUnique vertex;
-					VkShaderModuleUnique fragment;
-					VkPipelineLayoutUnique pipelineLayout;
-					VkPipelineUnique pipeline;
-				} unique;
-				std::vector<VkDescriptorSetLayoutBinding> materialBindings;
-				std::vector<VkDescriptorSetLayoutBinding> frameBindings;
-				VkDescriptorSetLayout materialLayout;
-				VkDescriptorSetLayout frameLayout;
-				VkShaderModule vertex;
-				VkShaderModule fragment;
-				VkPipelineLayout pipelineLayout;
-				VkPipeline pipeline;
-			} pipeline3D;
-		} pipelines;
+		VkSampler sampler;
 
-		VkViewport viewport;
-		VkRect2D scissor;
+		std::vector<VkDescriptorSetLayoutBinding> staticLayoutBindings;
+		std::vector<VkDescriptorSetLayoutBinding> frameLayoutBindings;
+		std::vector<VkDescriptorSetLayoutBinding> drawLayoutBindings;
+		std::array<VkDescriptorSetLayout, 3> layouts;
+		struct PushConstantData {
+			glm::uint32 materialIndex;
+			glm::uint32 textureIndex;
+		} pushConstantData;
+		VkPushConstantRange pushRange;
+
+		struct Shaders {
+			struct P2D {
+				VkShaderModule vertex;
+				VkShaderModule fragment;
+			} p2D;
+			struct P3D {
+				VkShaderModule vertex;
+				VkShaderModule fragment;
+			} p3D;
+		} shaders;
+
+		struct VertexBuffers {
+			struct P2D {
+				vka::Buffer vertexBuffer;
+			} p2D;
+			struct P3D {
+				vka::Buffer positionBuffer;
+				vka::Buffer normalBuffer;
+				vka::Buffer indexBuffer;
+			} p3D;
+		} vertexBuffers;
+
+		struct SpecializationData {
+			using MaterialCount = glm::uint32;
+			using TextureCount = glm::uint32;
+			using LightCount = glm::uint32;
+			MaterialCount materialCount;
+			TextureCount textureCount;
+			LightCount lightCount;
+		} specializationData;
+
+		struct Pipeline {
+			VkPipelineLayout layout;
+			VkViewport viewport;
+			VkRect2D scissor;
+			struct Common {
+				struct DynamicStates {
+					VkDynamicState viewport = VK_DYNAMIC_STATE_VIEWPORT;
+					VkDynamicState scissor = VK_DYNAMIC_STATE_SCISSOR;
+				} dynamicStates;
+				VkPipelineDynamicStateCreateInfo dynamicState;
+				VkPipelineMultisampleStateCreateInfo multisampleState;
+				VkPipelineViewportStateCreateInfo viewportState;
+				VkPipelineInputAssemblyStateCreateInfo inputAssemblyState;
+				struct SpecializationMapEntries {
+					VkSpecializationMapEntry materialCount;
+					VkSpecializationMapEntry textureCount;
+					VkSpecializationMapEntry lightCount;
+				} specializationMapEntries;
+				VkSpecializationInfo specializationInfo;
+			} common;
+
+			struct P2DState {
+				std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+				VkPipelineColorBlendAttachmentState colorBlendAttachmentState;
+				VkPipelineColorBlendStateCreateInfo colorBlendState;
+				VkPipelineRasterizationStateCreateInfo rasterizationState;
+				std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+				std::vector<VkVertexInputBindingDescription> vertexBindings;
+				VkPipelineVertexInputStateCreateInfo vertexInputState;
+
+			} p2DState;
+			struct P3DState {
+				std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+				VkPipelineColorBlendAttachmentState colorBlendAttachmentState;
+				VkPipelineColorBlendStateCreateInfo colorBlendState;
+				VkPipelineDepthStencilStateCreateInfo depthStencilState;
+				VkPipelineRasterizationStateCreateInfo rasterizationState;
+				std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+				std::vector<VkVertexInputBindingDescription> vertexBindings;
+				VkPipelineVertexInputStateCreateInfo vertexInputState;
+			} p3DState;
+
+			VkGraphicsPipelineCreateInfo p2DCreateInfo;
+			VkGraphicsPipelineCreateInfo p3DCreateInfo;
+			VkPipeline p2D;
+			VkPipeline p3D;
+		} pipeline;
+
 		uint32_t nextImage;
-		std::array<VkFenceUnique, BufferCount> imagePresentedFences;
-		Pool<VkFence> imagePresentedFencePool;
-		VkFence imagePresentedFence;
-		struct {
-			struct {
-				vka::UniqueAllocatedBuffer matrixBuffer;
-				VkDescriptorPoolUnique staticDescriptorPool;
-				VkDescriptorPoolUnique dynamicDescriptorPool;
-				VkImageViewUnique swapView;
-				VkFramebufferUnique framebuffer;
-				VkCommandBuffer renderCommandBuffer;
-				VkSemaphoreUnique imageRenderedSemaphore;
-		} unique;
-			VkBuffer matrixBuffer;
-			VkDescriptorPool staticDescriptorPool;
+
+		VkDescriptorPool staticLayoutPool;
+		vka::Buffer materials;
+		VkDeviceSize instanceBuffersOffsetAlignment;
+		struct FrameData {
+			struct Uniform {
+				vka::Buffer camera;
+				vka::Buffer lights;
+				vka::Buffer instance;
+				size_t instanceBufferCapacity = 0;
+			} uniform;
 			VkDescriptorPool dynamicDescriptorPool;
 			VkImage swapImage;
 			VkImageView swapView;
 			VkFramebuffer framebuffer;
+			VkCommandPool renderCommandPool;
 			VkCommandBuffer renderCommandBuffer;
 			VkSemaphore imageRenderedSemaphore;
-			VkFence renderCommandBufferExecutedFence;
 		} frameData[BufferCount];
+		std::array<VkFence, BufferCount> imagePresentedFences;
+		Pool<VkFence> imagePresentedFencePool;
 	};
 }

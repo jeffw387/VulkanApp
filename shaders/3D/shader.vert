@@ -1,18 +1,15 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
+// ---Vertex Shader 3D pipeline---
 
-layout(constant_id = 0) const uint MaxLights = 3;
+// --specialization constants--
+layout(constant_id = 2) const uint LightCount = 3;
 
+// --vertex attributes--
 layout(location = 0) in vec3 vertexPosition_ModelSpace;
 layout(location = 1) in vec3 vertexNormal_ModelSpace;
 
-// per draw
-layout(set = 2, binding = 0) uniform Instance
-{
-    mat4 M;
-    mat4 MVP;
-} instance;
-
+// --uniform buffers--
 // per frame
 layout(set = 1, binding = 0) uniform Camera
 {
@@ -23,9 +20,18 @@ layout(set = 1, binding = 1) uniform Lights
 {
     vec4 position_WorldSpace;
     vec4 color;
-} lights[MaxLights];
+} lights[LightCount];
 
+// per draw
+layout(set = 2, binding = 0) uniform Instance
+{
+    mat4 M;
+    mat4 MVP;
+} instance;
+
+// --shader interface--
 layout(location = 0) out vec3 vertexNormal_CameraSpace;
+layout(location = 1) out vec3 lightDirection_CameraSpace[LightCount];
 out gl_PerVertex
 {
     vec4 gl_Position;
@@ -43,9 +49,9 @@ void main()
     vec3 vertexPosition_CameraSpace = (V * M * vec4(vertexPosition_ModelSpace, 1)).xyz;
     vec3 eyePosition_CameraSpace = vec3(0, 0, 0) - vertexPosition_CameraSpace;
 
-    for (uint i = 0; i < MaxLights; i++)
+    for (uint i = 0; i < LightCount; i++)
     {
-        vec3 lightPosition_CameraSpace = (V * vec4(lights.position_WorldSpace[i])).xyz;
+        vec3 lightPosition_CameraSpace = (V * vec4(lights[i].position_WorldSpace)).xyz;
         lightDirection_CameraSpace[i] = lightPosition_CameraSpace + eyePosition_CameraSpace;
     }
 

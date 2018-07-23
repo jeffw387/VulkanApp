@@ -6,6 +6,7 @@
 #include "UniqueVulkan.hpp"
 #include "entt/entt.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <vector>
 #include <string>
@@ -81,7 +82,8 @@ namespace vka
 
 	static glTF LoadModel(entt::HashedString fileName)
 	{
-		auto f = std::ifstream(std::string(fileName));
+		std::filesystem::path modelPath = std::string(fileName);
+		auto f = std::ifstream(modelPath);
 		json j;
 		f >> j;
 
@@ -89,8 +91,10 @@ namespace vka
 
 		for (const auto &buffer : j["buffers"])
 		{
+			std::filesystem::path bufferPath = modelPath;
 			std::string bufferFileName = buffer["uri"];
-			buffers.push_back(fileIO::readFile(bufferFileName));
+			modelPath.replace_filename(bufferFileName);
+			buffers.push_back(fileIO::readFile(bufferPath.string()));
 		}
 
 		auto model = glTF{};

@@ -7,8 +7,16 @@
 
 namespace cmp
 {
+	struct Drawable
+	{};
+
 	struct Light
 	{};
+
+	struct Material
+	{
+		uint64_t index;
+	};
 
     struct Sprite
     {

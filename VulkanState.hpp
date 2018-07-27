@@ -152,6 +152,14 @@ namespace vka
 
 		uint32_t nextImage;
 
+		VkClearValue colorClear = { 0.f, 0.f, 0.f, 0.f };
+		VkClearValue depthClear = { 1.f, 0U };
+		std::array<VkClearValue, 2> clearValues =
+		{
+			colorClear,
+			depthClear
+		};
+
 		VkDescriptorPool staticLayoutPool;
 		vka::Buffer materials;
 		VkDeviceSize instanceBuffersOffsetAlignment;
@@ -159,6 +167,8 @@ namespace vka
 			struct Uniform {
 				vka::Buffer camera;
 				vka::Buffer lights;
+				vka::Buffer stagingBuffer;
+				VkFence stagingFence;
 				vka::Buffer instance;
 				size_t instanceBufferCapacity = 0;
 			} uniform;
@@ -170,7 +180,7 @@ namespace vka
 			VkCommandBuffer renderCommandBuffer;
 			VkSemaphore imageRenderedSemaphore;
 		} frameData[BufferCount];
-		std::array<VkFence, BufferCount> imagePresentedFences;
-		Pool<VkFence> imagePresentedFencePool;
+		std::array<VkFence, BufferCount> imageReadyFences;
+		Pool<VkFence> imageReadyFencePool;
 	};
 }

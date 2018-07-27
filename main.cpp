@@ -18,24 +18,74 @@ namespace Fonts
 }
 constexpr VkExtent2D DefaultWindowSize = { 900, 900 };
 constexpr uint32_t LightCount = 3;
+struct Light {
+	glm::vec4 position;
+	glm::vec4 color;
+};
+std::array<Light, LightCount> lights;
+
+auto ClientApp::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryProperties, bool dedicatedAllocation = true)
+{
+	return vka::CreateAllocatedBuffer(
+		vs.device,
+		vs.allocator,
+		size,
+		usage,
+		vs.queue.graphics.familyIndex,
+		memoryProperties,
+		dedicatedAllocation);
+};
+
+void ClientApp::SetupPrototypes()
+{
+	triangle.set<Models::Triangle>();
+	triangle.set<cmp::Transform>(glm::mat4(1.f));
+	triangle.set<cmp::Material>(Materials::Red);
+	triangle.set<cmp::Drawable>();
+
+	cube.set<Models::Cube>();
+	cube.set<cmp::Transform>(glm::mat4(1.f));
+	cube.set<cmp::Material>(Materials::Red);
+	cube.set<cmp::Drawable>();
+
+	cylinder.set<Models::Cylinder>();
+	cylinder.set<cmp::Transform>(glm::mat4(1.f));
+	cylinder.set<cmp::Material>(Materials::Red);
+	cylinder.set<cmp::Drawable>();
+
+	icosphereSub2.set<Models::IcosphereSub2>();
+	icosphereSub2.set<cmp::Transform>(glm::mat4(1.f));
+	icosphereSub2.set<cmp::Material>(Materials::Red);
+	icosphereSub2.set<cmp::Drawable>();
+
+	pentagon.set<Models::Pentagon>();
+	pentagon.set<cmp::Transform>(glm::mat4(1.f));
+	pentagon.set<cmp::Material>(Materials::Red);
+	pentagon.set<cmp::Drawable>();
+}
 
 void ClientApp::InputThread()
 {
-	bool shouldExit = false;
-	while (!shouldExit)
+	std::thread updateThread(&ClientApp::UpdateThread, this);
+	while (!exitInputThread)
 	{
 		glfwWaitEvents();
 		if (glfwWindowShouldClose(window))
 		{
-			exit(0);
+			exitInputThread = true;
 		}
 	}
+	exitUpdateThread = true;
+	updateThread.join();
+	return;
 }
 
 void ClientApp::UpdateThread()
 {
 	startupTimePoint = NowMilliseconds();
 	currentSimulationTime = startupTimePoint;
+
+
 
 	while (!exitUpdateThread)
 	{
@@ -44,6 +94,7 @@ void ClientApp::UpdateThread()
 			Update(currentSimulationTime);
 		Draw();
 	}
+	exitInputThread = true;
 }
 
 void ClientApp::Update(TimePoint_ms updateTime)
@@ -71,11 +122,156 @@ void ClientApp::Update(TimePoint_ms updateTime)
 
 }
 
+template <typename T, typename iterT>
+void ClientApp::CopyDataToBuffer(
+	iterT begin, 
+	iterT end,
+	vka::Buffer dst,
+	VkDeviceSize dataElementOffset)
+{
+	vka::MapBuffer(vs.device, dst);
+	VkDeviceSize currentOffset = 0;
+	for (iterT iter = begin; iter != end; ++iter)
+	{
+		T& t = *iter;
+		memcpy((gsl::byte*)dst.mapPtr + currentOffset, &t, sizeof(T));
+	}
+}
+
+template <typename T, typename iterT>
+void ClientApp::CopyDataToBuffer(
+	iterT begin,
+	iterT end,
+	VkCommandBuffer cmd,
+	vka::Buffer staging,
+	vka::Buffer dst,
+	VkDeviceSize dataElementOffset,
+	VkFence fence,
+	VkSemaphore semaphore)
+{
+	vka::MapBuffer(vs.device, staging);
+	VkDeviceSize currentOffset = 0;
+	for (iterT iter = begin; iter != end; ++iter)
+	{
+		T& t = *iter;
+		memcpy((gsl::byte*)staging.mapPtr + currentOffset, &t, sizeof(T));
+	}
+	vka::CopyBufferToBuffer(
+		cmd,
+		vs.queue.graphics.queue,
+		staging.buffer,
+		dst.buffer,
+		VkBufferCopy{
+			0,
+			0,
+			staging.size
+		},
+		fence,
+		semaphore);
+}
+
 void ClientApp::Draw()
 {
 	// acquire image
 	// update matrix buffers
 	// update matrix descriptor set if needed
+
+	constexpr size_t maxU64 = ~(0);
+	auto imageReadyFence = vs.imageReadyFencePool.unpool().value();
+	auto acquireResult = vkAcquireNextImageKHR(vs.device, vs.swapchain, maxU64, 0, imageReadyFence, &vs.nextImage);
+
+	switch (acquireResult)
+	{
+	case VK_SUCCESS:
+	case VK_SUBOPTIMAL_KHR:
+		break;
+	case VK_TIMEOUT:
+	case VK_NOT_READY:
+		vs.imageReadyFencePool.pool(imageReadyFence);
+		return;
+	case VK_ERROR_OUT_OF_DATE_KHR:
+		recreateSwapchain();
+	default:
+		exitUpdateThread = true;
+		return;
+	}
+
+	auto& fd = vs.frameData[vs.nextImage];
+
+	auto rawDrawableView = ecs.view<cmp::Transform>(entt::raw_t{});
+	auto matrixCount = rawDrawableView.size();
+
+
+	auto cubeView = ecs.view<cmp::Transform, cmp::Material, Models::Cube>(entt::persistent_t{});
+	auto cylinderView = ecs.view<cmp::Transform, cmp::Material, Models::Cylinder>(entt::persistent_t{});
+	auto icosphereSub2View = ecs.view<cmp::Transform, cmp::Material, Models::IcosphereSub2>(entt::persistent_t{});
+	auto pentagonView = ecs.view<cmp::Transform, cmp::Material, Models::Pentagon>(entt::persistent_t{});
+	auto triangleView = ecs.view<cmp::Transform, cmp::Material, Models::Triangle>(entt::persistent_t{});
+	
+	vkResetCommandPool(vs.device, fd.renderCommandPool, 0);
+
+	auto allocateInfo = vka::commandBufferAllocateInfo(fd.renderCommandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+	vkAllocateCommandBuffers(vs.device, &allocateInfo, &fd.renderCommandBuffer);
+
+	auto cmdBeginInfo = vka::commandBufferBeginInfo();
+	vkBeginCommandBuffer(fd.renderCommandBuffer, &cmdBeginInfo);
+
+	
+
+	auto renderPassBeginInfo = vka::renderPassBeginInfo();
+	renderPassBeginInfo.clearValueCount = 2;
+	renderPassBeginInfo.pClearValues = vs.clearValues.data();
+	renderPassBeginInfo.framebuffer = fd.framebuffer;
+	renderPassBeginInfo.renderArea = vs.pipeline.scissor;
+	renderPassBeginInfo.renderPass = vs.renderPass;
+	vkCmdBeginRenderPass(fd.renderCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(fd.renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vs.pipeline.p3D);
+
+	std::array<VkBuffer, 2> vertexBuffers3D = {
+		vs.vertexBuffers.p3D.positionBuffer.buffer,
+		vs.vertexBuffers.p3D.normalBuffer.buffer
+	};
+	std::array<VkDeviceSize, 2> vertexBufferOffsets3D = { 0, 0 };
+	vkCmdBindVertexBuffers(fd.renderCommandBuffer, 0, 2, vertexBuffers3D.data(), vertexBufferOffsets3D.data());
+	vkCmdBindIndexBuffer(fd.renderCommandBuffer, vs.vertexBuffers.p3D.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+
+	if (vs.unifiedMemory)
+	{
+		if (matrixCount > fd.uniform.instanceBufferCapacity || fd.uniform.instance.buffer == VK_NULL_HANDLE)
+		{
+			vka::DestroyAllocatedBuffer(vs.device, fd.uniform.instance);
+			fd.uniform.instance = createBuffer(
+				vs.instanceBuffersOffsetAlignment * matrixCount,
+				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				true);
+			fd.uniform.instanceBufferCapacity = matrixCount;
+		}
+		vka::MapBuffer(vs.device, fd.uniform.instance);
+		VkDeviceSize offset{};
+		for (auto& entity : cubeView)
+		{
+
+		}
+	}
+	else
+	{
+		if (matrixCount > fd.uniform.instanceBufferCapacity || fd.uniform.instance.buffer == VK_NULL_HANDLE)
+		{
+			vka::DestroyAllocatedBuffer(vs.device, fd.uniform.instance);
+			fd.uniform.instance = createBuffer(
+				vs.instanceBuffersOffsetAlignment * matrixCount,
+				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+				VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				false);
+			fd.uniform.instanceBufferCapacity = matrixCount;
+		}
+	}
+
 }
 
 void ClientApp::cleanup()
@@ -138,6 +334,7 @@ void ClientApp::selectPhysicalDevice()
 	}
 
 	vs.uniformBufferOffsetAlignment = props.limits.minUniformBufferOffsetAlignment;
+	vs.instanceBuffersOffsetAlignment = SelectUniformBufferOffset(sizeof(glm::mat4) * 2, vs.uniformBufferOffsetAlignment);
 }
 
 void ClientApp::createDevice()
@@ -314,6 +511,8 @@ void ClientApp::chooseSwapExtent()
 {
 	auto capabilities = vka::GetSurfaceCapabilities(vs.physicalDevice, vs.surface);
 	vs.surfaceData.extent = capabilities.currentExtent;
+
+	camera.setSize(glm::vec2((float)vs.surfaceData.extent.width, (float)vs.surfaceData.extent.height));
 }
 
 void ClientApp::createRenderPass()
@@ -588,20 +787,20 @@ void ClientApp::createPipelineCommonState()
 	vs.specializationData.textureCount = paths.images.size();
 	vs.specializationData.materialCount = materials.size();
 	cmn.specializationMapEntries.materialCount = vka::specializationMapEntry(
-		0, 
-		offsetof(vka::VS::SpecializationData, materialCount), 
+		0,
+		offsetof(vka::VS::SpecializationData, materialCount),
 		sizeof(vka::VS::SpecializationData::MaterialCount));
 	cmn.specializationMapEntries.textureCount = vka::specializationMapEntry(
-		1, 
-		offsetof(vka::VS::SpecializationData, textureCount), 
+		1,
+		offsetof(vka::VS::SpecializationData, textureCount),
 		sizeof(vka::VS::SpecializationData::TextureCount));
 	cmn.specializationMapEntries.lightCount = vka::specializationMapEntry(
-		2, 
-		offsetof(vka::VS::SpecializationData, lightCount), 
+		2,
+		offsetof(vka::VS::SpecializationData, lightCount),
 		sizeof(vka::VS::SpecializationData::LightCount));
 	cmn.specializationInfo = vka::specializationInfo(
-		3, 
-		&cmn.specializationMapEntries.materialCount, 
+		3,
+		&cmn.specializationMapEntries.materialCount,
 		sizeof(vka::VS::SpecializationData), &vs.specializationData);
 	cmn.dynamicState = vka::pipelineDynamicStateCreateInfo(
 		&vs.pipeline.common.dynamicStates.viewport,
@@ -786,7 +985,13 @@ void ClientApp::setupPipeline3D()
 
 void ClientApp::createPipelines()
 {
-	vkCreateGraphicsPipelines(vs.device, VK_NULL_HANDLE, 2, &vs.pipeline.p2DCreateInfo, nullptr, &vs.pipeline.p2D);
+	vkCreateGraphicsPipelines(
+		vs.device, 
+		VK_NULL_HANDLE, 
+		2, 
+		&vs.pipeline.p2DCreateInfo, 
+		nullptr, 
+		&vs.pipeline.p2D);
 }
 
 void ClientApp::cleanupPipelines()
@@ -811,17 +1016,6 @@ void ClientApp::loadModels()
 	loadFunc(Models::Triangle::path);
 }
 
-auto ClientApp::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryProperties, bool dedicatedAllocation = true)
-{
-	return vka::CreateAllocatedBuffer(
-		vs.device,
-		vs.allocator,
-		size,
-		usage,
-		vs.queue.graphics.familyIndex,
-		memoryProperties,
-		dedicatedAllocation);
-};
 
 void ClientApp::createVertexBuffer2D()
 {
@@ -925,14 +1119,11 @@ void ClientApp::createVertexBuffers3D()
 	{
 		const auto& mesh = model.second.full;
 
-		auto positionData = gsl::span(mesh.positions);
-		positionBufferSize += positionData.length_bytes();
+		positionBufferSize += mesh.positions.size() * sizeof(glm::vec3);
 
-		auto normalData = gsl::span(mesh.normals);
-		normalBufferSize += normalData.length_bytes();
+		normalBufferSize += mesh.normals.size() * sizeof(glm::vec3);
 
-		auto indexData = gsl::span(mesh.indices);
-		indexBufferSize += indexData.length_bytes();
+		indexBufferSize += mesh.indices.size() * sizeof(vka::IndexType);
 	}
 	if (!positionBufferSize || !normalBufferSize || !indexBufferSize)
 		return;
@@ -1014,22 +1205,26 @@ void ClientApp::createVertexBuffers3D()
 	{
 		auto& mesh = model.second.full;
 
-		auto positionData = gsl::span(mesh.positions);
-		auto normalData = gsl::span(mesh.normals);
-		auto indexData = gsl::span(mesh.indices);
+		auto positionData = mesh.positions;
+		auto normalData =	mesh.normals;
+		auto indexData =	mesh.indices;
 
 		mesh.firstVertex = vertexOffset;
 		mesh.firstIndex = indexOffset;
 
-		memcpy((gsl::byte*)(positionHostBuffer.mapPtr) + positionBufferOffset, positionData.data(), positionData.length_bytes());
-		memcpy((gsl::byte*)(normalHostBuffer.mapPtr) + normalBufferOffset, normalData.data(), normalData.length_bytes());
-		memcpy((gsl::byte*)(indexHostBuffer.mapPtr) + indexBufferOffset, indexData.data(), indexData.length_bytes());
+		auto positionLengthBytes = positionData.size() * sizeof(glm::vec3);
+		auto normalLengthBytes = normalData.size() * sizeof(glm::vec3);
+		auto indexLengthBytes = indexData.size() * sizeof(vka::IndexType);
+
+		std::memcpy((gsl::byte*)positionHostBuffer.mapPtr + positionBufferOffset, positionData.data(), positionLengthBytes);
+		std::memcpy((gsl::byte*)normalHostBuffer.mapPtr + normalBufferOffset, normalData.data(), normalLengthBytes);
+		std::memcpy((gsl::byte*)indexHostBuffer.mapPtr + indexBufferOffset, indexData.data(), indexLengthBytes);
 
 		vertexOffset += positionData.size();
 		indexOffset += indexData.size();
-		positionBufferOffset += positionData.length_bytes();
-		normalBufferOffset += normalData.length_bytes();
-		indexBufferOffset += indexData.length_bytes();
+		positionBufferOffset += positionLengthBytes;
+		normalBufferOffset += normalLengthBytes;
+		indexBufferOffset += indexLengthBytes;
 	}
 
 	if (!vs.unifiedMemory)
@@ -1068,14 +1263,6 @@ void ClientApp::cleanupVertexBuffers()
 	vka::DestroyAllocatedBuffer(vs.device, vs.vertexBuffers.p3D.normalBuffer);
 	vka::DestroyAllocatedBuffer(vs.device, vs.vertexBuffers.p3D.positionBuffer);
 	vka::DestroyAllocatedBuffer(vs.device, vs.vertexBuffers.p2D.vertexBuffer);
-}
-
-static VkDeviceSize SelectUniformBufferOffset(VkDeviceSize elementSize, VkDeviceSize minimumOffsetAlignment)
-{
-	if (elementSize <= minimumOffsetAlignment)
-		return minimumOffsetAlignment;
-	auto mult = (VkDeviceSize)std::ceil((double)elementSize / (double)minimumOffsetAlignment);
-	return mult * minimumOffsetAlignment;
 }
 
 void ClientApp::createStaticUniformBuffer()
@@ -1146,31 +1333,31 @@ void ClientApp::createFrameResources()
 		std::vector<VkDescriptorPoolSize> poolSizes = { cameraPoolSize, lightsPoolSize, instancePoolSize };
 		auto descriptorPoolCreateInfo = vka::descriptorPoolCreateInfo(poolSizes, 2);
 		vkCreateDescriptorPool(
-			vs.device, 
-			&descriptorPoolCreateInfo, 
-			nullptr, 
+			vs.device,
+			&descriptorPoolCreateInfo,
+			nullptr,
 			&fd.dynamicDescriptorPool);
 
 		auto commandPoolCreateInfo = vka::commandPoolCreateInfo();
 		commandPoolCreateInfo.queueFamilyIndex = vs.queue.graphics.familyIndex;
 		vkCreateCommandPool(
-			vs.device, 
-			&commandPoolCreateInfo, 
-			nullptr, 
+			vs.device,
+			&commandPoolCreateInfo,
+			nullptr,
 			&fd.renderCommandPool);
 
 		auto commandBufferAllocateInfo = vka::commandBufferAllocateInfo(
-			fd.renderCommandPool, 
-			VK_COMMAND_BUFFER_LEVEL_PRIMARY, 
+			fd.renderCommandPool,
+			VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 			1);
 		vkAllocateCommandBuffers(
-			vs.device, 
-			&commandBufferAllocateInfo, 
+			vs.device,
+			&commandBufferAllocateInfo,
 			&fd.renderCommandBuffer);
 
 		auto fenceCreateInfo = vka::fenceCreateInfo();
-		vkCreateFence(vs.device, &fenceCreateInfo, nullptr, &vs.imagePresentedFences[i]);
-		vs.imagePresentedFencePool.pool(vs.imagePresentedFences[i]);
+		vkCreateFence(vs.device, &fenceCreateInfo, nullptr, &vs.imageReadyFences[i]);
+		vs.imageReadyFencePool.pool(vs.imageReadyFences[i]);
 
 		auto semaphoreCreateInfo = vka::semaphoreCreateInfo();
 		vkCreateSemaphore(vs.device, &semaphoreCreateInfo, nullptr, &fd.imageRenderedSemaphore);
@@ -1182,7 +1369,7 @@ void ClientApp::cleanupFrameResources()
 	for (auto i = 0U; i < BufferCount; ++i)
 	{
 		auto& fd = vs.frameData[i];
-		vkDestroyFence(vs.device, vs.imagePresentedFences[i], nullptr);
+		vkDestroyFence(vs.device, vs.imageReadyFences[i], nullptr);
 
 		vkDestroySemaphore(vs.device, fd.imageRenderedSemaphore, nullptr);
 
@@ -1303,61 +1490,34 @@ static void MouseButtonCallback(GLFWwindow* window, int button, int action, int 
 
 int main()
 {
+	_putenv("DISABLE_VK_LAYER_VALVE_steam_overlay_1=1");
 	ClientApp app{};
 
-	//app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_LEFT, GLFW_PRESS)] = Bindings::Left;
-	//app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_RIGHT, GLFW_PRESS)] = Bindings::Right;
-	//app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_UP, GLFW_PRESS)] = Bindings::Up;
-	//app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_DOWN, GLFW_PRESS)] = Bindings::Down;
+	app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_LEFT, GLFW_PRESS)] = Bindings::Left;
+	app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_RIGHT, GLFW_PRESS)] = Bindings::Right;
+	app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_UP, GLFW_PRESS)] = Bindings::Up;
+	app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_DOWN, GLFW_PRESS)] = Bindings::Down;
 
-	//app.is.inputStateMap[Bindings::Left] = vka::MakeAction([]() { std::cout << "Left Pressed.\n"; });
-	//app.is.inputStateMap[Bindings::Right] = vka::MakeAction([]() { std::cout << "Right Pressed.\n"; });
-	//app.is.inputStateMap[Bindings::Up] = vka::MakeAction([]() { std::cout << "Up Pressed.\n"; });
-	//app.is.inputStateMap[Bindings::Down] = vka::MakeAction([]() { std::cout << "Down Pressed.\n"; });
+	app.is.inputStateMap[Bindings::Left] = vka::MakeAction([]() { std::cout << "Left Pressed.\n"; });
+	app.is.inputStateMap[Bindings::Right] = vka::MakeAction([]() { std::cout << "Right Pressed.\n"; });
+	app.is.inputStateMap[Bindings::Up] = vka::MakeAction([]() { std::cout << "Up Pressed.\n"; });
+	app.is.inputStateMap[Bindings::Down] = vka::MakeAction([]() { std::cout << "Down Pressed.\n"; });
 
-	//using proto = entt::DefaultPrototype;
-	//auto player = proto(app.ecs);
-	//auto triangle = proto(app.ecs);
-	//auto cube = proto(app.ecs);
-	//auto cylinder = proto(app.ecs);
-	//auto icosphereSub2 = proto(app.ecs);
-	//auto pentagon = proto(app.ecs);
-	//auto light = proto(app.ecs);
+	
 
-	//triangle.set<Models::Triangle>();
-	//triangle.set<cmp::Transform>(glm::mat4(1.f));
-	//triangle.set<cmp::Color>(glm::vec4(1.f));
+	// 3D render views
+	app.ecs.prepare<cmp::Transform, cmp::Material, Models::Cube>();
+	app.ecs.prepare<cmp::Transform, cmp::Material, Models::Cylinder>();
+	app.ecs.prepare<cmp::Transform, cmp::Material, Models::IcosphereSub2>();
+	app.ecs.prepare<cmp::Transform, cmp::Material, Models::Pentagon>();
+	app.ecs.prepare<cmp::Transform, cmp::Material, Models::Triangle>();
 
-	//cube.set<Models::Cube>();
-	//cube.set<cmp::Transform>(glm::mat4(1.f));
-	//cube.set<cmp::Color>(glm::vec4(1.f));
-
-	//cylinder.set<Models::Cylinder>();
-	//cylinder.set<cmp::Transform>(glm::mat4(1.f));
-	//cylinder.set<cmp::Color>(glm::vec4(1.f));
-
-	//icosphereSub2.set<Models::IcosphereSub2>();
-	//icosphereSub2.set<cmp::Transform>(glm::mat4(1.f));
-	//icosphereSub2.set<cmp::Color>(glm::vec4(1.f));
-
-	//pentagon.set<Models::Pentagon>();
-	//pentagon.set<cmp::Transform>(glm::mat4(1.f));
-	//pentagon.set<cmp::Color>(glm::vec4(1.f));
-
-	//light.set<cmp::Light>();
-	//light.set<cmp::Color>(glm::vec4(1.f));
-	//light.set<cmp::Transform>(glm::mat4(1.f));
-
-	//// 3D render views
-	//app.ecs.prepare<cmp::Transform, cmp::Color, Models::Cube>();
-	//app.ecs.prepare<cmp::Transform, cmp::Color, Models::Cylinder>();
-	//app.ecs.prepare<cmp::Transform, cmp::Color, Models::IcosphereSub2>();
-	//app.ecs.prepare<cmp::Transform, cmp::Color, Models::Pentagon>();
-	//app.ecs.prepare<cmp::Transform, cmp::Color, Models::Triangle>();
-
+	//app.ecs.prepare<cmp::Transform>();
 
 	// 3D entities
 
 	app.initVulkan();
+	app.SetupPrototypes();
+	app.InputThread();
 	app.cleanup();
 }

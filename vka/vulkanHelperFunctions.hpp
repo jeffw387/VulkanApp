@@ -78,7 +78,7 @@ namespace vka
 		VkBufferUsageFlags usage,
 		uint32_t queueFamilyIndex,
 		VkMemoryPropertyFlags memoryFlags,
-		bool DedicatedAllocation)
+		bool dedicatedAllocation)
 	{
 		auto bufferCreateInfo = vka::bufferCreateInfo(usage, size);
 		bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -93,7 +93,8 @@ namespace vka
 
 		allocatedBuffer.usage = usage;
 		allocatedBuffer.size = size;
-		allocatedBuffer.allocation = allocator.AllocateForBuffer(DedicatedAllocation, allocatedBuffer.buffer, memoryFlags);
+		allocatedBuffer.allocation = allocator.AllocateForBuffer(dedicatedAllocation, allocatedBuffer.buffer, memoryFlags);
+		allocatedBuffer.dedicatedAllocation = dedicatedAllocation;
 
 		vkBindBufferMemory(device, allocatedBuffer.buffer,
 			allocatedBuffer.allocation.memory,
@@ -115,13 +116,17 @@ namespace vka
 		VkDevice device,
 		Buffer& buffer)
 	{
-		auto& alloc = buffer.allocation;
-		vkMapMemory(device,
-			alloc.memory,
-			alloc.offsetInDeviceMemory,
-			alloc.size,
-			0,
-			&buffer.mapPtr);
+		if (!buffer.mapped && buffer.dedicatedAllocation)
+		{
+			auto& alloc = buffer.allocation;
+			vkMapMemory(device,
+				alloc.memory,
+				alloc.offsetInDeviceMemory,
+				alloc.size,
+				0,
+				&buffer.mapPtr);
+			buffer.mapped = true;
+		}
 	}
 
 	inline auto CopyBufferToBuffer(

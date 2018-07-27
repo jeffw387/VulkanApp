@@ -15,8 +15,10 @@
 #include "vka/Image2D.hpp"
 #include "vka/GLTF.hpp"
 #include "vka/Quad.hpp"
-#include "VulkanState.hpp"
+#include "vka/Camera.hpp"
 #include "vka/Input.hpp"
+#include "vka/Buffer.hpp"
+#include "VulkanState.hpp"
 #include "TimeHelper.hpp"
 #include "ECSComponents.hpp"
 #include "entt/entt.hpp"
@@ -40,6 +42,22 @@ struct Models {
 	struct Pentagon {
 		static constexpr auto path = entt::HashedString("content/models/pentagon.gltf");
 	};
+};
+
+static VkDeviceSize SelectUniformBufferOffset(VkDeviceSize elementSize, VkDeviceSize minimumOffsetAlignment)
+{
+	if (elementSize <= minimumOffsetAlignment)
+		return minimumOffsetAlignment;
+	auto mult = (VkDeviceSize)std::ceil((double)elementSize / (double)minimumOffsetAlignment);
+	return mult * minimumOffsetAlignment;
+}
+
+struct Materials
+{
+	static constexpr auto White = entt::HashedString("White");
+	static constexpr auto Red = entt::HashedString("Red");
+	static constexpr auto Green = entt::HashedString("Green");
+	static constexpr auto Blue = entt::HashedString("Blue");
 };
 
 class ClientApp
@@ -81,19 +99,38 @@ public:
 	{
 		glm::vec4 color;
 	};
-	std::vector<Material> materials;
+
+
+	std::map<uint64_t, Material> materials
+	{
+		{Materials::White, Material{glm::vec4(1.f)}}, // white
+		{Materials::Red, Material{glm::vec4(1.f, 0.f, 0.f, 1.f)}}, // red
+		{Materials::Green, Material{glm::vec4(0.f, 1.f, 0.f, 1.f)}}, // green
+		{Materials::Blue, Material{glm::vec4(0.f, 0.f, 1.f, 1.f)}} // blue
+	};
 
 	GLFWwindow* window;
 	vka::VS vs;
+	using proto = entt::DefaultPrototype;
 	entt::DefaultRegistry ecs;
+	proto player{ ecs };
+	proto triangle{ ecs };
+	proto cube{ ecs };
+	proto cylinder{ ecs };
+	proto icosphereSub2{ ecs };
+	proto pentagon{ ecs };
 	std::map<uint64_t, vka::Quad> quads;
 	std::map<uint64_t, vka::glTF> models;
 	vka::InputState is;
+	vka::Camera2D camera;
 
 	TimePoint_ms startupTimePoint;
 	TimePoint_ms currentSimulationTime;
 
+	bool exitInputThread = false;
 	bool exitUpdateThread = false;
+
+	void SetupPrototypes();
 
 	void InputThread();
 
@@ -200,6 +237,24 @@ public:
 	void cleanupFrameResources();
 
 	void initVulkan();
+
+	template <typename T, typename iterT>
+	void CopyDataToBuffer(
+		iterT begin,
+		iterT end,
+		vka::Buffer dst,
+		VkDeviceSize dataElementOffset);
+
+	template <typename T, typename iterT>
+	void CopyDataToBuffer(
+		iterT begin,
+		iterT end,
+		VkCommandBuffer cmd,
+		vka::Buffer staging,
+		vka::Buffer dst,
+		VkDeviceSize dataElementOffset,
+		VkFence fence,
+		VkSemaphore semaphore);
 };
 
 static void PushBackInput(GLFWwindow * window, vka::InputMessage && msg);

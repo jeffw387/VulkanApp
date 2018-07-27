@@ -15,6 +15,8 @@ struct Buffer
     AllocationHandle allocation;
 	VkDeviceSize size;
 	VkBufferUsageFlags usage;
+	bool dedicatedAllocation;
+	bool mapped;
 	void* mapPtr;
 };
 } // namespace vka

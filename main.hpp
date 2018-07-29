@@ -110,7 +110,7 @@ public:
 	};
 
 	GLFWwindow* window;
-	vka::VS vs;
+	VS vs;
 	using proto = entt::DefaultPrototype;
 	entt::DefaultRegistry ecs;
 	proto player{ ecs };
@@ -198,7 +198,7 @@ public:
 
 	void cleanupPipelineLayout();
 
-	void createPipelineCommonState();
+	void createSpecializationData();
 
 	void createShader2DModules();
 

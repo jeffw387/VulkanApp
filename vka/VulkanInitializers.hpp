@@ -574,6 +574,23 @@ namespace vka
 		return pipelineCreateInfo;
 	}
 
+	inline VkGraphicsPipelineCreateInfo pipelineCreateInfo(
+		const std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
+		VkPipelineLayout layout,
+		VkRenderPass renderPass,
+		VkPipelineCreateFlags flags = 0)
+	{
+		VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+		pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+		pipelineCreateInfo.stageCount = static_cast<uint32_t>()
+		pipelineCreateInfo.layout = layout;
+		pipelineCreateInfo.renderPass = renderPass;
+		pipelineCreateInfo.flags = flags;
+		pipelineCreateInfo.basePipelineIndex = -1;
+		pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+		return pipelineCreateInfo;
+	}
+
 	inline VkComputePipelineCreateInfo computePipelineCreateInfo(
 		VkPipelineLayout layout,
 		VkPipelineCreateFlags flags = 0)

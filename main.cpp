@@ -31,7 +31,7 @@ auto ClientApp::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemo
 		vs.allocator,
 		size,
 		usage,
-		vs.queue.graphics.familyIndex,
+		vs.queueFamilyIndices[get(Queues::Graphics)],
 		memoryProperties,
 		dedicatedAllocation);
 };
@@ -124,7 +124,7 @@ void ClientApp::Update(TimePoint_ms updateTime)
 
 template <typename T, typename iterT>
 void ClientApp::CopyDataToBuffer(
-	iterT begin, 
+	iterT begin,
 	iterT end,
 	vka::Buffer dst,
 	VkDeviceSize dataElementOffset)
@@ -207,7 +207,7 @@ void ClientApp::Draw()
 	auto icosphereSub2View = ecs.view<cmp::Transform, cmp::Material, Models::IcosphereSub2>(entt::persistent_t{});
 	auto pentagonView = ecs.view<cmp::Transform, cmp::Material, Models::Pentagon>(entt::persistent_t{});
 	auto triangleView = ecs.view<cmp::Transform, cmp::Material, Models::Triangle>(entt::persistent_t{});
-	
+
 	vkResetCommandPool(vs.device, fd.renderCommandPool, 0);
 
 	auto allocateInfo = vka::commandBufferAllocateInfo(fd.renderCommandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
@@ -216,41 +216,42 @@ void ClientApp::Draw()
 	auto cmdBeginInfo = vka::commandBufferBeginInfo();
 	vkBeginCommandBuffer(fd.renderCommandBuffer, &cmdBeginInfo);
 
-	
+
 
 	auto renderPassBeginInfo = vka::renderPassBeginInfo();
 	renderPassBeginInfo.clearValueCount = 2;
 	renderPassBeginInfo.pClearValues = vs.clearValues.data();
 	renderPassBeginInfo.framebuffer = fd.framebuffer;
-	renderPassBeginInfo.renderArea = vs.pipeline.scissor;
+	renderPassBeginInfo.renderArea = vs.pipelineStates[get(Pipelines::P3D)].scissor;
 	renderPassBeginInfo.renderPass = vs.renderPass;
 	vkCmdBeginRenderPass(fd.renderCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	vkCmdBindPipeline(fd.renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vs.pipeline.p3D);
+	vkCmdBindPipeline(fd.renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vs.pipelines[get(Pipelines::P3D)]);
 
 	std::array<VkBuffer, 2> vertexBuffers3D = {
-		vs.vertexBuffers.p3D.positionBuffer.buffer,
-		vs.vertexBuffers.p3D.normalBuffer.buffer
+		vs.vertexBuffers[get(VertexBuffers::Position3D)].buffer,
+		vs.vertexBuffers[get(VertexBuffers::Normal3D)].buffer
 	};
 	std::array<VkDeviceSize, 2> vertexBufferOffsets3D = { 0, 0 };
 	vkCmdBindVertexBuffers(fd.renderCommandBuffer, 0, 2, vertexBuffers3D.data(), vertexBufferOffsets3D.data());
-	vkCmdBindIndexBuffer(fd.renderCommandBuffer, vs.vertexBuffers.p3D.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+	vkCmdBindIndexBuffer(fd.renderCommandBuffer, vs.vertexBuffers[get(VertexBuffers::Index3D)].buffer, 0, VK_INDEX_TYPE_UINT16);
 
+	auto& instanceBuffer = fd.uniformBuffers[get(UniformBuffers::Instance)];
 	if (vs.unifiedMemory)
 	{
-		if (matrixCount > fd.uniform.instanceBufferCapacity || fd.uniform.instance.buffer == VK_NULL_HANDLE)
+		if (matrixCount > fd.instanceBufferCapacity || instanceBuffer.buffer == VK_NULL_HANDLE)
 		{
-			vka::DestroyAllocatedBuffer(vs.device, fd.uniform.instance);
-			fd.uniform.instance = createBuffer(
+			vka::DestroyAllocatedBuffer(vs.device, instanceBuffer);
+			instanceBuffer = createBuffer(
 				vs.instanceBuffersOffsetAlignment * matrixCount,
 				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
 				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 				true);
-			fd.uniform.instanceBufferCapacity = matrixCount;
+			fd.instanceBufferCapacity = matrixCount;
 		}
-		vka::MapBuffer(vs.device, fd.uniform.instance);
+		vka::MapBuffer(vs.device, instanceBuffer);
 		VkDeviceSize offset{};
 		for (auto& entity : cubeView)
 		{
@@ -259,16 +260,16 @@ void ClientApp::Draw()
 	}
 	else
 	{
-		if (matrixCount > fd.uniform.instanceBufferCapacity || fd.uniform.instance.buffer == VK_NULL_HANDLE)
+		if (matrixCount > fd.instanceBufferCapacity || instanceBuffer.buffer == VK_NULL_HANDLE)
 		{
-			vka::DestroyAllocatedBuffer(vs.device, fd.uniform.instance);
-			fd.uniform.instance = createBuffer(
+			vka::DestroyAllocatedBuffer(vs.device, instanceBuffer);
+			instanceBuffer = createBuffer(
 				vs.instanceBuffersOffsetAlignment * matrixCount,
 				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
 				VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 				false);
-			fd.uniform.instanceBufferCapacity = matrixCount;
+			fd.instanceBufferCapacity = matrixCount;
 		}
 	}
 
@@ -373,17 +374,17 @@ void ClientApp::createDevice()
 		return result;
 	};
 
-	vs.queue.familyProperties = vka::GetQueueFamilyProperties(vs.physicalDevice);
+	vs.familyProperties = vka::GetQueueFamilyProperties(vs.physicalDevice);
 
-	vs.queue.graphics.familyIndex = queueSearch(
-		vs.queue.familyProperties,
+	vs.queueFamilyIndices[get(Queues::Graphics)] = queueSearch(
+		vs.familyProperties,
 		vs.physicalDevice,
 		vs.surface,
 		VK_QUEUE_GRAPHICS_BIT,
 		false).value();
 
-	vs.queue.present.familyIndex = queueSearch(
-		vs.queue.familyProperties,
+	vs.queueFamilyIndices[get(Queues::Present)] = queueSearch(
+		vs.familyProperties,
 		vs.physicalDevice,
 		vs.surface,
 		0,
@@ -393,17 +394,17 @@ void ClientApp::createDevice()
 
 	queueCreateInfos.push_back(vka::deviceQueueCreateInfo());
 	auto& graphicsQueueCreateInfo = queueCreateInfos.back();
-	graphicsQueueCreateInfo.queueFamilyIndex = vs.queue.graphics.familyIndex;
+	graphicsQueueCreateInfo.queueFamilyIndex = vs.queueFamilyIndices[get(Queues::Graphics)];
 	graphicsQueueCreateInfo.queueCount = 1;
-	graphicsQueueCreateInfo.pQueuePriorities = &vs.queue.graphics.priority;
+	graphicsQueueCreateInfo.pQueuePriorities = &vs.queuePriorities[get(Queues::Graphics)];
 
-	if (vs.queue.graphics.familyIndex != vs.queue.present.familyIndex)
+	if (vs.queueFamilyIndices[get(Queues::Graphics)] != vs.queuePriorities[get(Queues::Graphics)])
 	{
 		queueCreateInfos.push_back(vka::deviceQueueCreateInfo());
 		auto& presentQueueCreateInfo = queueCreateInfos.back();
-		presentQueueCreateInfo.queueFamilyIndex = vs.queue.present.familyIndex;
+		presentQueueCreateInfo.queueFamilyIndex = vs.queueFamilyIndices[get(Queues::Present)];
 		presentQueueCreateInfo.queueCount = 1;
-		presentQueueCreateInfo.pQueuePriorities = &vs.queue.present.priority;
+		presentQueueCreateInfo.pQueuePriorities = &vs.queuePriorities[get(Queues::Present)];
 	}
 
 	auto deviceCreateInfo = vka::deviceCreateInfo();
@@ -415,8 +416,8 @@ void ClientApp::createDevice()
 
 	vka::LoadDeviceLevelEntryPoints(vs.device);
 
-	vkGetDeviceQueue(vs.device, vs.queue.graphics.familyIndex, 0, &vs.queue.graphics.queue);
-	vkGetDeviceQueue(vs.device, vs.queue.present.familyIndex, 0, &vs.queue.present.queue);
+	vkGetDeviceQueue(vs.device, vs.queueFamilyIndices[get(Queues::Graphics)], 0, &vs.queues[get(Queues::Graphics)]);
+	vkGetDeviceQueue(vs.device, vs.queueFamilyIndices[get(Queues::Present)], 0, &vs.queues[get(Queues::Present)]);
 }
 
 void ClientApp::createAllocator()
@@ -448,7 +449,7 @@ void ClientApp::cleanupWindow()
 void ClientApp::createUtilityResources()
 {
 	auto poolCreateInfo = vka::commandPoolCreateInfo();
-	poolCreateInfo.queueFamilyIndex = vs.queue.graphics.familyIndex;
+	poolCreateInfo.queueFamilyIndex = vs.queueFamilyIndices[get(Queues::Graphics)];
 	poolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 	vkCreateCommandPool(vs.device, &poolCreateInfo, nullptr, &vs.utility.pool);
 
@@ -567,7 +568,7 @@ void ClientApp::createRenderPass()
 
 	VkSubpassDependency dep3Dto2D = {};
 	dep3Dto2D.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dep3Dto2D.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	dep3Dto2D.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	dep3Dto2D.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 	dep3Dto2D.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 	dep3Dto2D.srcSubpass = 0;
@@ -592,11 +593,11 @@ void ClientApp::cleanupRenderPass()
 void ClientApp::createSwapchain()
 {
 	std::vector<uint32_t> queueFamilyIndices;
-	queueFamilyIndices.push_back(vs.queue.graphics.familyIndex);
+	queueFamilyIndices.push_back(vs.queueFamilyIndices[get(Queues::Graphics)]);
 	VkSharingMode imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	if (vs.queue.graphics.familyIndex == vs.queue.present.familyIndex)
+	if (vs.queueFamilyIndices[get(Queues::Graphics)] == vs.queueFamilyIndices[get(Queues::Present)])
 	{
-		queueFamilyIndices.push_back(vs.queue.present.familyIndex);
+		queueFamilyIndices.push_back(vs.queueFamilyIndices[get(Queues::Present)]);
 		VkSharingMode imageSharingMode = VK_SHARING_MODE_CONCURRENT;
 	}
 	auto createInfo = vka::swapchainCreateInfoKHR();
@@ -623,7 +624,7 @@ void ClientApp::createSwapchain()
 		vs.surfaceData.depthFormat,
 		vs.surfaceData.extent.width,
 		vs.surfaceData.extent.height,
-		vs.queue.graphics.familyIndex,
+		vs.queueFamilyIndices[get(Queues::Graphics)],
 		VK_IMAGE_ASPECT_DEPTH_BIT);
 
 	auto swapImages = vka::GetSwapImages(vs.device, vs.swapchain);
@@ -677,12 +678,12 @@ void ClientApp::createSampler()
 	createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	createInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
 	createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	vkCreateSampler(vs.device, &createInfo, nullptr, &vs.sampler);
+	vkCreateSampler(vs.device, &createInfo, nullptr, &vs.samplers[get(Samplers::Texture2D)]);
 }
 
 void ClientApp::cleanupSampler()
 {
-	vkDestroySampler(vs.device, vs.sampler, nullptr);
+	vkDestroySampler(vs.device, vs.samplers[get(Samplers::Texture2D)], nullptr);
 }
 
 void ClientApp::createDescriptorSetLayouts()
@@ -692,7 +693,7 @@ void ClientApp::createDescriptorSetLayouts()
 	samplerBinding.binding = 0;
 	samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
 	samplerBinding.descriptorCount = 1;
-	samplerBinding.pImmutableSamplers = &vs.sampler;
+	samplerBinding.pImmutableSamplers = &vs.samplers[get(Samplers::Texture2D)];
 
 	auto& texturesBinding = vs.staticLayoutBindings.emplace_back();
 	texturesBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -718,7 +719,7 @@ void ClientApp::createDescriptorSetLayouts()
 	lightsBinding.descriptorCount = LightCount;
 	lightsBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	auto& instanceBinding = vs.drawLayoutBindings.emplace_back();
+	auto& instanceBinding = vs.instanceLayoutBindings.emplace_back();
 	instanceBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	instanceBinding.binding = 0;
 	instanceBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -726,7 +727,7 @@ void ClientApp::createDescriptorSetLayouts()
 
 	auto staticLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.staticLayoutBindings);
 	auto frameLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.frameLayoutBindings);
-	auto drawLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.drawLayoutBindings);
+	auto drawLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.instanceLayoutBindings);
 
 	vkCreateDescriptorSetLayout(vs.device, &staticLayoutCreateInfo, nullptr, &vs.layouts[0]);
 	vkCreateDescriptorSetLayout(vs.device, &frameLayoutCreateInfo, nullptr, &vs.layouts[1]);
@@ -764,53 +765,41 @@ void ClientApp::cleanupStaticDescriptorPool()
 
 void ClientApp::createPushRanges()
 {
-	vs.pushRange = vka::pushConstantRange(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vka::VS::PushConstantData), 0);
+	vs.pushRanges[get(PushRanges::Primary)] = vka::pushConstantRange(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(PushConstantData), 0);
 }
 
 void ClientApp::createPipelineLayout()
 {
 	auto createInfo = vka::pipelineLayoutCreateInfo(vs.layouts.data(), gsl::narrow_cast<uint32_t>(vs.layouts.size()));
-	createInfo.pushConstantRangeCount = 1;
-	createInfo.pPushConstantRanges = &vs.pushRange;
-	vkCreatePipelineLayout(vs.device, &createInfo, nullptr, &vs.pipeline.layout);
+	createInfo.pushConstantRangeCount = get(PushRanges::COUNT);
+	createInfo.pPushConstantRanges = vs.pushRanges.data();
+	vkCreatePipelineLayout(vs.device, &createInfo, nullptr, &vs.pipelineLayouts[get(PipelineLayouts::Primary)]);
 }
 
 void ClientApp::cleanupPipelineLayout()
 {
-	vkDestroyPipelineLayout(vs.device, vs.pipeline.layout, nullptr);
+	vkDestroyPipelineLayout(vs.device, vs.pipelineLayouts[get(PipelineLayouts::Primary)], nullptr);
 }
 
-void ClientApp::createPipelineCommonState()
+void ClientApp::createSpecializationData()
 {
-	auto& cmn = vs.pipeline.common;
-	vs.specializationData.lightCount = LightCount;
-	vs.specializationData.textureCount = paths.images.size();
-	vs.specializationData.materialCount = materials.size();
-	cmn.specializationMapEntries.materialCount = vka::specializationMapEntry(
+	vs.specData.lightCount = LightCount;
+	vs.specData.textureCount = paths.images.size();
+	vs.specData.materialCount = materials.size();
+	vs.specializationMapEntries[get(SpecConsts::MaterialCount)] = vka::specializationMapEntry(
 		0,
-		offsetof(vka::VS::SpecializationData, materialCount),
-		sizeof(vka::VS::SpecializationData::MaterialCount));
-	cmn.specializationMapEntries.textureCount = vka::specializationMapEntry(
+		offsetof(SpecializationData, materialCount),
+		sizeof(SpecializationData::MaterialCount));
+	vs.specializationMapEntries[get(SpecConsts::TextureCount)] = vka::specializationMapEntry(
 		1,
-		offsetof(vka::VS::SpecializationData, textureCount),
-		sizeof(vka::VS::SpecializationData::TextureCount));
-	cmn.specializationMapEntries.lightCount = vka::specializationMapEntry(
+		offsetof(SpecializationData, textureCount),
+		sizeof(SpecializationData::TextureCount));
+	vs.specializationMapEntries[get(SpecConsts::LightCount)] = vka::specializationMapEntry(
 		2,
-		offsetof(vka::VS::SpecializationData, lightCount),
-		sizeof(vka::VS::SpecializationData::LightCount));
-	cmn.specializationInfo = vka::specializationInfo(
-		3,
-		&cmn.specializationMapEntries.materialCount,
-		sizeof(vka::VS::SpecializationData), &vs.specializationData);
-	cmn.dynamicState = vka::pipelineDynamicStateCreateInfo(
-		&vs.pipeline.common.dynamicStates.viewport,
-		2);
-	cmn.multisampleState = vka::pipelineMultisampleStateCreateInfo(VK_SAMPLE_COUNT_1_BIT);
-	cmn.viewportState = vka::pipelineViewportStateCreateInfo(1, 1);
-	cmn.inputAssemblyState = vka::pipelineInputAssemblyStateCreateInfo(
-		VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-		0,
-		false);
+		offsetof(SpecializationData, lightCount),
+		sizeof(SpecializationData::LightCount));
+
+
 }
 
 void ClientApp::createShader2DModules()
@@ -819,13 +808,13 @@ void ClientApp::createShader2DModules()
 	auto vertexCreateInfo = vka::shaderModuleCreateInfo();
 	vertexCreateInfo.codeSize = vertexBytes.size();
 	vertexCreateInfo.pCode = reinterpret_cast<const uint32_t*>(vertexBytes.data());
-	vkCreateShaderModule(vs.device, &vertexCreateInfo, nullptr, &vs.shaders.p2D.vertex);
+	vkCreateShaderModule(vs.device, &vertexCreateInfo, nullptr, &vs.shaderModules[get(Shaders::Vertex2D)]);
 
 	auto fragmentBytes = fileIO::readFile(std::string(paths.shader2D.fragment));
 	auto fragmentCreateInfo = vka::shaderModuleCreateInfo();
 	fragmentCreateInfo.codeSize = fragmentBytes.size();
 	fragmentCreateInfo.pCode = reinterpret_cast<const uint32_t*>(fragmentBytes.data());
-	vkCreateShaderModule(vs.device, &fragmentCreateInfo, nullptr, &vs.shaders.p2D.fragment);
+	vkCreateShaderModule(vs.device, &fragmentCreateInfo, nullptr, &vs.shaderModules[get(Shaders::Fragment2D)]);
 }
 
 void ClientApp::createShader3DModules()
@@ -834,65 +823,97 @@ void ClientApp::createShader3DModules()
 	auto vertexCreateInfo = vka::shaderModuleCreateInfo();
 	vertexCreateInfo.codeSize = vertexBytes.size();
 	vertexCreateInfo.pCode = reinterpret_cast<const uint32_t*>(vertexBytes.data());
-	vkCreateShaderModule(vs.device, &vertexCreateInfo, nullptr, &vs.shaders.p3D.vertex);
+	vkCreateShaderModule(vs.device, &vertexCreateInfo, nullptr, &vs.shaderModules[get(Shaders::Vertex3D)]);
 
 	auto fragmentBytes = fileIO::readFile(std::string(paths.shader3D.fragment));
 	auto fragmentCreateInfo = vka::shaderModuleCreateInfo();
 	fragmentCreateInfo.codeSize = fragmentBytes.size();
 	fragmentCreateInfo.pCode = reinterpret_cast<const uint32_t*>(fragmentBytes.data());
-	vkCreateShaderModule(vs.device, &fragmentCreateInfo, nullptr, &vs.shaders.p3D.fragment);
+	vkCreateShaderModule(vs.device, &fragmentCreateInfo, nullptr, &vs.shaderModules[get(Shaders::Fragment3D)]);
 }
 
 void ClientApp::cleanupShaderModules()
 {
-	vkDestroyShaderModule(vs.device, vs.shaders.p3D.fragment, nullptr);
-	vkDestroyShaderModule(vs.device, vs.shaders.p3D.vertex, nullptr);
-	vkDestroyShaderModule(vs.device, vs.shaders.p2D.fragment, nullptr);
-	vkDestroyShaderModule(vs.device, vs.shaders.p2D.vertex, nullptr);
+	for (const auto& shader : vs.shaderModules)
+	{
+		vkDestroyShaderModule(vs.device, shader, nullptr);
+	}
 }
 
 void ClientApp::setupPipeline2D()
 {
-	auto& p2D = vs.pipeline.p2DState;
+	auto& state = vs.pipelineStates[get(Pipelines::P2D)];
+	auto& createInfo = vs.pipelineCreateInfos[get(Pipelines::P2D)];
+	createInfo = vka::pipelineCreateInfo(vs.pipelineLayouts[get(PipelineLayouts::Primary)], vs.renderPass);
+
+	state.dynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR
+	};
+	state.dynamicState = vka::pipelineDynamicStateCreateInfo(
+		state.dynamicStates);
+	createInfo.pDynamicState = &state.dynamicState;
+
+	state.multisampleState = vka::pipelineMultisampleStateCreateInfo(VK_SAMPLE_COUNT_1_BIT);
+	createInfo.pMultisampleState = &state.multisampleState;
+
+	state.viewportState = vka::pipelineViewportStateCreateInfo(1, 1);
+	createInfo.pViewportState = &state.viewportState;
+
+	state.inputAssemblyState = vka::pipelineInputAssemblyStateCreateInfo(
+		VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		0,
+		false);
+	createInfo.pInputAssemblyState = &state.inputAssemblyState;
+
+	state.specializationInfo = vka::specializationInfo(
+		(uint32_t)SpecConsts::COUNT,
+		vs.specializationMapEntries.data(),
+		sizeof(SpecializationData),
+		&vs.specData);
 
 	auto vertexShaderStage = vka::pipelineShaderStageCreateInfo();
-	vertexShaderStage.module = vs.shaders.p2D.vertex;
+	vertexShaderStage.module = vs.shaderModules[get(Shaders::Vertex2D)];
 	vertexShaderStage.pName = "main";
 	vertexShaderStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	vertexShaderStage.pSpecializationInfo = &vs.pipeline.common.specializationInfo;
-	p2D.shaderStages.push_back(vertexShaderStage);
+	vertexShaderStage.pSpecializationInfo = &state.specializationInfo;
+	state.shaderStages.push_back(vertexShaderStage);
 
 	auto fragmentShaderStage = vka::pipelineShaderStageCreateInfo();
-	fragmentShaderStage.module = vs.shaders.p2D.fragment;
+	fragmentShaderStage.module = vs.shaderModules[get(Shaders::Fragment2D)];
 	fragmentShaderStage.pName = "main";
 	fragmentShaderStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	fragmentShaderStage.pSpecializationInfo = &vs.pipeline.common.specializationInfo;
-	p2D.shaderStages.push_back(fragmentShaderStage);
+	fragmentShaderStage.pSpecializationInfo = &state.specializationInfo;
+	state.shaderStages.push_back(fragmentShaderStage);
+	createInfo.stageCount = state.shaderStages.size();
+	createInfo.pStages = state.shaderStages.data();
 
-	p2D.colorBlendAttachmentState = vka::pipelineColorBlendAttachmentState(
+	state.colorBlendAttachmentState = vka::pipelineColorBlendAttachmentState(
 		VK_COLOR_COMPONENT_R_BIT |
 		VK_COLOR_COMPONENT_G_BIT |
 		VK_COLOR_COMPONENT_B_BIT |
 		VK_COLOR_COMPONENT_A_BIT,
 		true);
-	p2D.colorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-	p2D.colorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-	p2D.colorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-	p2D.colorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-	p2D.colorBlendState = vka::pipelineColorBlendStateCreateInfo(1, &p2D.colorBlendAttachmentState);
+	state.colorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	state.colorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	state.colorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	state.colorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	state.colorBlendState = vka::pipelineColorBlendStateCreateInfo(1, &state.colorBlendAttachmentState);
+	createInfo.pColorBlendState = &state.colorBlendState;
 
-	p2D.rasterizationState = vka::pipelineRasterizationStateCreateInfo(
+	state.rasterizationState = vka::pipelineRasterizationStateCreateInfo(
 		VK_POLYGON_MODE_FILL,
 		VK_CULL_MODE_NONE,
 		VK_FRONT_FACE_COUNTER_CLOCKWISE);
+	createInfo.pRasterizationState = &state.rasterizationState;
 
-	auto& vertexPositionAttribute = p2D.vertexAttributes.emplace_back();
+	auto& vertexPositionAttribute = state.vertexAttributes.emplace_back();
 	vertexPositionAttribute.binding = 0;
 	vertexPositionAttribute.location = 0;
 	vertexPositionAttribute.offset = 0;
 	vertexPositionAttribute.format = VK_FORMAT_R32G32_SFLOAT;
 
-	auto& vertexUVAttribute = p2D.vertexAttributes.emplace_back();
+	auto& vertexUVAttribute = state.vertexAttributes.emplace_back();
 	vertexUVAttribute.binding = 0;
 	vertexUVAttribute.location = 1;
 	vertexUVAttribute.offset = 8;
@@ -902,53 +923,46 @@ void ClientApp::setupPipeline2D()
 		0,
 		16,
 		VK_VERTEX_INPUT_RATE_VERTEX);
-	p2D.vertexBindings.push_back(vertexBindingDescription);
+	state.vertexBindings.push_back(vertexBindingDescription);
 
-	p2D.vertexInputState = vka::pipelineVertexInputStateCreateInfo();
-	p2D.vertexInputState.vertexAttributeDescriptionCount = p2D.vertexAttributes.size();
-	p2D.vertexInputState.pVertexAttributeDescriptions = p2D.vertexAttributes.data();
-	p2D.vertexInputState.vertexBindingDescriptionCount = p2D.vertexBindings.size();
-	p2D.vertexInputState.pVertexBindingDescriptions = p2D.vertexBindings.data();
+	state.vertexInputState = vka::pipelineVertexInputStateCreateInfo();
+	state.vertexInputState.vertexAttributeDescriptionCount = state.vertexAttributes.size();
+	state.vertexInputState.pVertexAttributeDescriptions = state.vertexAttributes.data();
+	state.vertexInputState.vertexBindingDescriptionCount = state.vertexBindings.size();
+	state.vertexInputState.pVertexBindingDescriptions = state.vertexBindings.data();
+	createInfo.pVertexInputState = &state.vertexInputState;
 
-	vs.pipeline.p2DCreateInfo = vka::pipelineCreateInfo(vs.pipeline.layout, vs.renderPass);
-	vs.pipeline.p2DCreateInfo.stageCount = p2D.shaderStages.size();
-	vs.pipeline.p2DCreateInfo.pStages = p2D.shaderStages.data();
-	vs.pipeline.p2DCreateInfo.pColorBlendState = &p2D.colorBlendState;
-	vs.pipeline.p2DCreateInfo.pDepthStencilState = nullptr;
-	vs.pipeline.p2DCreateInfo.pDynamicState = &vs.pipeline.common.dynamicState;
-	vs.pipeline.p2DCreateInfo.pMultisampleState = &vs.pipeline.common.multisampleState;
-	vs.pipeline.p2DCreateInfo.pRasterizationState = &p2D.rasterizationState;
-	vs.pipeline.p2DCreateInfo.pVertexInputState = &p2D.vertexInputState;
-	vs.pipeline.p2DCreateInfo.pInputAssemblyState = &vs.pipeline.common.inputAssemblyState;
-	vs.pipeline.p2DCreateInfo.pViewportState = &vs.pipeline.common.viewportState;
-	vs.pipeline.p2DCreateInfo.subpass = 1;
+
+	createInfo.pDepthStencilState = nullptr;
+	createInfo.subpass = 1;
 }
 
 void ClientApp::setupPipeline3D()
 {
-	auto& p3D = vs.pipeline.p3DState;
+	auto& state = vs.pipelineStates[get(Pipelines::P3D)];
+	auto& createInfo = vs.pipelineCreateInfos[get(Pipelines::P2D)];
 
 	auto vertexShaderStage = vka::pipelineShaderStageCreateInfo();
-	vertexShaderStage.module = vs.shaders.p3D.vertex;
+	vertexShaderStage.module = vs.shaders.state.vertex;
 	vertexShaderStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
 	vertexShaderStage.pName = "main";
 	vertexShaderStage.pSpecializationInfo = &vs.pipeline.common.specializationInfo;
 
 	auto fragmentShaderStage = vka::pipelineShaderStageCreateInfo();
-	fragmentShaderStage.module = vs.shaders.p3D.fragment;
+	fragmentShaderStage.module = vs.shaders.state.fragment;
 	fragmentShaderStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 	fragmentShaderStage.pName = "main";
 	fragmentShaderStage.pSpecializationInfo = &vs.pipeline.common.specializationInfo;
 
-	p3D.shaderStages.push_back(vertexShaderStage);
-	p3D.shaderStages.push_back(fragmentShaderStage);
+	state.shaderStages.push_back(vertexShaderStage);
+	state.shaderStages.push_back(fragmentShaderStage);
 
-	p3D.colorBlendAttachmentState = vka::pipelineColorBlendAttachmentState(0, false);
-	p3D.colorBlendState = vka::pipelineColorBlendStateCreateInfo(1, &p3D.colorBlendAttachmentState);
+	state.colorBlendAttachmentState = vka::pipelineColorBlendAttachmentState(0, false);
+	state.colorBlendState = vka::pipelineColorBlendStateCreateInfo(1, &state.colorBlendAttachmentState);
 
-	p3D.depthStencilState = vka::pipelineDepthStencilStateCreateInfo(true, true, VK_COMPARE_OP_LESS);
+	state.depthStencilState = vka::pipelineDepthStencilStateCreateInfo(true, true, VK_COMPARE_OP_LESS);
 
-	p3D.rasterizationState = vka::pipelineRasterizationStateCreateInfo(
+	state.rasterizationState = vka::pipelineRasterizationStateCreateInfo(
 		VK_POLYGON_MODE_FILL,
 		VK_CULL_MODE_BACK_BIT,
 		VK_FRONT_FACE_COUNTER_CLOCKWISE);
@@ -958,40 +972,40 @@ void ClientApp::setupPipeline3D()
 	auto positionBinding = vka::vertexInputBindingDescription(0, 12, VK_VERTEX_INPUT_RATE_VERTEX);
 	auto normalBinding = vka::vertexInputBindingDescription(1, 12, VK_VERTEX_INPUT_RATE_VERTEX);
 
-	p3D.vertexAttributes.push_back(positionAttribute);
-	p3D.vertexAttributes.push_back(normalAttribute);
-	p3D.vertexBindings.push_back(positionBinding);
-	p3D.vertexBindings.push_back(normalBinding);
-	p3D.vertexInputState = vka::pipelineVertexInputStateCreateInfo();
+	state.vertexAttributes.push_back(positionAttribute);
+	state.vertexAttributes.push_back(normalAttribute);
+	state.vertexBindings.push_back(positionBinding);
+	state.vertexBindings.push_back(normalBinding);
+	state.vertexInputState = vka::pipelineVertexInputStateCreateInfo();
 
-	p3D.vertexInputState.vertexAttributeDescriptionCount = p3D.vertexAttributes.size();
-	p3D.vertexInputState.pVertexAttributeDescriptions = p3D.vertexAttributes.data();
-	p3D.vertexInputState.vertexBindingDescriptionCount = p3D.vertexBindings.size();
-	p3D.vertexInputState.pVertexBindingDescriptions = p3D.vertexBindings.data();
+	state.vertexInputState.vertexAttributeDescriptionCount = state.vertexAttributes.size();
+	state.vertexInputState.pVertexAttributeDescriptions = state.vertexAttributes.data();
+	state.vertexInputState.vertexBindingDescriptionCount = state.vertexBindings.size();
+	state.vertexInputState.pVertexBindingDescriptions = state.vertexBindings.data();
 
-	vs.pipeline.p3DCreateInfo = vka::pipelineCreateInfo(vs.pipeline.layout, vs.renderPass);
-	vs.pipeline.p3DCreateInfo.stageCount = p3D.shaderStages.size();
-	vs.pipeline.p3DCreateInfo.pStages = p3D.shaderStages.data();
-	vs.pipeline.p3DCreateInfo.pColorBlendState = &p3D.colorBlendState;
-	vs.pipeline.p3DCreateInfo.pDepthStencilState = &p3D.depthStencilState;
-	vs.pipeline.p3DCreateInfo.pDynamicState = &vs.pipeline.common.dynamicState;
-	vs.pipeline.p3DCreateInfo.pMultisampleState = &vs.pipeline.common.multisampleState;
-	vs.pipeline.p3DCreateInfo.pRasterizationState = &p3D.rasterizationState;
-	vs.pipeline.p3DCreateInfo.pVertexInputState = &p3D.vertexInputState;
-	vs.pipeline.p3DCreateInfo.pInputAssemblyState = &vs.pipeline.common.inputAssemblyState;
-	vs.pipeline.p3DCreateInfo.pViewportState = &vs.pipeline.common.viewportState;
-	vs.pipeline.p3DCreateInfo.subpass = 0;
+	vs.pipeline.stateCreateInfo = vka::pipelineCreateInfo(vs.pipeline.layout, vs.renderPass);
+	vs.pipeline.stateCreateInfo.stageCount = state.shaderStages.size();
+	vs.pipeline.stateCreateInfo.pStages = state.shaderStages.data();
+	vs.pipeline.stateCreateInfo.pColorBlendState = &state.colorBlendState;
+	vs.pipeline.stateCreateInfo.pDepthStencilState = &state.depthStencilState;
+	vs.pipeline.stateCreateInfo.pDynamicState = &vs.pipeline.common.dynamicState;
+	vs.pipeline.stateCreateInfo.pMultisampleState = &vs.pipeline.common.multisampleState;
+	vs.pipeline.stateCreateInfo.pRasterizationState = &state.rasterizationState;
+	vs.pipeline.stateCreateInfo.pVertexInputState = &state.vertexInputState;
+	vs.pipeline.stateCreateInfo.pInputAssemblyState = &vs.pipeline.common.inputAssemblyState;
+	vs.pipeline.stateCreateInfo.pViewportState = &vs.pipeline.common.viewportState;
+	vs.pipeline.stateCreateInfo.subpass = 0;
 }
 
 void ClientApp::createPipelines()
 {
 	vkCreateGraphicsPipelines(
-		vs.device, 
-		VK_NULL_HANDLE, 
-		2, 
-		&vs.pipeline.p2DCreateInfo, 
-		nullptr, 
-		&vs.pipeline.p2D);
+		vs.device,
+		VK_NULL_HANDLE,
+		(uint32_t)Pipelines::COUNT,
+		vs.pipelineCreateInfos.data(),
+		nullptr,
+		vs.pipelines.data());
 }
 
 void ClientApp::cleanupPipelines()
@@ -1206,8 +1220,8 @@ void ClientApp::createVertexBuffers3D()
 		auto& mesh = model.second.full;
 
 		auto positionData = mesh.positions;
-		auto normalData =	mesh.normals;
-		auto indexData =	mesh.indices;
+		auto normalData = mesh.normals;
+		auto indexData = mesh.indices;
 
 		mesh.firstVertex = vertexOffset;
 		mesh.firstIndex = indexOffset;
@@ -1427,7 +1441,7 @@ void ClientApp::initVulkan()
 
 	createShader3DModules();
 
-	createPipelineCommonState();
+	createSpecializationData();
 
 	setupPipeline2D();
 
@@ -1503,7 +1517,7 @@ int main()
 	app.is.inputStateMap[Bindings::Up] = vka::MakeAction([]() { std::cout << "Up Pressed.\n"; });
 	app.is.inputStateMap[Bindings::Down] = vka::MakeAction([]() { std::cout << "Down Pressed.\n"; });
 
-	
+
 
 	// 3D render views
 	app.ecs.prepare<cmp::Transform, cmp::Material, Models::Cube>();

@@ -16,13 +16,6 @@ namespace Fonts
 {
 	constexpr auto AeroviasBrasil = entt::HashedString("Content/Fonts/AeroviasBrasilNF.ttf");
 }
-constexpr VkExtent2D DefaultWindowSize = { 900, 900 };
-constexpr uint32_t LightCount = 3;
-struct Light {
-	glm::vec4 position;
-	glm::vec4 color;
-};
-std::array<Light, LightCount> lights;
 
 auto ClientApp::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryProperties, bool dedicatedAllocation = true)
 {
@@ -36,8 +29,15 @@ auto ClientApp::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemo
 		dedicatedAllocation);
 };
 
-void ClientApp::SetupPrototypes()
+void ClientApp::PrepareECS()
 {
+	// 3D render views
+	ecs.prepare<cmp::Transform, cmp::Material, Models::Cube>();
+	ecs.prepare<cmp::Transform, cmp::Material, Models::Cylinder>();
+	ecs.prepare<cmp::Transform, cmp::Material, Models::IcosphereSub2>();
+	ecs.prepare<cmp::Transform, cmp::Material, Models::Pentagon>();
+	ecs.prepare<cmp::Transform, cmp::Material, Models::Triangle>();
+
 	triangle.set<Models::Triangle>();
 	triangle.set<cmp::Transform>(glm::mat4(1.f));
 	triangle.set<cmp::Material>(Materials::Red);
@@ -170,6 +170,70 @@ void ClientApp::CopyDataToBuffer(
 		semaphore);
 }
 
+void ClientApp::SortComponents()
+{
+	ecs.sort<cmp::Mesh>([](const auto& lhs, const auto& rhs) { return lhs.index < rhs.index; });
+	ecs.sort<cmp::Transform, cmp::Mesh>();
+	ecs.sort<cmp::Material, cmp::Mesh>();
+}
+
+void ClientApp::BindPipeline3D(VkCommandBuffer & cmd, VkDescriptorSet & frameSet)
+{
+	vkCmdBindPipeline(
+		cmd,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vs.pipelines[get(Pipelines::P3D)]);
+
+	std::array<VkBuffer, get(VertexBuffers3D::COUNT)> vertexBuffers3D = {
+		vs.vertexBuffers3D[get(VertexBuffers3D::Position3D)].buffer,
+		vs.vertexBuffers3D[get(VertexBuffers3D::Normal3D)].buffer
+	};
+	std::array<VkDeviceSize, get(VertexBuffers3D::COUNT)> vertexBufferOffsets3D = { 0, 0 };
+	vkCmdBindVertexBuffers(
+		cmd,
+		0,
+		get(VertexBuffers3D::COUNT),
+		vertexBuffers3D.data(),
+		vertexBufferOffsets3D.data());
+
+	vkCmdBindIndexBuffer(
+		cmd,
+		vs.vertexBuffers2D[get(VertexBuffers3D::Index3D)].buffer,
+		0,
+		vka::VulkanIndexType);
+
+	vkCmdBindDescriptorSets(
+		cmd,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vs.pipelineLayouts[get(PipelineLayouts::Primary)],
+		0,
+		1,
+		&vs.staticSet,
+		0,
+		nullptr);
+
+	vkCmdBindDescriptorSets(
+		cmd,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vs.pipelineLayouts[get(PipelineLayouts::Primary)],
+		1,
+		1,
+		&frameSet,
+		0,
+		nullptr);
+}
+
+void ClientApp::PushConstants(VkCommandBuffer & cmd, PushConstantData &pushData)
+{
+	vkCmdPushConstants(
+		cmd,
+		vs.pipelineLayouts[get(PipelineLayouts::Primary)],
+		VK_SHADER_STAGE_FRAGMENT_BIT,
+		0,
+		sizeof(PushConstantData),
+		&pushData);
+}
+
 void ClientApp::Draw()
 {
 	// acquire image
@@ -196,83 +260,116 @@ void ClientApp::Draw()
 		return;
 	}
 
-	auto& fd = vs.frameData[vs.nextImage];
+	SortComponents();
 
-	auto rawDrawableView = ecs.view<cmp::Transform>(entt::raw_t{});
-	auto matrixCount = rawDrawableView.size();
+	auto& bufferCapacity = vs.instanceBufferCapacities[vs.nextImage];
+	auto& stagingBuffer = vs.instanceStagingBuffers[vs.nextImage];
+	auto& instanceBuffer = vs.instanceUniformBuffers[vs.nextImage];
+	auto& frameSet = vs.frameDescriptorSets[vs.nextImage];
+	auto& instanceSet = vs.instanceDescriptorSets[vs.nextImage];
+	auto& framebuffer = vs.framebuffers[vs.nextImage];
+	auto& commandPool = vs.renderCommandPools[vs.nextImage];
+	auto& cmd = vs.renderCommandBuffers[vs.nextImage];
 
+	vkResetCommandPool(vs.device, commandPool, 0);
 
-	auto cubeView = ecs.view<cmp::Transform, cmp::Material, Models::Cube>(entt::persistent_t{});
-	auto cylinderView = ecs.view<cmp::Transform, cmp::Material, Models::Cylinder>(entt::persistent_t{});
-	auto icosphereSub2View = ecs.view<cmp::Transform, cmp::Material, Models::IcosphereSub2>(entt::persistent_t{});
-	auto pentagonView = ecs.view<cmp::Transform, cmp::Material, Models::Pentagon>(entt::persistent_t{});
-	auto triangleView = ecs.view<cmp::Transform, cmp::Material, Models::Triangle>(entt::persistent_t{});
+	auto allocateInfo = vka::commandBufferAllocateInfo(commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+	vkAllocateCommandBuffers(vs.device, &allocateInfo, &cmd);
 
-	vkResetCommandPool(vs.device, fd.renderCommandPool, 0);
+	
+	auto drawableView = ecs.view<cmp::Transform, cmp::Mesh, cmp::Material>(entt::persistent_t{});
+	auto matrixCount = drawableView.size();
+	auto requiredBufferSize = matrixCount * vs.instanceBuffersOffsetAlignment;
+	bool needResize = matrixCount > bufferCapacity;
+	if (needResize)
+		ResizeInstanceBuffers(stagingBuffer, instanceBuffer, requiredBufferSize);
 
-	auto allocateInfo = vka::commandBufferAllocateInfo(fd.renderCommandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
-	vkAllocateCommandBuffers(vs.device, &allocateInfo, &fd.renderCommandBuffer);
+	auto projection = camera.getProjectionMatrix();
+	auto view = camera.getViewMatrix();
+
 
 	auto cmdBeginInfo = vka::commandBufferBeginInfo();
-	vkBeginCommandBuffer(fd.renderCommandBuffer, &cmdBeginInfo);
+	vkBeginCommandBuffer(
+		cmd,
+		&cmdBeginInfo);
+
+	BeginRenderPass(framebuffer, cmd);
+
+	BindPipeline3D(cmd, frameSet);
+
+	PushConstantData pushData{};
+	PushConstants(cmd, pushData);
+
+	auto& hostBuffer = vs.unifiedMemory ? instanceBuffer : stagingBuffer;
+	uint32_t byteOffset{};
+	for (const auto& entity : drawableView)
+	{
+		auto& transformComponent = ecs.get<cmp::Transform>(entity);
+		auto& meshComponent = ecs.get<cmp::Mesh>(entity);
+		auto& materialComponent = ecs.get<cmp::Material>(entity);
+
+		// push new constants if they changed from the last instance
+		if (pushData.materialIndex != materialComponent.index)
+		{
+			pushData.materialIndex = materialComponent.index;
+			PushConstants(cmd, pushData);
+		}
+		auto& model = models[meshComponent.index].full;
+
+		auto mvp = projection * view * transformComponent.matrix;
+		std::memcpy((gsl::byte*)hostBuffer.mapPtr + byteOffset, &transformComponent.matrix, sizeof(glm::mat4));
+		std::memcpy((gsl::byte*)hostBuffer.mapPtr + (byteOffset + sizeof::glm::mat4), &mvp, sizeof(glm::mat4));
+
+		vkCmdBindDescriptorSets(cmd,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vs.pipelineLayouts[get(PipelineLayouts::Primary)],
+			2,
+			1,
+			&instanceSet,
+			1,
+			&byteOffset);
+
+		vkCmdDrawIndexed(
+			cmd,
+			model.indices.size(),
+			1,
+			model.firstIndex,
+			model.firstVertex,
+			0);
+
+		byteOffset += vs.instanceBuffersOffsetAlignment;
+	}
+
+	vkCmdEndRenderPass(cmd);
+	vkEndCommandBuffer(cmd);
 
 
+}
 
+void ClientApp::BeginRenderPass(VkFramebuffer & framebuffer, VkCommandBuffer & cmd)
+{
 	auto renderPassBeginInfo = vka::renderPassBeginInfo();
-	renderPassBeginInfo.clearValueCount = 2;
-	renderPassBeginInfo.pClearValues = vs.clearValues.data();
-	renderPassBeginInfo.framebuffer = fd.framebuffer;
-	renderPassBeginInfo.renderArea = vs.pipelineStates[get(Pipelines::P3D)].scissor;
 	renderPassBeginInfo.renderPass = vs.renderPass;
-	vkCmdBeginRenderPass(fd.renderCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+	renderPassBeginInfo.framebuffer = framebuffer;
+	renderPassBeginInfo.clearValueCount = get(ClearValues::COUNT);
+	renderPassBeginInfo.pClearValues = vs.clearValues.data();
+	renderPassBeginInfo.renderArea = vs.scissor;
+	vkCmdBeginRenderPass(
+		cmd,
+		&renderPassBeginInfo,
+		VK_SUBPASS_CONTENTS_INLINE);
 
-	vkCmdBindPipeline(fd.renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vs.pipelines[get(Pipelines::P3D)]);
+	vkCmdSetViewport(
+		cmd,
+		0,
+		1,
+		&vs.viewport);
 
-	std::array<VkBuffer, 2> vertexBuffers3D = {
-		vs.vertexBuffers[get(VertexBuffers::Position3D)].buffer,
-		vs.vertexBuffers[get(VertexBuffers::Normal3D)].buffer
-	};
-	std::array<VkDeviceSize, 2> vertexBufferOffsets3D = { 0, 0 };
-	vkCmdBindVertexBuffers(fd.renderCommandBuffer, 0, 2, vertexBuffers3D.data(), vertexBufferOffsets3D.data());
-	vkCmdBindIndexBuffer(fd.renderCommandBuffer, vs.vertexBuffers[get(VertexBuffers::Index3D)].buffer, 0, VK_INDEX_TYPE_UINT16);
-
-	auto& instanceBuffer = fd.uniformBuffers[get(UniformBuffers::Instance)];
-	if (vs.unifiedMemory)
-	{
-		if (matrixCount > fd.instanceBufferCapacity || instanceBuffer.buffer == VK_NULL_HANDLE)
-		{
-			vka::DestroyAllocatedBuffer(vs.device, instanceBuffer);
-			instanceBuffer = createBuffer(
-				vs.instanceBuffersOffsetAlignment * matrixCount,
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-				true);
-			fd.instanceBufferCapacity = matrixCount;
-		}
-		vka::MapBuffer(vs.device, instanceBuffer);
-		VkDeviceSize offset{};
-		for (auto& entity : cubeView)
-		{
-
-		}
-	}
-	else
-	{
-		if (matrixCount > fd.instanceBufferCapacity || instanceBuffer.buffer == VK_NULL_HANDLE)
-		{
-			vka::DestroyAllocatedBuffer(vs.device, instanceBuffer);
-			instanceBuffer = createBuffer(
-				vs.instanceBuffersOffsetAlignment * matrixCount,
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
-				VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-				false);
-			fd.instanceBufferCapacity = matrixCount;
-		}
-	}
-
+	vkCmdSetScissor(
+		cmd,
+		0,
+		1,
+		&vs.scissor);
 }
 
 void ClientApp::cleanup()
@@ -628,14 +725,14 @@ void ClientApp::createSwapchain()
 		VK_IMAGE_ASPECT_DEPTH_BIT);
 
 	auto swapImages = vka::GetSwapImages(vs.device, vs.swapchain);
+	auto swapImageCount = BufferCount;
+	vkGetSwapchainImagesKHR(vs.device, vs.swapchain, &swapImageCount, vs.swapImages.data());
 	for (auto i = 0U; i < BufferCount; ++i)
 	{
-		auto& fd = vs.frameData[i];
-		fd.swapImage = swapImages[i];
-		fd.swapView = vka::CreateImageView2D(vs.device, swapImages[i], vs.surfaceData.swapFormat.format, VK_IMAGE_ASPECT_COLOR_BIT);
+		vs.swapViews[i] = vka::CreateImageView2D(vs.device, vs.swapImages[i], vs.surfaceData.swapFormat.format, VK_IMAGE_ASPECT_COLOR_BIT);
 
 		std::array<VkImageView, 2> attachments = {
-			fd.swapView,
+			vs.swapViews[i],
 			vs.depthImage.view
 		};
 
@@ -646,7 +743,7 @@ void ClientApp::createSwapchain()
 		framebufferCreateInfo.layers = 1;
 		framebufferCreateInfo.width = vs.surfaceData.extent.width;
 		framebufferCreateInfo.height = vs.surfaceData.extent.height;
-		vkCreateFramebuffer(vs.device, &framebufferCreateInfo, nullptr, &fd.framebuffer);
+		vkCreateFramebuffer(vs.device, &framebufferCreateInfo, nullptr, &vs.framebuffers[i]);
 	}
 }
 
@@ -657,8 +754,8 @@ void ClientApp::cleanupSwapchain()
 	vkDestroyImage(vs.device, vs.depthImage.image, nullptr);
 	for (auto i = 0U; i < BufferCount; ++i)
 	{
-		vkDestroyFramebuffer(vs.device, vs.frameData[i].framebuffer, nullptr);
-		vkDestroyImageView(vs.device, vs.frameData[i].swapView, nullptr);
+		vkDestroyFramebuffer(vs.device, vs.framebuffers[i], nullptr);
+		vkDestroyImageView(vs.device, vs.swapViews[i], nullptr);
 	}
 	vkDestroySwapchainKHR(vs.device, vs.swapchain, nullptr);
 }
@@ -699,12 +796,12 @@ void ClientApp::createDescriptorSetLayouts()
 	texturesBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	texturesBinding.binding = 1;
 	texturesBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-	texturesBinding.descriptorCount = std::max(paths.images.size(), 1Ui64);
+	texturesBinding.descriptorCount = std::max(ImageCount, 1U);
 
 	auto& materialsBinding = vs.staticLayoutBindings.emplace_back();
 	materialsBinding.binding = 2;
 	materialsBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	materialsBinding.descriptorCount = std::max(materials.size(), 1Ui64);
+	materialsBinding.descriptorCount = std::max(get(Materials::COUNT), 1U);
 	materialsBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	auto& cameraBinding = vs.frameLayoutBindings.emplace_back();
@@ -729,14 +826,14 @@ void ClientApp::createDescriptorSetLayouts()
 	auto frameLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.frameLayoutBindings);
 	auto drawLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.instanceLayoutBindings);
 
-	vkCreateDescriptorSetLayout(vs.device, &staticLayoutCreateInfo, nullptr, &vs.layouts[0]);
-	vkCreateDescriptorSetLayout(vs.device, &frameLayoutCreateInfo, nullptr, &vs.layouts[1]);
-	vkCreateDescriptorSetLayout(vs.device, &drawLayoutCreateInfo, nullptr, &vs.layouts[2]);
+	vkCreateDescriptorSetLayout(vs.device, &staticLayoutCreateInfo, nullptr, &vs.setLayouts[0]);
+	vkCreateDescriptorSetLayout(vs.device, &frameLayoutCreateInfo, nullptr, &vs.setLayouts[1]);
+	vkCreateDescriptorSetLayout(vs.device, &drawLayoutCreateInfo, nullptr, &vs.setLayouts[2]);
 }
 
 void ClientApp::cleanupDescriptorSetLayouts()
 {
-	for (auto& layout : vs.layouts)
+	for (auto& layout : vs.setLayouts)
 	{
 		vkDestroyDescriptorSetLayout(vs.device, layout, nullptr);
 	}
@@ -750,10 +847,10 @@ void ClientApp::createStaticDescriptorPool()
 	poolSizes.back().descriptorCount = 1;
 	poolSizes.emplace_back();
 	poolSizes.back().type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-	poolSizes.back().descriptorCount = std::max(paths.images.size(), 1Ui64);
+	poolSizes.back().descriptorCount = std::max(ImageCount, 1U);
 	poolSizes.emplace_back();
 	poolSizes.back().type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSizes.back().descriptorCount = std::max(materials.size(), 1Ui64);
+	poolSizes.back().descriptorCount = std::max(get(Materials::COUNT), 1U);
 	auto createInfo = vka::descriptorPoolCreateInfo(poolSizes, 1);
 	vkCreateDescriptorPool(vs.device, &createInfo, nullptr, &vs.staticLayoutPool);
 }
@@ -770,7 +867,7 @@ void ClientApp::createPushRanges()
 
 void ClientApp::createPipelineLayout()
 {
-	auto createInfo = vka::pipelineLayoutCreateInfo(vs.layouts.data(), gsl::narrow_cast<uint32_t>(vs.layouts.size()));
+	auto createInfo = vka::pipelineLayoutCreateInfo(vs.setLayouts.data(), gsl::narrow_cast<uint32_t>(vs.setLayouts.size()));
 	createInfo.pushConstantRangeCount = get(PushRanges::COUNT);
 	createInfo.pPushConstantRanges = vs.pushRanges.data();
 	vkCreatePipelineLayout(vs.device, &createInfo, nullptr, &vs.pipelineLayouts[get(PipelineLayouts::Primary)]);
@@ -784,22 +881,20 @@ void ClientApp::cleanupPipelineLayout()
 void ClientApp::createSpecializationData()
 {
 	vs.specData.lightCount = LightCount;
-	vs.specData.textureCount = paths.images.size();
-	vs.specData.materialCount = materials.size();
+	vs.specData.imageCount = ImageCount;
+	vs.specData.materialCount = get(Materials::COUNT);
 	vs.specializationMapEntries[get(SpecConsts::MaterialCount)] = vka::specializationMapEntry(
 		0,
 		offsetof(SpecializationData, materialCount),
 		sizeof(SpecializationData::MaterialCount));
-	vs.specializationMapEntries[get(SpecConsts::TextureCount)] = vka::specializationMapEntry(
+	vs.specializationMapEntries[get(SpecConsts::ImageCount)] = vka::specializationMapEntry(
 		1,
-		offsetof(SpecializationData, textureCount),
-		sizeof(SpecializationData::TextureCount));
+		offsetof(SpecializationData, imageCount),
+		sizeof(SpecializationData::ImageCount));
 	vs.specializationMapEntries[get(SpecConsts::LightCount)] = vka::specializationMapEntry(
 		2,
 		offsetof(SpecializationData, lightCount),
 		sizeof(SpecializationData::LightCount));
-
-
 }
 
 void ClientApp::createShader2DModules()
@@ -843,8 +938,11 @@ void ClientApp::cleanupShaderModules()
 void ClientApp::setupPipeline2D()
 {
 	auto& state = vs.pipelineStates[get(Pipelines::P2D)];
-	auto& createInfo = vs.pipelineCreateInfos[get(Pipelines::P2D)];
-	createInfo = vka::pipelineCreateInfo(vs.pipelineLayouts[get(PipelineLayouts::Primary)], vs.renderPass);
+
+	state.inputAssemblyState = vka::pipelineInputAssemblyStateCreateInfo(
+		VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		0,
+		false);
 
 	state.dynamicStates = {
 		VK_DYNAMIC_STATE_VIEWPORT,
@@ -852,19 +950,15 @@ void ClientApp::setupPipeline2D()
 	};
 	state.dynamicState = vka::pipelineDynamicStateCreateInfo(
 		state.dynamicStates);
-	createInfo.pDynamicState = &state.dynamicState;
 
 	state.multisampleState = vka::pipelineMultisampleStateCreateInfo(VK_SAMPLE_COUNT_1_BIT);
-	createInfo.pMultisampleState = &state.multisampleState;
 
 	state.viewportState = vka::pipelineViewportStateCreateInfo(1, 1);
-	createInfo.pViewportState = &state.viewportState;
 
 	state.inputAssemblyState = vka::pipelineInputAssemblyStateCreateInfo(
 		VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
 		0,
 		false);
-	createInfo.pInputAssemblyState = &state.inputAssemblyState;
 
 	state.specializationInfo = vka::specializationInfo(
 		(uint32_t)SpecConsts::COUNT,
@@ -885,8 +979,6 @@ void ClientApp::setupPipeline2D()
 	fragmentShaderStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 	fragmentShaderStage.pSpecializationInfo = &state.specializationInfo;
 	state.shaderStages.push_back(fragmentShaderStage);
-	createInfo.stageCount = state.shaderStages.size();
-	createInfo.pStages = state.shaderStages.data();
 
 	state.colorBlendAttachmentState = vka::pipelineColorBlendAttachmentState(
 		VK_COLOR_COMPONENT_R_BIT |
@@ -899,13 +991,11 @@ void ClientApp::setupPipeline2D()
 	state.colorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 	state.colorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 	state.colorBlendState = vka::pipelineColorBlendStateCreateInfo(1, &state.colorBlendAttachmentState);
-	createInfo.pColorBlendState = &state.colorBlendState;
 
 	state.rasterizationState = vka::pipelineRasterizationStateCreateInfo(
 		VK_POLYGON_MODE_FILL,
 		VK_CULL_MODE_NONE,
 		VK_FRONT_FACE_COUNTER_CLOCKWISE);
-	createInfo.pRasterizationState = &state.rasterizationState;
 
 	auto& vertexPositionAttribute = state.vertexAttributes.emplace_back();
 	vertexPositionAttribute.binding = 0;
@@ -930,29 +1020,60 @@ void ClientApp::setupPipeline2D()
 	state.vertexInputState.pVertexAttributeDescriptions = state.vertexAttributes.data();
 	state.vertexInputState.vertexBindingDescriptionCount = state.vertexBindings.size();
 	state.vertexInputState.pVertexBindingDescriptions = state.vertexBindings.data();
-	createInfo.pVertexInputState = &state.vertexInputState;
 
-
-	createInfo.pDepthStencilState = nullptr;
-	createInfo.subpass = 1;
+	vs.pipelineCreateInfos[get(Pipelines::P2D)] = vka::pipelineCreateInfo(
+		state.shaderStages,
+		vs.pipelineLayouts[get(PipelineLayouts::Primary)],
+		vs.renderPass,
+		1,
+		&state.colorBlendState,
+		nullptr,
+		&state.dynamicState,
+		&state.inputAssemblyState,
+		&state.multisampleState,
+		&state.rasterizationState,
+		nullptr,
+		&state.vertexInputState,
+		&state.viewportState);
 }
 
 void ClientApp::setupPipeline3D()
 {
 	auto& state = vs.pipelineStates[get(Pipelines::P3D)];
-	auto& createInfo = vs.pipelineCreateInfos[get(Pipelines::P2D)];
+
+	state.inputAssemblyState = vka::pipelineInputAssemblyStateCreateInfo(
+		VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		0,
+		false);
+
+	state.multisampleState = vka::pipelineMultisampleStateCreateInfo(VK_SAMPLE_COUNT_1_BIT);
+
+	state.viewportState = vka::pipelineViewportStateCreateInfo(1, 1);
+
+	state.dynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR
+	};
+	state.dynamicState = vka::pipelineDynamicStateCreateInfo(
+		state.dynamicStates);
+
+	state.specializationInfo = vka::specializationInfo(
+		(uint32_t)SpecConsts::COUNT,
+		vs.specializationMapEntries.data(),
+		sizeof(SpecializationData),
+		&vs.specData);
 
 	auto vertexShaderStage = vka::pipelineShaderStageCreateInfo();
-	vertexShaderStage.module = vs.shaders.state.vertex;
+	vertexShaderStage.module = vs.shaderModules[get(Shaders::Vertex3D)];
 	vertexShaderStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
 	vertexShaderStage.pName = "main";
-	vertexShaderStage.pSpecializationInfo = &vs.pipeline.common.specializationInfo;
+	vertexShaderStage.pSpecializationInfo = &state.specializationInfo;
 
 	auto fragmentShaderStage = vka::pipelineShaderStageCreateInfo();
-	fragmentShaderStage.module = vs.shaders.state.fragment;
+	fragmentShaderStage.module = vs.shaderModules[get(Shaders::Fragment3D)];
 	fragmentShaderStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 	fragmentShaderStage.pName = "main";
-	fragmentShaderStage.pSpecializationInfo = &vs.pipeline.common.specializationInfo;
+	fragmentShaderStage.pSpecializationInfo = &state.specializationInfo;
 
 	state.shaderStages.push_back(vertexShaderStage);
 	state.shaderStages.push_back(fragmentShaderStage);
@@ -983,18 +1104,20 @@ void ClientApp::setupPipeline3D()
 	state.vertexInputState.vertexBindingDescriptionCount = state.vertexBindings.size();
 	state.vertexInputState.pVertexBindingDescriptions = state.vertexBindings.data();
 
-	vs.pipeline.stateCreateInfo = vka::pipelineCreateInfo(vs.pipeline.layout, vs.renderPass);
-	vs.pipeline.stateCreateInfo.stageCount = state.shaderStages.size();
-	vs.pipeline.stateCreateInfo.pStages = state.shaderStages.data();
-	vs.pipeline.stateCreateInfo.pColorBlendState = &state.colorBlendState;
-	vs.pipeline.stateCreateInfo.pDepthStencilState = &state.depthStencilState;
-	vs.pipeline.stateCreateInfo.pDynamicState = &vs.pipeline.common.dynamicState;
-	vs.pipeline.stateCreateInfo.pMultisampleState = &vs.pipeline.common.multisampleState;
-	vs.pipeline.stateCreateInfo.pRasterizationState = &state.rasterizationState;
-	vs.pipeline.stateCreateInfo.pVertexInputState = &state.vertexInputState;
-	vs.pipeline.stateCreateInfo.pInputAssemblyState = &vs.pipeline.common.inputAssemblyState;
-	vs.pipeline.stateCreateInfo.pViewportState = &vs.pipeline.common.viewportState;
-	vs.pipeline.stateCreateInfo.subpass = 0;
+	vs.pipelineCreateInfos[get(Pipelines::P3D)] = vka::pipelineCreateInfo(
+		state.shaderStages,
+		vs.pipelineLayouts[get(PipelineLayouts::Primary)],
+		vs.renderPass,
+		0,
+		&state.colorBlendState,
+		&state.depthStencilState,
+		&state.dynamicState,
+		&state.inputAssemblyState,
+		&state.multisampleState,
+		&state.rasterizationState,
+		nullptr,
+		&state.vertexInputState,
+		&state.viewportState);
 }
 
 void ClientApp::createPipelines()
@@ -1002,7 +1125,7 @@ void ClientApp::createPipelines()
 	vkCreateGraphicsPipelines(
 		vs.device,
 		VK_NULL_HANDLE,
-		(uint32_t)Pipelines::COUNT,
+		get(Pipelines::COUNT),
 		vs.pipelineCreateInfos.data(),
 		nullptr,
 		vs.pipelines.data());
@@ -1010,8 +1133,11 @@ void ClientApp::createPipelines()
 
 void ClientApp::cleanupPipelines()
 {
-	vkDestroyPipeline(vs.device, vs.pipeline.p3D, nullptr);
-	vkDestroyPipeline(vs.device, vs.pipeline.p2D, nullptr);
+	for (const auto& pipeline : vs.pipelines)
+	{
+		vkDestroyPipeline(vs.device, pipeline, nullptr);
+
+	}
 }
 
 void ClientApp::loadImages()
@@ -1033,7 +1159,7 @@ void ClientApp::loadModels()
 
 void ClientApp::createVertexBuffer2D()
 {
-	auto& p2D = vs.pipeline.p2D;
+	auto& p2D = vs.pipelines[get(Pipelines::P2D)];
 	VkDeviceSize vertexBufferSize = 0;
 
 	for (const auto& quad : quads)
@@ -1057,7 +1183,7 @@ void ClientApp::createVertexBuffer2D()
 		vertexBufferUsageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
 
-	vs.vertexBuffers.p2D.vertexBuffer = createBuffer(
+	vs.vertexBuffers[get(VertexBuffers::Vertex2D)] = createBuffer(
 		vertexBufferSize,
 		vertexBufferUsageFlags |
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
@@ -1069,7 +1195,7 @@ void ClientApp::createVertexBuffer2D()
 
 	if (vs.unifiedMemory)
 	{
-		vertexHostBuffer = vs.vertexBuffers.p2D.vertexBuffer;
+		vertexHostBuffer = vs.vertexBuffers[get(VertexBuffers::Vertex2D)];
 	}
 	else
 	{
@@ -1107,7 +1233,7 @@ void ClientApp::createVertexBuffer2D()
 			bufferCopy.size = source.size;
 			vka::CopyBufferToBuffer(
 				vs.utility.buffer,
-				vs.queue.graphics.queue,
+				vs.queues[get(Queues::Graphics)],
 				source.buffer,
 				dest.buffer,
 				bufferCopy,
@@ -1117,7 +1243,7 @@ void ClientApp::createVertexBuffer2D()
 			vkWaitForFences(vs.device, 1, &vs.utility.fence, false, maxU64);
 			vkResetFences(vs.device, 1, &vs.utility.fence);
 		};
-		copyFromStaging(vertexHostBuffer, vs.vertexBuffers.p2D.vertexBuffer);
+		copyFromStaging(vertexHostBuffer, vs.vertexBuffers[get(VertexBuffers::Vertex2D)]);
 
 		vka::DestroyAllocatedBuffer(vs.device, vertexStagingBuffer);
 	}
@@ -1125,7 +1251,7 @@ void ClientApp::createVertexBuffer2D()
 
 void ClientApp::createVertexBuffers3D()
 {
-	auto& p3D = vs.pipeline.p3D;
+	auto& p3D = vs.pipelines[get(Pipelines::P3D)];
 	VkDeviceSize positionBufferSize = 0;
 	VkDeviceSize normalBufferSize = 0;
 	VkDeviceSize indexBufferSize = 0;
@@ -1156,17 +1282,17 @@ void ClientApp::createVertexBuffers3D()
 		vertexBufferUsageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
 
-	vs.vertexBuffers.p3D.positionBuffer = createBuffer(
+	vs.vertexBuffers[get(VertexBuffers::Position3D)] = createBuffer(
 		positionBufferSize,
 		vertexBufferUsageFlags |
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 		vertexBufferMemProps);
-	vs.vertexBuffers.p3D.normalBuffer = createBuffer(
+	vs.vertexBuffers[get(VertexBuffers::Normal3D)] = createBuffer(
 		normalBufferSize,
 		vertexBufferUsageFlags |
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 		vertexBufferMemProps);
-	vs.vertexBuffers.p3D.indexBuffer = createBuffer(
+	vs.vertexBuffers[get(VertexBuffers::Index3D)] = createBuffer(
 		indexBufferSize,
 		vertexBufferUsageFlags |
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
@@ -1182,9 +1308,9 @@ void ClientApp::createVertexBuffers3D()
 
 	if (vs.unifiedMemory)
 	{
-		positionHostBuffer = vs.vertexBuffers.p3D.positionBuffer;
-		normalHostBuffer = vs.vertexBuffers.p3D.normalBuffer;
-		indexHostBuffer = vs.vertexBuffers.p3D.indexBuffer;
+		positionHostBuffer = vs.vertexBuffers[get(VertexBuffers::Position3D)];
+		normalHostBuffer = vs.vertexBuffers[get(VertexBuffers::Normal3D)];
+		indexHostBuffer = vs.vertexBuffers[get(VertexBuffers::Index3D)];
 	}
 	else
 	{
@@ -1251,7 +1377,7 @@ void ClientApp::createVertexBuffers3D()
 			bufferCopy.size = source.size;
 			vka::CopyBufferToBuffer(
 				vs.utility.buffer,
-				vs.queue.graphics.queue,
+				vs.queues[get(Queues::Graphics)],
 				source.buffer,
 				dest.buffer,
 				bufferCopy,
@@ -1261,9 +1387,9 @@ void ClientApp::createVertexBuffers3D()
 			vkWaitForFences(vs.device, 1, &vs.utility.fence, false, maxU64);
 			vkResetFences(vs.device, 1, &vs.utility.fence);
 		};
-		copyFromStaging(positionHostBuffer, vs.vertexBuffers.p3D.positionBuffer);
-		copyFromStaging(normalHostBuffer, vs.vertexBuffers.p3D.normalBuffer);
-		copyFromStaging(indexHostBuffer, vs.vertexBuffers.p3D.indexBuffer);
+		copyFromStaging(positionHostBuffer, vs.vertexBuffers[get(VertexBuffers::Position3D)]);
+		copyFromStaging(normalHostBuffer, vs.vertexBuffers[get(VertexBuffers::Normal3D)]);
+		copyFromStaging(indexHostBuffer, vs.vertexBuffers[get(VertexBuffers::Index3D)]);
 
 		vka::DestroyAllocatedBuffer(vs.device, positionStagingBuffer);
 		vka::DestroyAllocatedBuffer(vs.device, normalStagingBuffer);
@@ -1273,10 +1399,10 @@ void ClientApp::createVertexBuffers3D()
 
 void ClientApp::cleanupVertexBuffers()
 {
-	vka::DestroyAllocatedBuffer(vs.device, vs.vertexBuffers.p3D.indexBuffer);
-	vka::DestroyAllocatedBuffer(vs.device, vs.vertexBuffers.p3D.normalBuffer);
-	vka::DestroyAllocatedBuffer(vs.device, vs.vertexBuffers.p3D.positionBuffer);
-	vka::DestroyAllocatedBuffer(vs.device, vs.vertexBuffers.p2D.vertexBuffer);
+	for (const auto& vb : vs.vertexBuffers)
+	{
+		vka::DestroyAllocatedBuffer(vs.device, vb);
+	}
 }
 
 void ClientApp::createStaticUniformBuffer()
@@ -1295,19 +1421,431 @@ void ClientApp::createStaticUniformBuffer()
 		uniformBufferUsageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
 
-	auto bufferOffset = SelectUniformBufferOffset(sizeof(Material), vs.uniformBufferOffsetAlignment);
-	auto materialBufferSize = bufferOffset * materials.size();
+	vs.materialsBufferOffsetAlignment = SelectUniformBufferOffset(sizeof(MaterialUniform), vs.uniformBufferOffsetAlignment);
+	auto materialBufferSize = vs.materialsBufferOffsetAlignment * get(Materials::COUNT);
 
-	vs.materials = createBuffer(
+	vs.materialsUniformBuffer = createBuffer(
 		materialBufferSize,
 		uniformBufferUsageFlags,
 		uniformBufferMemProps,
 		true);
+
+	vka::Buffer hostBuffer{};
+
+	if (vs.unifiedMemory)
+	{
+		hostBuffer = vs.materialsUniformBuffer;
+
+	}
+	else
+	{
+		hostBuffer = vka::CreateAllocatedBuffer(
+			vs.device,
+			vs.allocator,
+			materialBufferSize,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			vs.queueFamilyIndices[get(Queues::Graphics)],
+			stagingBufferMemProps,
+			true);
+	}
+
+	vka::MapBuffer(vs.device, hostBuffer);
+	VkDeviceSize destinationOffset = 0;
+	for (const auto& material : vs.materialUniforms)
+	{
+		std::memcpy(
+			(gsl::byte*)hostBuffer.mapPtr + destinationOffset,
+			&material,
+			sizeof(MaterialUniform));
+		destinationOffset += vs.materialsBufferOffsetAlignment;
+	}
+
+	if (!vs.unifiedMemory)
+	{
+		vka::CopyBufferToBuffer(
+			vs.utility.buffer,
+			vs.queues[get(Queues::Graphics)],
+			hostBuffer.buffer,
+			vs.materialsUniformBuffer.buffer,
+			VkBufferCopy{
+				0,
+				0,
+				materialBufferSize
+			},
+			vs.utility.fence,
+			gsl::span<VkSemaphore>());
+		vkWaitForFences(vs.device, 1, &vs.utility.fence, true, ~(0Ui64));
+		vkResetFences(vs.device, 1, &vs.utility.fence);
+		vka::DestroyAllocatedBuffer(vs.device, hostBuffer);
+	}
 }
 
 void ClientApp::cleanupStaticUniformBuffer()
 {
-	vka::DestroyAllocatedBuffer(vs.device, vs.materials);
+	vka::DestroyAllocatedBuffer(vs.device, vs.materialsUniformBuffer);
+}
+
+void ClientApp::updateCameraUniformBuffer()
+{
+	vka::Buffer hostBuffer{};
+
+	if (vs.unifiedMemory)
+	{
+		hostBuffer = vs.cameraUniformBuffers[vs.nextImage];
+	}
+	else
+	{
+		hostBuffer = createBuffer(
+			vs.cameraUniformBuffers[vs.nextImage].size,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	}
+
+	vka::MapBuffer(vs.device, hostBuffer);
+
+	CameraUniform cameraUniformData{};
+	cameraUniformData.view = camera.getViewMatrix();
+	cameraUniformData.projection = camera.getProjectionMatrix();
+
+	std::memcpy(hostBuffer.mapPtr, &cameraUniformData, sizeof(CameraUniform));
+
+	if (!vs.unifiedMemory)
+	{
+		vka::CopyBufferToBuffer(
+			vs.utility.buffer,
+			vs.queues[get(Queues::Graphics)],
+			hostBuffer.buffer,
+			vs.cameraUniformBuffers[vs.nextImage].buffer,
+			VkBufferCopy{
+				0,
+				0,
+				hostBuffer.size
+			},
+			vs.utility.fence,
+			gsl::span<VkSemaphore>());
+
+		vkWaitForFences(
+			vs.device,
+			1,
+			&vs.utility.fence,
+			1U,
+			~(0Ui64));
+		vkResetFences(
+			vs.device,
+			1,
+			&vs.utility.fence);
+
+		vka::DestroyAllocatedBuffer(vs.device, hostBuffer);
+	}
+}
+
+void ClientApp::updateLightsUniformBuffer()
+{
+	vka::Buffer hostBuffer{};
+
+	if (vs.unifiedMemory)
+	{
+		hostBuffer = vs.lightsUniformBuffers[vs.nextImage];
+	}
+	else
+	{
+		hostBuffer = createBuffer(
+			vs.lightsUniformBuffers[vs.nextImage].size,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	}
+
+	vka::MapBuffer(vs.device, hostBuffer);
+
+	VkDeviceSize lightsBufferOffset = 0U;
+	for (auto i = 0U; i < LightCount; ++i)
+	{
+		std::memcpy((gsl::byte*)hostBuffer.mapPtr + lightsBufferOffset, &vs.lightUniforms[i], sizeof(LightUniform));
+
+		lightsBufferOffset += vs.lightsBuffersOffsetAlignment;
+	}
+
+	if (!vs.unifiedMemory)
+	{
+		vka::CopyBufferToBuffer(
+			vs.utility.buffer,
+			vs.queues[get(Queues::Graphics)],
+			hostBuffer.buffer,
+			vs.lightsUniformBuffers[vs.nextImage].buffer,
+			VkBufferCopy{
+				0,
+				0,
+				hostBuffer.size
+			},
+			vs.utility.fence,
+			gsl::span<VkSemaphore>());
+
+		vkWaitForFences(
+			vs.device,
+			1,
+			&vs.utility.fence,
+			1U,
+			~(0Ui64));
+		vkResetFences(
+			vs.device,
+			1,
+			&vs.utility.fence);
+
+		vka::DestroyAllocatedBuffer(vs.device, hostBuffer);
+	}
+}
+
+void ClientApp::allocateStaticDescriptorSet()
+{
+	auto allocInfo = vka::descriptorSetAllocateInfo(
+		vs.staticLayoutPool,
+		&vs.setLayouts[get(SetLayouts::Static)],
+		1);
+	vkAllocateDescriptorSets(vs.device, &allocInfo, &vs.staticSet);
+}
+
+void ClientApp::writeStaticDescriptorSet()
+{
+	std::array<VkDescriptorImageInfo, ImageCount> imageInfos;
+	for (auto i = 0U; i < ImageCount; ++i)
+	{
+		imageInfos[i] = vka::descriptorImageInfo(
+			VK_NULL_HANDLE,
+			vs.images[i].view,
+			vs.images[i].currentLayout);
+	}
+
+	std::array<VkDescriptorBufferInfo, 1> bufferInfos;
+	VkDeviceSize materialBufferOffset = 0;
+	for (auto i = 0U; i < get(Materials::COUNT); ++i)
+	{
+		bufferInfos[i].buffer = vs.materialsUniformBuffer.buffer;
+		bufferInfos[i].offset = materialBufferOffset;
+		bufferInfos[i].range = sizeof(MaterialUniform);
+
+		materialBufferOffset += vs.materialsBufferOffsetAlignment;
+	}
+
+	std::array<VkWriteDescriptorSet, 2> writes;
+	constexpr auto imageDescriptors = 0U;
+	constexpr auto materialDescriptors = 1U;
+
+	writes[imageDescriptors] = vka::writeDescriptorSet(
+		vs.staticSet,
+		VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+		1,
+		imageInfos.data(),
+		imageInfos.size());
+
+	writes[materialDescriptors] = vka::writeDescriptorSet(
+		vs.staticSet,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		2,
+		bufferInfos.data(),
+		bufferInfos.size());
+
+	vkUpdateDescriptorSets(
+		vs.device,
+		writes.size(),
+		writes.data(),
+		0,
+		nullptr);
+}
+
+void ClientApp::allocateFrameDescriptorSets()
+{
+	for (auto i = 0U; i < BufferCount; ++i)
+	{
+		auto allocInfo = vka::descriptorSetAllocateInfo(
+			vs.dynamicLayoutPools[i],
+			&vs.setLayouts[get(SetLayouts::Frame)],
+			1U);
+		vkAllocateDescriptorSets(
+			vs.device,
+			&allocInfo,
+			&vs.frameDescriptorSets[i]);
+	}
+}
+
+void ClientApp::writeFrameDescriptorSet()
+{
+	auto cameraBufferInfo = VkDescriptorBufferInfo{};
+	cameraBufferInfo.buffer = vs.cameraUniformBuffers[vs.nextImage].buffer;
+	cameraBufferInfo.offset = 0U;
+	cameraBufferInfo.range = sizeof(glm::mat4) * 2;
+
+	std::array<VkDescriptorBufferInfo, LightCount> lightBufferInfos;
+	VkDeviceSize lightsBufferOffset = 0U;
+	for (auto i = 0U; i < LightCount; ++i)
+	{
+		lightBufferInfos[i].buffer = vs.lightsUniformBuffers[vs.nextImage].buffer;
+		lightBufferInfos[i].offset = lightsBufferOffset;
+		lightBufferInfos[i].range = sizeof(LightUniform);
+
+		lightsBufferOffset += vs.lightsBuffersOffsetAlignment;
+	}
+
+	std::array<VkWriteDescriptorSet, 2> writes;
+	constexpr size_t cameraDescriptor = 0U;
+	constexpr size_t lightsDescriptors = 1U;
+
+	writes[cameraDescriptor] = vka::writeDescriptorSet(
+		vs.frameDescriptorSets[vs.nextImage],
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		0U,
+		&cameraBufferInfo);
+	vkUpdateDescriptorSets(vs.device, writes.size(), writes.data(), 0, nullptr);
+}
+
+void ClientApp::allocateInstanceDescriptorSets()
+{
+	for (auto i = 0U; i < BufferCount; ++i)
+	{
+		auto allocInfo = vka::descriptorSetAllocateInfo(
+			vs.dynamicLayoutPools[i],
+			&vs.setLayouts[get(SetLayouts::Instance)],
+			1U);
+		vkAllocateDescriptorSets(
+			vs.device,
+			&allocInfo,
+			&vs.frameDescriptorSets[i]);
+	}
+}
+
+void ClientApp::ResizeInstanceBuffers(vka::Buffer & nextStagingBuffer, vka::Buffer & nextBuffer, unsigned long long requiredBufferSize)
+{
+	auto stagingBufferUsage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	auto stagingMemProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	auto bufferUsage = vs.unifiedMemory ?
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+		:
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	auto bufferMemProps = vs.unifiedMemory ?
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+		:
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+	if (!vs.unifiedMemory)
+	{
+		vka::DestroyAllocatedBuffer(
+			vs.device,
+			nextStagingBuffer);
+		vka::DestroyAllocatedBuffer(
+			vs.device,
+			nextBuffer);
+		nextStagingBuffer = createBuffer(
+			requiredBufferSize,
+			stagingBufferUsage,
+			stagingMemProps);
+		nextBuffer = createBuffer(
+			requiredBufferSize,
+			bufferUsage,
+			bufferMemProps);
+	}
+	else
+	{
+		vka::DestroyAllocatedBuffer(
+			vs.device,
+			nextBuffer);
+		nextBuffer = createBuffer(
+			requiredBufferSize,
+			bufferUsage,
+			bufferMemProps);
+	}
+}
+
+void ClientApp::updateInstanceBuffer()
+{
+	
+
+	if (vs.unifiedMemory)
+	{
+		if ( || instanceBuffer.buffer == VK_NULL_HANDLE)
+		{
+			vka::DestroyAllocatedBuffer(vs.device, instanceBuffer);
+			instanceBuffer = createBuffer(
+				vs.instanceBuffersOffsetAlignment * matrixCount,
+				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				true);
+			vs.instanceBufferCapacities[vs.nextImage] = matrixCount;
+		}
+		vka::MapBuffer(vs.device, instanceBuffer);
+
+		// push constants
+
+
+
+		VkDeviceSize offset{};
+		copyMatrixRecordDraw(entity, offset);
+		offset += vs.instanceBuffersOffsetAlignment;
+	}
+
+	vka::MapBuffer(vs.device, hostBuffer);
+
+	CameraUniform cameraUniformData{};
+	cameraUniformData.view = camera.getViewMatrix();
+	cameraUniformData.projection = camera.getProjectionMatrix();
+
+	std::memcpy(hostBuffer.mapPtr, &cameraUniformData, sizeof(CameraUniform));
+
+	if (!vs.unifiedMemory)
+	{
+		vka::CopyBufferToBuffer(
+			vs.utility.buffer,
+			vs.queues[get(Queues::Graphics)],
+			hostBuffer.buffer,
+			vs.instanceUniformBuffers[vs.nextImage].buffer,
+			VkBufferCopy{
+				0,
+				0,
+				hostBuffer.size
+			},
+			vs.utility.fence,
+			gsl::span<VkSemaphore>());
+
+		vkWaitForFences(
+			vs.device,
+			1,
+			&vs.utility.fence,
+			1U,
+			~(0Ui64));
+		vkResetFences(
+			vs.device,
+			1,
+			&vs.utility.fence);
+
+		vka::DestroyAllocatedBuffer(vs.device, hostBuffer);
+	}
+}
+
+void ClientApp::writeInstanceDescriptorSet()
+{
+	VkDescriptorBufferInfo bufferInfo{};
+	bufferInfo.buffer = vs.instanceUniformBuffers[vs.nextImage].buffer;
+	bufferInfo.offset = 0U;
+	bufferInfo.range = vs.instanceBuffersOffsetAlignment;
+
+	auto write = vka::writeDescriptorSet(
+		vs.instanceDescriptorSets[vs.nextImage],
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+		0,
+		&bufferInfo);
+
+	vkUpdateDescriptorSets(
+		vs.device,
+		1,
+		&write,
+		0,
+		nullptr);
 }
 
 void ClientApp::createFrameResources()
@@ -1327,15 +1865,13 @@ void ClientApp::createFrameResources()
 	}
 	for (auto i = 0U; i < BufferCount; ++i)
 	{
-		auto& fd = vs.frameData[i];
-
-		fd.uniform.camera = createBuffer(
+		vs.cameraUniformBuffers[i] = createBuffer(
 			sizeof(glm::mat4) * 2,
 			uniformBufferUsageFlags,
 			uniformBufferMemProps,
 			false);
 
-		fd.uniform.lights = createBuffer(
+		vs.lightsUniformBuffers[i] = createBuffer(
 			SelectUniformBufferOffset(sizeof(glm::vec4) * 2, vs.uniformBufferOffsetAlignment) * LightCount,
 			uniformBufferUsageFlags,
 			uniformBufferMemProps,
@@ -1350,31 +1886,31 @@ void ClientApp::createFrameResources()
 			vs.device,
 			&descriptorPoolCreateInfo,
 			nullptr,
-			&fd.dynamicDescriptorPool);
+			&vs.dynamicLayoutPools[i]);
 
 		auto commandPoolCreateInfo = vka::commandPoolCreateInfo();
-		commandPoolCreateInfo.queueFamilyIndex = vs.queue.graphics.familyIndex;
+		commandPoolCreateInfo.queueFamilyIndex = vs.queueFamilyIndices[get(Queues::Graphics)];
 		vkCreateCommandPool(
 			vs.device,
 			&commandPoolCreateInfo,
 			nullptr,
-			&fd.renderCommandPool);
+			&vs.renderCommandPools[i]);
 
 		auto commandBufferAllocateInfo = vka::commandBufferAllocateInfo(
-			fd.renderCommandPool,
+			vs.renderCommandPools[i],
 			VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 			1);
 		vkAllocateCommandBuffers(
 			vs.device,
 			&commandBufferAllocateInfo,
-			&fd.renderCommandBuffer);
+			&vs.renderCommandBuffers[i]);
 
 		auto fenceCreateInfo = vka::fenceCreateInfo();
 		vkCreateFence(vs.device, &fenceCreateInfo, nullptr, &vs.imageReadyFences[i]);
 		vs.imageReadyFencePool.pool(vs.imageReadyFences[i]);
 
 		auto semaphoreCreateInfo = vka::semaphoreCreateInfo();
-		vkCreateSemaphore(vs.device, &semaphoreCreateInfo, nullptr, &fd.imageRenderedSemaphore);
+		vkCreateSemaphore(vs.device, &semaphoreCreateInfo, nullptr, &vs.imageRenderedSemaphores[i]);
 	}
 }
 
@@ -1382,18 +1918,17 @@ void ClientApp::cleanupFrameResources()
 {
 	for (auto i = 0U; i < BufferCount; ++i)
 	{
-		auto& fd = vs.frameData[i];
 		vkDestroyFence(vs.device, vs.imageReadyFences[i], nullptr);
 
-		vkDestroySemaphore(vs.device, fd.imageRenderedSemaphore, nullptr);
+		vkDestroySemaphore(vs.device, vs.imageRenderedSemaphores[i], nullptr);
 
-		vkDestroyCommandPool(vs.device, fd.renderCommandPool, nullptr);
+		vkDestroyCommandPool(vs.device, vs.renderCommandPools[i], nullptr);
 
-		vkDestroyDescriptorPool(vs.device, fd.dynamicDescriptorPool, nullptr);
+		vkDestroyDescriptorPool(vs.device, vs.dynamicLayoutPools[i], nullptr);
 
-		vka::DestroyAllocatedBuffer(vs.device, fd.uniform.camera);
-		vka::DestroyAllocatedBuffer(vs.device, fd.uniform.lights);
-		vka::DestroyAllocatedBuffer(vs.device, fd.uniform.instance);
+		vka::DestroyAllocatedBuffer(vs.device, vs.cameraUniformBuffers[i]);
+		vka::DestroyAllocatedBuffer(vs.device, vs.lightsUniformBuffers[i]);
+		vka::DestroyAllocatedBuffer(vs.device, vs.instanceUniformBuffers[i]);
 	}
 }
 
@@ -1462,6 +1997,19 @@ void ClientApp::initVulkan()
 	createVertexBuffers3D();
 }
 
+void ClientApp::initInput()
+{
+	is.inputBindMap[vka::MakeSignature(GLFW_KEY_LEFT, GLFW_PRESS)] = Bindings::Left;
+	is.inputBindMap[vka::MakeSignature(GLFW_KEY_RIGHT, GLFW_PRESS)] = Bindings::Right;
+	is.inputBindMap[vka::MakeSignature(GLFW_KEY_UP, GLFW_PRESS)] = Bindings::Up;
+	is.inputBindMap[vka::MakeSignature(GLFW_KEY_DOWN, GLFW_PRESS)] = Bindings::Down;
+
+	is.inputStateMap[Bindings::Left] = vka::MakeAction([]() { std::cout << "Left Pressed.\n"; });
+	is.inputStateMap[Bindings::Right] = vka::MakeAction([]() { std::cout << "Right Pressed.\n"; });
+	is.inputStateMap[Bindings::Up] = vka::MakeAction([]() { std::cout << "Up Pressed.\n"; });
+	is.inputStateMap[Bindings::Down] = vka::MakeAction([]() { std::cout << "Down Pressed.\n"; });
+}
+
 static void PushBackInput(GLFWwindow * window, vka::InputMessage && msg)
 {
 	auto &app = *GetUserPointer(window);
@@ -1507,31 +2055,12 @@ int main()
 	_putenv("DISABLE_VK_LAYER_VALVE_steam_overlay_1=1");
 	ClientApp app{};
 
-	app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_LEFT, GLFW_PRESS)] = Bindings::Left;
-	app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_RIGHT, GLFW_PRESS)] = Bindings::Right;
-	app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_UP, GLFW_PRESS)] = Bindings::Up;
-	app.is.inputBindMap[vka::MakeSignature(GLFW_KEY_DOWN, GLFW_PRESS)] = Bindings::Down;
-
-	app.is.inputStateMap[Bindings::Left] = vka::MakeAction([]() { std::cout << "Left Pressed.\n"; });
-	app.is.inputStateMap[Bindings::Right] = vka::MakeAction([]() { std::cout << "Right Pressed.\n"; });
-	app.is.inputStateMap[Bindings::Up] = vka::MakeAction([]() { std::cout << "Up Pressed.\n"; });
-	app.is.inputStateMap[Bindings::Down] = vka::MakeAction([]() { std::cout << "Down Pressed.\n"; });
-
-
-
-	// 3D render views
-	app.ecs.prepare<cmp::Transform, cmp::Material, Models::Cube>();
-	app.ecs.prepare<cmp::Transform, cmp::Material, Models::Cylinder>();
-	app.ecs.prepare<cmp::Transform, cmp::Material, Models::IcosphereSub2>();
-	app.ecs.prepare<cmp::Transform, cmp::Material, Models::Pentagon>();
-	app.ecs.prepare<cmp::Transform, cmp::Material, Models::Triangle>();
-
-	//app.ecs.prepare<cmp::Transform>();
-
-	// 3D entities
-
 	app.initVulkan();
-	app.SetupPrototypes();
+	app.initInput();
+	app.PrepareECS();
+	// load scene
+	auto entity0 = app.triangle();
+	app.ecs.get<cmp::Material>(entity0).index = get(Materials::Green);
 	app.InputThread();
 	app.cleanup();
 }

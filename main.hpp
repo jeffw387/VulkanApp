@@ -26,24 +26,6 @@
 #include "gsl.hpp"
 
 
-struct Models {
-	struct Cylinder {
-		static constexpr auto path = entt::HashedString("content/models/cylinder.gltf");
-	};
-	struct Cube {
-		static constexpr auto path = entt::HashedString("content/models/cube.gltf");
-	};
-	struct Triangle {
-		static constexpr auto path = entt::HashedString("content/models/triangle.gltf");
-	};
-	struct IcosphereSub2 {
-		static constexpr auto path = entt::HashedString("content/models/icosphereSub2.gltf");
-	};
-	struct Pentagon {
-		static constexpr auto path = entt::HashedString("content/models/pentagon.gltf");
-	};
-};
-
 static VkDeviceSize SelectUniformBufferOffset(VkDeviceSize elementSize, VkDeviceSize minimumOffsetAlignment)
 {
 	if (elementSize <= minimumOffsetAlignment)
@@ -52,19 +34,20 @@ static VkDeviceSize SelectUniformBufferOffset(VkDeviceSize elementSize, VkDevice
 	return mult * minimumOffsetAlignment;
 }
 
-struct Materials
-{
-	static constexpr auto White = entt::HashedString("White");
-	static constexpr auto Red = entt::HashedString("Red");
-	static constexpr auto Green = entt::HashedString("Green");
-	static constexpr auto Blue = entt::HashedString("Blue");
-};
-
 class ClientApp
 {
 public:
 	const char* appName = "VulkanApp";
 	const char* engineName = "VulkanEngine";
+
+	std::array<const char*, get(Models::COUNT)> modelPaths = {
+		"content/models/cylinder.gltf",
+		"content/models/cube.gltf",
+		"content/models/triangle.gltf",
+		"content/models/icosphereSub2.gltf",
+		"content/models/pentagon.gltf"
+	};
+
 	std::vector<const char*> instanceLayers = {
 		"VK_LAYER_LUNARG_standard_validation",
 		"VK_LAYER_LUNARG_assistant_layer"
@@ -95,19 +78,7 @@ public:
 
 	} paths;
 
-	struct Material
-	{
-		glm::vec4 color;
-	};
-
-
-	std::map<uint64_t, Material> materials
-	{
-		{Materials::White, Material{glm::vec4(1.f)}}, // white
-		{Materials::Red, Material{glm::vec4(1.f, 0.f, 0.f, 1.f)}}, // red
-		{Materials::Green, Material{glm::vec4(0.f, 1.f, 0.f, 1.f)}}, // green
-		{Materials::Blue, Material{glm::vec4(0.f, 0.f, 1.f, 1.f)}} // blue
-	};
+	
 
 	GLFWwindow* window;
 	VS vs;
@@ -130,7 +101,7 @@ public:
 	bool exitInputThread = false;
 	bool exitUpdateThread = false;
 
-	void SetupPrototypes();
+	void PrepareECS();
 
 	void InputThread();
 
@@ -138,7 +109,15 @@ public:
 
 	void Update(TimePoint_ms updateTime);
 
+	void SortComponents();
+
+	void BindPipeline3D(VkCommandBuffer & cmd, VkDescriptorSet & frameSet);
+
+	void PushConstants(VkCommandBuffer & cmd, PushConstantData &pushData);
+
 	void Draw();
+
+	void BeginRenderPass(VkFramebuffer & framebuffer, VkCommandBuffer & cmd);
 
 	void cleanup();
 
@@ -232,11 +211,33 @@ public:
 
 	void cleanupStaticUniformBuffer();
 
+	void updateCameraUniformBuffer();
+
+	void updateLightsUniformBuffer();
+
+	void allocateStaticDescriptorSet();
+
+	void writeStaticDescriptorSet();
+
+	void allocateFrameDescriptorSets();
+
+	void writeFrameDescriptorSet();
+
+	void allocateInstanceDescriptorSets();
+
+	void ResizeInstanceBuffers(vka::Buffer & nextStagingBuffer, vka::Buffer & nextBuffer, unsigned long long requiredBufferSize);
+
+	void updateInstanceBuffer();
+
+	void writeInstanceDescriptorSet();
+
 	void createFrameResources();
 
 	void cleanupFrameResources();
 
 	void initVulkan();
+
+	void initInput();
 
 	template <typename T, typename iterT>
 	void CopyDataToBuffer(

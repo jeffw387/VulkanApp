@@ -578,16 +578,38 @@ namespace vka
 		const std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
 		VkPipelineLayout layout,
 		VkRenderPass renderPass,
+		uint32_t subpass,
+		VkPipelineColorBlendStateCreateInfo* pColorBlendState,
+		VkPipelineDepthStencilStateCreateInfo* pDepthStencilState,
+		VkPipelineDynamicStateCreateInfo* pDynamicState,
+		VkPipelineInputAssemblyStateCreateInfo* pInputAssemblyState,
+		VkPipelineMultisampleStateCreateInfo* pMultisampleState,
+		VkPipelineRasterizationStateCreateInfo* pRasterizationState,
+		VkPipelineTessellationStateCreateInfo* pTessellationState,
+		VkPipelineVertexInputStateCreateInfo* pVertexInputState,
+		VkPipelineViewportStateCreateInfo* pViewportState,
 		VkPipelineCreateFlags flags = 0)
 	{
 		VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
 		pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipelineCreateInfo.stageCount = static_cast<uint32_t>()
+		pipelineCreateInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+		pipelineCreateInfo.pStages = shaderStages.data();
 		pipelineCreateInfo.layout = layout;
 		pipelineCreateInfo.renderPass = renderPass;
 		pipelineCreateInfo.flags = flags;
 		pipelineCreateInfo.basePipelineIndex = -1;
 		pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+		pipelineCreateInfo.pColorBlendState = pColorBlendState;
+		pipelineCreateInfo.pDepthStencilState = pDepthStencilState;
+		pipelineCreateInfo.pDynamicState = pDynamicState;
+		pipelineCreateInfo.pInputAssemblyState = pInputAssemblyState;
+		pipelineCreateInfo.pMultisampleState = pMultisampleState;
+		pipelineCreateInfo.pRasterizationState = pRasterizationState;
+		pipelineCreateInfo.pTessellationState = pTessellationState;
+		pipelineCreateInfo.pVertexInputState = pVertexInputState;
+		pipelineCreateInfo.pViewportState = pViewportState;
+		pipelineCreateInfo.subpass = subpass;
+		
 		return pipelineCreateInfo;
 	}
 

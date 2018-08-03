@@ -13,9 +13,14 @@ namespace cmp
 	struct Light
 	{};
 
+	struct Mesh
+	{
+		uint32_t index;
+	};
+
 	struct Material
 	{
-		uint64_t index;
+		uint32_t index;
 	};
 
     struct Sprite

@@ -12,12 +12,32 @@
 #include <vector>
 
 constexpr uint32_t BufferCount = 3;
+constexpr uint32_t ImageCount = 1;
+constexpr VkExtent2D DefaultWindowSize = { 900, 900 };
+constexpr uint32_t LightCount = 3;
 
 template<typename E>
 constexpr auto get(E e) -> typename std::underlying_type<E>::type
 {
 	return static_cast<typename std::underlying_type<E>::type>(e);
 }
+
+enum class Materials : uint32_t {
+	White,
+	Red,
+	Green,
+	Blue,
+	COUNT
+};
+
+enum class Models : uint32_t {
+	Cylinder,
+	Cube,
+	Triangle,
+	IcosphereSub2,
+	Pentagon,
+	COUNT
+};
 
 enum class Queues : uint32_t {
 	Graphics,
@@ -27,7 +47,7 @@ enum class Queues : uint32_t {
 
 enum class SpecConsts : uint32_t {
 	MaterialCount,
-	TextureCount,
+	ImageCount,
 	LightCount,
 	COUNT
 };
@@ -57,11 +77,15 @@ enum class PushRanges : uint32_t {
 	COUNT
 };
 
-enum class VertexBuffers : uint32_t {
-	Vertex2D,
+enum class VertexBuffers3D : uint32_t {
 	Position3D,
 	Normal3D,
 	Index3D,
+	COUNT
+};
+
+enum class VertexBuffers2D : uint32_t {
+	Vertex2D,
 	COUNT
 };
 
@@ -90,6 +114,28 @@ enum class Pipelines : uint32_t {
 	COUNT
 };
 
+struct InstanceUniform
+{
+	glm::mat4 model;
+	glm::mat4 MVP;
+};
+
+struct CameraUniform
+{
+	glm::mat4 view;
+	glm::mat4 projection;
+};
+
+struct MaterialUniform
+{
+	glm::vec4 color;
+};
+
+struct LightUniform {
+	glm::vec4 position;
+	glm::vec4 color;
+};
+
 struct PushConstantData {
 	glm::uint32 materialIndex;
 	glm::uint32 textureIndex;
@@ -97,17 +143,15 @@ struct PushConstantData {
 
 struct SpecializationData {
 	using MaterialCount = glm::uint32;
-	using TextureCount = glm::uint32;
+	using ImageCount = glm::uint32;
 	using LightCount = glm::uint32;
 	MaterialCount materialCount;
-	TextureCount textureCount;
+	ImageCount imageCount;
 	LightCount lightCount;
 };
 
 struct PipelineState
 {
-	VkViewport viewport;
-	VkRect2D scissor;
 	std::vector<VkDynamicState> dynamicStates;
 	VkPipelineDynamicStateCreateInfo dynamicState;
 	VkPipelineMultisampleStateCreateInfo multisampleState;
@@ -123,7 +167,6 @@ struct PipelineState
 	std::vector<VkVertexInputBindingDescription> vertexBindings;
 	VkPipelineVertexInputStateCreateInfo vertexInputState;
 };
-
 
 struct VS
 {
@@ -142,6 +185,17 @@ struct VS
 	VkDevice device;
 	vka::Allocator allocator;
 
+	std::array<vka::Image2D, ImageCount> images;
+	std::array<LightUniform, LightCount> lightUniforms;
+
+	std::array<MaterialUniform, get(Materials::COUNT)> materialUniforms =
+	{
+		MaterialUniform{ glm::vec4(1.f) },
+		MaterialUniform{ glm::vec4(1.f, 0.f, 0.f, 1.f) },
+		MaterialUniform{ glm::vec4(0.f, 1.f, 0.f, 1.f) },
+		MaterialUniform{ glm::vec4(0.f, 0.f, 1.f, 1.f) }
+	};
+
 	struct Utility {
 		VkCommandPool pool;
 		VkCommandBuffer buffer;
@@ -158,6 +212,8 @@ struct VS
 		VkPresentModeKHR presentMode;
 	} surfaceData;
 
+	VkViewport viewport;
+	VkRect2D scissor;
 	VkRenderPass renderPass;
 	VkSwapchainKHR swapchain;
 	vka::Image2D depthImage;
@@ -167,10 +223,11 @@ struct VS
 	std::vector<VkDescriptorSetLayoutBinding> frameLayoutBindings;
 	std::vector<VkDescriptorSetLayoutBinding> instanceLayoutBindings;
 	std::array<VkSampler, get(Samplers::COUNT)> samplers;
-	std::array<VkDescriptorSetLayout, get(SetLayouts::COUNT)> layouts;
+	std::array<VkDescriptorSetLayout, get(SetLayouts::COUNT)> setLayouts;
 	std::array<VkPushConstantRange, get(PushRanges::COUNT)> pushRanges;
 	std::array<VkShaderModule, get(Shaders::COUNT)> shaderModules;
-	std::array<vka::Buffer, get(VertexBuffers::COUNT)> vertexBuffers;
+	std::array<vka::Buffer, get(VertexBuffers2D::COUNT)> vertexBuffers2D;
+	std::array<vka::Buffer, get(VertexBuffers3D::COUNT)> vertexBuffers3D;
 	std::array<VkPipelineLayout, get(PipelineLayouts::COUNT)> pipelineLayouts;
 	std::array<VkSpecializationMapEntry, get(SpecConsts::COUNT)> specializationMapEntries;
 	std::array<PipelineState, get(Pipelines::COUNT)> pipelineStates;
@@ -186,20 +243,27 @@ struct VS
 	};
 
 	VkDescriptorPool staticLayoutPool;
-	vka::Buffer materials;
+	VkDescriptorSet staticSet;
+	VkDeviceSize materialsBufferOffsetAlignment;
+	vka::Buffer materialsUniformBuffer;
 	VkDeviceSize instanceBuffersOffsetAlignment;
-	struct FrameData {
-		std::array<vka::Buffer, get(UniformBuffers::COUNT)> uniformBuffers;
-		size_t instanceBufferCapacity = 0;
-		VkFence stagingFence;
-		VkDescriptorPool dynamicDescriptorPool;
-		VkImage swapImage;
-		VkImageView swapView;
-		VkFramebuffer framebuffer;
-		VkCommandPool renderCommandPool;
-		VkCommandBuffer renderCommandBuffer;
-		VkSemaphore imageRenderedSemaphore;
-	} frameData[BufferCount];
+	VkDeviceSize lightsBuffersOffsetAlignment;
+
+	std::array<vka::Buffer, BufferCount> cameraUniformBuffers;
+	std::array<vka::Buffer, BufferCount> lightsUniformBuffers;
+	std::array<vka::Buffer, BufferCount> instanceStagingBuffers;
+	std::array<vka::Buffer, BufferCount> instanceUniformBuffers;
+	std::array<size_t, BufferCount> instanceBufferCapacities;
+	std::array<VkFence, BufferCount> stagingFences;
+	std::array<VkDescriptorPool, BufferCount> dynamicLayoutPools;
+	std::array<VkDescriptorSet, BufferCount> frameDescriptorSets;
+	std::array<VkDescriptorSet, BufferCount> instanceDescriptorSets;
+	std::array<VkImage, BufferCount> swapImages;
+	std::array<VkImageView, BufferCount> swapViews;
+	std::array<VkFramebuffer, BufferCount> framebuffers;
+	std::array<VkCommandPool, BufferCount> renderCommandPools;
+	std::array<VkCommandBuffer, BufferCount> renderCommandBuffers;
+	std::array<VkSemaphore, BufferCount> imageRenderedSemaphores;
 	std::array<VkFence, BufferCount> imageReadyFences;
 	Pool<VkFence> imageReadyFencePool;
 };

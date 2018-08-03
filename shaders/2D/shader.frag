@@ -4,12 +4,12 @@
 
 // --specialization constants--
 layout(constant_id = 0) const uint MaterialCount = 1;
-layout(constant_id = 1) const uint TextureCount = 1;
+layout(constant_id = 1) const uint ImageCount = 1;
 
 // --uniform buffers--
 // static
 layout(set = 0, binding = 0) uniform sampler samp;
-layout(set = 0, binding = 1) uniform texture2D tex[TextureCount];
+layout(set = 0, binding = 1) uniform texture2D tex[ImageCount];
 layout(set = 0, binding = 2) uniform Materials
 {
     vec4 color;

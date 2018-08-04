@@ -1,36 +1,27 @@
 #pragma once
 
 #include "UniqueVulkan.hpp"
-#include "vulkan/vulkan.h"
 #include "VulkanFunctionLoader.hpp"
+#include "vulkan/vulkan.h"
 
-namespace vka
-{
-    class Instance
-    {
-	public:
-		Instance(const VkInstanceCreateInfo& createInfo)
-			:
-			createInfo(createInfo)
-		{
-			CreateInstance();
-		}
+namespace vka {
+class Instance {
+ public:
+  Instance(const VkInstanceCreateInfo& createInfo) : createInfo(createInfo) {
+    CreateInstance();
+  }
 
-		VkInstance GetInstance()
-		{
-			return instanceUnique.get();
-		}
+  VkInstance GetInstance() { return instanceUnique.get(); }
 
-	private:
-		VkInstanceCreateInfo createInfo;
-        VkInstanceUnique instanceUnique;
-		
-		void CreateInstance()
-		{
-			VkInstance instance;
-			auto result = vkCreateInstance(&createInfo, nullptr, &instance);
-			instanceUnique = VkInstanceUnique(instance, VkInstanceDeleter());
-			LoadInstanceLevelEntryPoints(instance);
-		}
-    };
-}
+ private:
+  VkInstanceCreateInfo createInfo;
+  VkInstanceUnique instanceUnique;
+
+  void CreateInstance() {
+    VkInstance instance;
+    auto result = vkCreateInstance(&createInfo, nullptr, &instance);
+    instanceUnique = VkInstanceUnique(instance, VkInstanceDeleter());
+    LoadInstanceLevelEntryPoints(instance);
+  }
+};
+}  // namespace vka

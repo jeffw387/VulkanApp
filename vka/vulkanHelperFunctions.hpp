@@ -85,7 +85,7 @@ namespace vka
 		bufferCreateInfo.queueFamilyIndexCount = 1;
 		bufferCreateInfo.pQueueFamilyIndices = &queueFamilyIndex;
 
-		Buffer allocatedBuffer{};
+		BufferData allocatedBuffer{};
 		vkCreateBuffer(device,
 			&bufferCreateInfo,
 			nullptr,
@@ -104,8 +104,8 @@ namespace vka
 	}
 
 	inline auto DestroyAllocatedBuffer(
-		VkDevice device,
-		Buffer buffer)
+		const VkDevice& device,
+		const BufferData& buffer)
 	{
 		buffer.allocation.deallocate();
 		if (buffer.buffer != VK_NULL_HANDLE)
@@ -114,7 +114,7 @@ namespace vka
 
 	inline auto MapBuffer(
 		VkDevice device,
-		Buffer& buffer)
+		BufferData& buffer)
 	{
 		if (!buffer.mapped && buffer.dedicatedAllocation)
 		{

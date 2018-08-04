@@ -32,35 +32,35 @@ auto ClientApp::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemo
 void ClientApp::PrepareECS()
 {
 	// 3D render views
-	ecs.prepare<cmp::Transform, cmp::Material, Models::Cube>();
-	ecs.prepare<cmp::Transform, cmp::Material, Models::Cylinder>();
-	ecs.prepare<cmp::Transform, cmp::Material, Models::IcosphereSub2>();
-	ecs.prepare<cmp::Transform, cmp::Material, Models::Pentagon>();
-	ecs.prepare<cmp::Transform, cmp::Material, Models::Triangle>();
+	ecs.prepare<cmp::Transform, cmp::Material, cmp::Mesh>();
+	ecs.prepare<cmp::Transform, cmp::Material, cmp::Mesh>();
+	ecs.prepare<cmp::Transform, cmp::Material, cmp::Mesh>();
+	ecs.prepare<cmp::Transform, cmp::Material, cmp::Mesh>();
+	ecs.prepare<cmp::Transform, cmp::Material, cmp::Mesh>();
 
-	triangle.set<Models::Triangle>();
+	triangle.set<cmp::Mesh>(get(Models::Triangle));
 	triangle.set<cmp::Transform>(glm::mat4(1.f));
-	triangle.set<cmp::Material>(Materials::Red);
+	triangle.set<cmp::Material>(get(Materials::Red));
 	triangle.set<cmp::Drawable>();
 
-	cube.set<Models::Cube>();
+	cube.set<cmp::Mesh>(get(Models::Cube));
 	cube.set<cmp::Transform>(glm::mat4(1.f));
-	cube.set<cmp::Material>(Materials::Red);
+	cube.set<cmp::Material>(get(Materials::Red));
 	cube.set<cmp::Drawable>();
 
-	cylinder.set<Models::Cylinder>();
+	cylinder.set<cmp::Mesh>(get(Models::Cylinder));
 	cylinder.set<cmp::Transform>(glm::mat4(1.f));
-	cylinder.set<cmp::Material>(Materials::Red);
+	cylinder.set<cmp::Material>(get(Materials::Red));
 	cylinder.set<cmp::Drawable>();
 
-	icosphereSub2.set<Models::IcosphereSub2>();
+	icosphereSub2.set<cmp::Mesh>(get(Models::IcosphereSub2));
 	icosphereSub2.set<cmp::Transform>(glm::mat4(1.f));
-	icosphereSub2.set<cmp::Material>(Materials::Red);
+	icosphereSub2.set<cmp::Material>(get(Materials::Red));
 	icosphereSub2.set<cmp::Drawable>();
 
-	pentagon.set<Models::Pentagon>();
+	pentagon.set<cmp::Mesh>(get(Models::Pentagon));
 	pentagon.set<cmp::Transform>(glm::mat4(1.f));
-	pentagon.set<cmp::Material>(Materials::Red);
+	pentagon.set<cmp::Material>(get(Materials::Red));
 	pentagon.set<cmp::Drawable>();
 }
 
@@ -136,21 +136,21 @@ void ClientApp::BindPipeline3D(VkCommandBuffer & cmd, VkDescriptorSet & staticSe
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		vs.pipelines[get(Pipelines::P3D)]);
 
-	std::array<VkBuffer, get(VertexBuffers3D::COUNT)> vertexBuffers3D = {
-		vs.vertexBuffers3D[get(VertexBuffers3D::Position3D)].buffer,
-		vs.vertexBuffers3D[get(VertexBuffers3D::Normal3D)].buffer
+	std::array<VkBuffer, 2> vertexBuffers3D = {
+		vs.Position3D.bufferData.buffer,
+		vs.Normal3D.bufferData.buffer
 	};
-	std::array<VkDeviceSize, get(VertexBuffers3D::COUNT)> vertexBufferOffsets3D = { 0, 0 };
+	std::array<VkDeviceSize, 2> vertexBufferOffsets3D = { 0, 0 };
 	vkCmdBindVertexBuffers(
 		cmd,
 		0,
-		get(VertexBuffers3D::COUNT),
+		2,
 		vertexBuffers3D.data(),
 		vertexBufferOffsets3D.data());
 
 	vkCmdBindIndexBuffer(
 		cmd,
-		vs.vertexBuffers2D[get(VertexBuffers3D::Index3D)].buffer,
+		vs.Index3D.bufferData.buffer,
 		0,
 		vka::VulkanIndexType);
 
@@ -209,7 +209,6 @@ void ClientApp::Draw()
 	SortComponents();
 
 	auto& bufferCapacity = vs.instanceBufferCapacities[vs.nextImage];
-	auto& stagingBuffer = vs.instanceStagingBuffers[vs.nextImage];
 	auto& instanceBuffer = vs.instanceUniformBuffers[vs.nextImage];
 	auto& staticSet = vs.staticSets[vs.nextImage];
 	auto& dynamicSet = vs.dynamicSets[vs.nextImage];
@@ -247,12 +246,9 @@ void ClientApp::Draw()
 	bool needResize = matrixCount > bufferCapacity;
 	if (needResize)
 	{
-		vka::DestroyAllocatedBuffer(vs.device, *stagingBuffer);
-		vka::DestroyAllocatedBuffer(vs.device, instanceBuffer);
+		destroyStagedBuffer(instanceBuffer);
 
-		auto[staging, uniform] = createUniformBuffer(requiredBufferSize);
-		stagingBuffer = staging;
-		instanceBuffer = uniform;
+		instanceBuffer = createStagedBuffer(requiredBufferSize, BufferType::Uniform);
 		bufferCapacity = matrixCount;
 	}
 
@@ -268,7 +264,6 @@ void ClientApp::Draw()
 	CameraUniform cameraUniformData{};
 	cameraUniformData.projection = camera.getProjectionMatrix();
 	cameraUniformData.view = camera.getViewMatrix();
-	auto& hostBuffer = vs.unifiedMemory ? instanceBuffer : stagingBuffer;
 
 	auto copyFunc = [&](void* mapPtr) {
 		uint32_t byteOffset{};
@@ -316,8 +311,7 @@ void ClientApp::Draw()
 	stageDataRecordCopy(
 		cmd[copy],
 		instanceBuffer,
-		copyFunc,
-		stagingBuffer);
+		copyFunc);
 
 	vkCmdEndRenderPass(cmd[render]);
 
@@ -350,7 +344,7 @@ void ClientApp::Draw()
 	presentInfo.pSwapchains = &vs.swapchain;
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pWaitSemaphores = &imageRenderSemaphore;
-	
+
 	auto presentResult = vkQueuePresentKHR(
 		vs.queues[get(Queues::Present)],
 		&presentInfo);
@@ -386,12 +380,11 @@ void ClientApp::cleanup()
 {
 	vkDeviceWaitIdle(vs.device);
 	cleanupFrameResources();
-	cleanupStaticUniformBuffer();
 	cleanupVertexBuffers();
 	cleanupPipelines();
 	cleanupShaderModules();
 	cleanupPipelineLayout();
-	cleanupStaticDescriptorPool();
+	cleanupDescriptorPools();
 	cleanupDescriptorSetLayouts();
 	cleanupSampler();
 	cleanupSwapchain();
@@ -821,14 +814,14 @@ void ClientApp::createDescriptorSetLayouts()
 	materialsBinding.descriptorCount = std::max(get(Materials::COUNT), 1U);
 	materialsBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	auto& cameraBinding = vs.frameLayoutBindings.emplace_back();
-	cameraBinding.binding = 0;
+	auto& cameraBinding = vs.staticLayoutBindings.emplace_back();
+	cameraBinding.binding = 3;
 	cameraBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	cameraBinding.descriptorCount = 1;
 	cameraBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-	auto& lightsBinding = vs.frameLayoutBindings.emplace_back();
-	lightsBinding.binding = 1;
+	auto& lightsBinding = vs.staticLayoutBindings.emplace_back();
+	lightsBinding.binding = 4;
 	lightsBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	lightsBinding.descriptorCount = LightCount;
 	lightsBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -840,12 +833,28 @@ void ClientApp::createDescriptorSetLayouts()
 	instanceBinding.descriptorCount = 1;
 
 	auto staticLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.staticLayoutBindings);
-	auto frameLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.frameLayoutBindings);
 	auto drawLayoutCreateInfo = vka::descriptorSetLayoutCreateInfo(vs.instanceLayoutBindings);
 
-	vkCreateDescriptorSetLayout(vs.device, &staticLayoutCreateInfo, nullptr, &vs.setLayouts[0]);
-	vkCreateDescriptorSetLayout(vs.device, &frameLayoutCreateInfo, nullptr, &vs.setLayouts[1]);
-	vkCreateDescriptorSetLayout(vs.device, &drawLayoutCreateInfo, nullptr, &vs.setLayouts[2]);
+	vkCreateDescriptorSetLayout(
+		vs.device, 
+		&staticLayoutCreateInfo, 
+		nullptr, 
+		&vs.setLayouts[get(SetLayouts::Static)]);
+	vkCreateDescriptorSetLayout(
+		vs.device, 
+		&drawLayoutCreateInfo, 
+		nullptr, 
+		&vs.setLayouts[get(SetLayouts::Dynamic)]);
+
+	std::fill(
+		std::begin(vs.staticSetLayouts), 
+		std::end(vs.staticSetLayouts), 
+		vs.setLayouts[get(SetLayouts::Static)]);
+
+	std::fill(
+		std::begin(vs.dynamicSetLayouts),
+		std::end(vs.dynamicSetLayouts),
+		vs.setLayouts[get(SetLayouts::Dynamic)]);
 }
 
 void ClientApp::cleanupDescriptorSetLayouts()
@@ -854,27 +863,6 @@ void ClientApp::cleanupDescriptorSetLayouts()
 	{
 		vkDestroyDescriptorSetLayout(vs.device, layout, nullptr);
 	}
-}
-
-void ClientApp::createStaticDescriptorPool()
-{
-	std::vector<VkDescriptorPoolSize> poolSizes;
-	poolSizes.emplace_back();
-	poolSizes.back().type = VK_DESCRIPTOR_TYPE_SAMPLER;
-	poolSizes.back().descriptorCount = 1;
-	poolSizes.emplace_back();
-	poolSizes.back().type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-	poolSizes.back().descriptorCount = std::max(ImageCount, 1U);
-	poolSizes.emplace_back();
-	poolSizes.back().type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSizes.back().descriptorCount = std::max(get(Materials::COUNT), 1U);
-	auto createInfo = vka::descriptorPoolCreateInfo(poolSizes, 1);
-	vkCreateDescriptorPool(vs.device, &createInfo, nullptr, &vs.staticLayoutPool);
-}
-
-void ClientApp::cleanupStaticDescriptorPool()
-{
-	vkDestroyDescriptorPool(vs.device, vs.staticLayoutPool, nullptr);
 }
 
 void ClientApp::createPushRanges()
@@ -1165,115 +1153,36 @@ void ClientApp::loadQuads()
 
 void ClientApp::loadModels()
 {
-	auto loadFunc = [&](const entt::HashedString& path) { models[path] = vka::LoadModel(path); };
-	loadFunc(Models::Cube::path);
-	loadFunc(Models::Cylinder::path);
-	loadFunc(Models::IcosphereSub2::path);
-	loadFunc(Models::Pentagon::path);
-	loadFunc(Models::Triangle::path);
+	auto loadFunc = [&](uint32_t index)
+	{
+		vs.models[index] = vka::LoadModel(modelPaths[index]);
+	};
+	loadFunc(get(Models::Cube));
+	loadFunc(get(Models::Cylinder));
+	loadFunc(get(Models::IcosphereSub2));
+	loadFunc(get(Models::Pentagon));
+	loadFunc(get(Models::Triangle));
 }
 
-void ClientApp::createVertexBuffer2D()
+void ClientApp::createVertexBuffers()
 {
-	auto& p2D = vs.pipelines[get(Pipelines::P2D)];
-	VkDeviceSize vertexBufferSize = 0;
-
-	for (const auto& quad : quads)
-	{
-		auto vertexData = gsl::span(quad.second.vertices);
-		vertexBufferSize += vertexData.length_bytes();
-	}
+	VkDeviceSize vertexBufferSize = vka::Quad::QuadSize * vs.quads.size();
 	if (!vertexBufferSize)
+	{
+		//TODO: handle error case: no vertices loaded
 		return;
-	VkMemoryPropertyFlags vertexBufferMemProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	VkMemoryPropertyFlags stagingBufferMemProps =
-		(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	VkBufferUsageFlags vertexBufferUsageFlags{};
-	if (vs.unifiedMemory)
-	{
-		vertexBufferMemProps |= stagingBufferMemProps;
-	}
-	else
-	{
-		vertexBufferUsageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
 
-	vs.vertexBuffers[get(VertexBuffers::Vertex2D)] = createBuffer(
+	vs.Vertex2D = createStagedBuffer(
 		vertexBufferSize,
-		vertexBufferUsageFlags |
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-		vertexBufferMemProps);
+		BufferType::Vertex);
 
-	vka::Buffer vertexHostBuffer{};
-
-	vka::Buffer vertexStagingBuffer{};
-
-	if (vs.unifiedMemory)
-	{
-		vertexHostBuffer = vs.vertexBuffers[get(VertexBuffers::Vertex2D)];
-	}
-	else
-	{
-		vertexStagingBuffer = createBuffer(
-			vertexBufferSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			stagingBufferMemProps);
-
-		vertexHostBuffer = vertexStagingBuffer;
-	}
-
-	vka::MapBuffer(vs.device, vertexHostBuffer);
-
-	size_t vertexOffset = 0;
-	size_t vertexBufferOffset = 0;
-	for (auto& quadPair : quads)
-	{
-		auto& quad = quadPair.second;
-		auto vertexData = gsl::span(quad.vertices);
-		memcpy((gsl::byte*)(vertexHostBuffer.mapPtr) + vertexBufferOffset, vertexData.data(), vertexData.length_bytes());
-
-		quad.firstVertex = vertexOffset;
-
-		vertexOffset += vertexData.size();
-		vertexBufferOffset += vertexData.length_bytes();
-	}
-
-	if (!vs.unifiedMemory)
-	{
-		auto copyFromStaging = [&](vka::Buffer& source, vka::Buffer& dest)
-		{
-			VkBufferCopy bufferCopy{};
-			bufferCopy.srcOffset = 0;
-			bufferCopy.dstOffset = 0;
-			bufferCopy.size = source.size;
-			vka::RecordBufferCopy(
-				vs.utility.buffer,
-				vs.queues[get(Queues::Graphics)],
-				source.buffer,
-				dest.buffer,
-				bufferCopy,
-				vs.utility.fence,
-				gsl::span<VkSemaphore>());
-			constexpr size_t maxU64 = ~(0Ui64);
-			vkWaitForFences(vs.device, 1, &vs.utility.fence, false, maxU64);
-			vkResetFences(vs.device, 1, &vs.utility.fence);
-		};
-		copyFromStaging(vertexHostBuffer, vs.vertexBuffers[get(VertexBuffers::Vertex2D)]);
-
-		vka::DestroyAllocatedBuffer(vs.device, vertexStagingBuffer);
-	}
-}
-
-void ClientApp::createVertexBuffers3D()
-{
-	auto& p3D = vs.pipelines[get(Pipelines::P3D)];
 	VkDeviceSize positionBufferSize = 0;
 	VkDeviceSize normalBufferSize = 0;
 	VkDeviceSize indexBufferSize = 0;
-	for (const auto& model : models)
+	for (const auto& model : vs.models)
 	{
-		const auto& mesh = model.second.full;
+		const auto& mesh = model.full;
 
 		positionBufferSize += mesh.positions.size() * sizeof(glm::vec3);
 
@@ -1282,172 +1191,194 @@ void ClientApp::createVertexBuffers3D()
 		indexBufferSize += mesh.indices.size() * sizeof(vka::IndexType);
 	}
 	if (!positionBufferSize || !normalBufferSize || !indexBufferSize)
+	{
+		//TODO: handle error case: no vertices loaded
 		return;
-
-	VkMemoryPropertyFlags vertexBufferMemProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	VkMemoryPropertyFlags stagingBufferMemProps =
-		(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	VkBufferUsageFlags vertexBufferUsageFlags{};
-	if (vs.unifiedMemory)
-	{
-		vertexBufferMemProps |= stagingBufferMemProps;
-	}
-	else
-	{
-		vertexBufferUsageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
 
-	vs.vertexBuffers[get(VertexBuffers::Position3D)] = createBuffer(
+	vs.Position3D = createStagedBuffer(
 		positionBufferSize,
-		vertexBufferUsageFlags |
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-		vertexBufferMemProps);
-	vs.vertexBuffers[get(VertexBuffers::Normal3D)] = createBuffer(
+		BufferType::Vertex);
+
+	vs.Normal3D = createStagedBuffer(
 		normalBufferSize,
-		vertexBufferUsageFlags |
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-		vertexBufferMemProps);
-	vs.vertexBuffers[get(VertexBuffers::Index3D)] = createBuffer(
+		BufferType::Vertex);
+
+	vs.Index3D = createStagedBuffer(
 		indexBufferSize,
-		vertexBufferUsageFlags |
-		VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-		vertexBufferMemProps);
+		BufferType::Index);
 
-	vka::Buffer positionHostBuffer{};
-	vka::Buffer normalHostBuffer{};
-	vka::Buffer indexHostBuffer{};
+}
 
-	vka::Buffer positionStagingBuffer{};
-	vka::Buffer normalStagingBuffer{};
-	vka::Buffer indexStagingBuffer{};
-
-	if (vs.unifiedMemory)
-	{
-		positionHostBuffer = vs.vertexBuffers[get(VertexBuffers::Position3D)];
-		normalHostBuffer = vs.vertexBuffers[get(VertexBuffers::Normal3D)];
-		indexHostBuffer = vs.vertexBuffers[get(VertexBuffers::Index3D)];
-	}
-	else
-	{
-		positionStagingBuffer = createBuffer(
-			positionBufferSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			stagingBufferMemProps);
-		normalStagingBuffer = createBuffer(
-			normalBufferSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			stagingBufferMemProps);
-		indexStagingBuffer = createBuffer(
-			indexBufferSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			stagingBufferMemProps);
-
-		positionHostBuffer = positionStagingBuffer;
-		normalHostBuffer = normalStagingBuffer;
-		indexHostBuffer = indexStagingBuffer;
-	}
-
-	vka::MapBuffer(vs.device, positionHostBuffer);
-	vka::MapBuffer(vs.device, normalHostBuffer);
-	vka::MapBuffer(vs.device, indexHostBuffer);
-
-	size_t vertexOffset = 0;
-	size_t indexOffset = 0;
-	size_t positionBufferOffset = 0;
-	size_t normalBufferOffset = 0;
-	size_t indexBufferOffset = 0;
-	for (auto& model : models)
-	{
-		auto& mesh = model.second.full;
-
-		auto positionData = mesh.positions;
-		auto normalData = mesh.normals;
-		auto indexData = mesh.indices;
-
-		mesh.firstVertex = vertexOffset;
-		mesh.firstIndex = indexOffset;
-
-		auto positionLengthBytes = positionData.size() * sizeof(glm::vec3);
-		auto normalLengthBytes = normalData.size() * sizeof(glm::vec3);
-		auto indexLengthBytes = indexData.size() * sizeof(vka::IndexType);
-
-		std::memcpy((gsl::byte*)positionHostBuffer.mapPtr + positionBufferOffset, positionData.data(), positionLengthBytes);
-		std::memcpy((gsl::byte*)normalHostBuffer.mapPtr + normalBufferOffset, normalData.data(), normalLengthBytes);
-		std::memcpy((gsl::byte*)indexHostBuffer.mapPtr + indexBufferOffset, indexData.data(), indexLengthBytes);
-
-		vertexOffset += positionData.size();
-		indexOffset += indexData.size();
-		positionBufferOffset += positionLengthBytes;
-		normalBufferOffset += normalLengthBytes;
-		indexBufferOffset += indexLengthBytes;
-	}
-
-	if (!vs.unifiedMemory)
-	{
-		auto copyFromStaging = [&](vka::Buffer& source, vka::Buffer& dest)
+void ClientApp::stageVertexData()
+{
+	auto vert2DCopyFunc = [&](void* mapPtr) {
+		size_t vertexOffset = 0;
+		size_t vertexBufferOffset = 0;
+		for (auto& quad : vs.quads)
 		{
-			VkBufferCopy bufferCopy{};
-			bufferCopy.srcOffset = 0;
-			bufferCopy.dstOffset = 0;
-			bufferCopy.size = source.size;
-			vka::RecordBufferCopy(
-				vs.utility.buffer,
-				vs.queues[get(Queues::Graphics)],
-				source.buffer,
-				dest.buffer,
-				bufferCopy,
-				vs.utility.fence,
-				gsl::span<VkSemaphore>());
-			constexpr size_t maxU64 = ~(0Ui64);
-			vkWaitForFences(vs.device, 1, &vs.utility.fence, false, maxU64);
-			vkResetFences(vs.device, 1, &vs.utility.fence);
-		};
-		copyFromStaging(positionHostBuffer, vs.vertexBuffers[get(VertexBuffers::Position3D)]);
-		copyFromStaging(normalHostBuffer, vs.vertexBuffers[get(VertexBuffers::Normal3D)]);
-		copyFromStaging(indexHostBuffer, vs.vertexBuffers[get(VertexBuffers::Index3D)]);
+			auto vertexData = gsl::span(quad.vertices);
+			memcpy((gsl::byte*)(mapPtr) + vertexBufferOffset, vertexData.data(), vertexData.length_bytes());
 
-		vka::DestroyAllocatedBuffer(vs.device, positionStagingBuffer);
-		vka::DestroyAllocatedBuffer(vs.device, normalStagingBuffer);
-		vka::DestroyAllocatedBuffer(vs.device, indexStagingBuffer);
-	}
+			quad.firstVertex = vertexOffset;
+
+			vertexOffset += vertexData.size();
+			vertexBufferOffset += vertexData.length_bytes();
+		}
+	};
+
+	auto positionCopyFunc = [&](void* mapPtr) {
+		size_t positionOffset = 0;
+		size_t positionBufferOffset = 0;
+		for (auto& model : vs.models)
+		{
+			auto& mesh = model.full;
+			auto& positionData = mesh.positions;
+
+			mesh.firstVertex = positionOffset;
+
+			auto positionLengthBytes = positionData.size() * sizeof(glm::vec3);
+			std::memcpy(
+				(gsl::byte*)mapPtr + positionBufferOffset,
+				positionData.data(),
+				positionLengthBytes);
+
+			positionOffset += positionData.size();
+			positionBufferOffset += positionLengthBytes;
+		}
+	};
+
+	auto normalCopyFunc = [&](void* mapPtr) {
+		size_t normalOffset = 0;
+		size_t normalBufferOffset = 0;
+		for (auto& model : vs.models)
+		{
+			auto& mesh = model.full;
+			auto& normalData = mesh.normals;
+
+			auto normalLengthBytes = normalData.size() * sizeof(glm::vec3);
+			std::memcpy(
+				(gsl::byte*)mapPtr + normalBufferOffset,
+				normalData.data(),
+				normalLengthBytes);
+
+			normalOffset += normalData.size();
+			normalBufferOffset += normalLengthBytes;
+		}
+	};
+
+	auto indexCopyFunc = [&](void* mapPtr) {
+		size_t indexOffset = 0;
+		size_t indexBufferOffset = 0;
+		for (auto& model : vs.models)
+		{
+			auto& mesh = model.full;
+			auto& indexData = mesh.indices;
+
+			mesh.firstIndex = indexOffset;
+
+			auto indexLengthBytes = indexData.size() * sizeof(vka::IndexType);
+			std::memcpy(
+				(gsl::byte*)mapPtr + indexBufferOffset,
+				indexData.data(),
+				indexLengthBytes);
+
+			indexOffset += indexData.size();
+			indexBufferOffset += indexLengthBytes;
+		}
+	};
+
+	stageDataRecordCopy(
+		vs.utility.buffer,
+		vs.Position3D,
+		positionCopyFunc);
+
+	stageDataRecordCopy(
+		vs.utility.buffer,
+		vs.Normal3D,
+		normalCopyFunc);
+
+	stageDataRecordCopy(
+		vs.utility.buffer,
+		vs.Index3D,
+		indexCopyFunc);
+
+	stageDataRecordCopy(
+		vs.utility.buffer,
+		vs.Vertex2D,
+		vert2DCopyFunc);
 }
 
 void ClientApp::cleanupVertexBuffers()
 {
-	for (const auto& vb : vs.vertexBuffers)
-	{
-		vka::DestroyAllocatedBuffer(vs.device, vb);
-	}
+
+	vka::DestroyAllocatedBuffer(
+		vs.device,
+		vs.Vertex2D.stagingBufferData.value_or(vka::BufferData{}));
+	vka::DestroyAllocatedBuffer(
+		vs.device,
+		vs.Vertex2D.bufferData);
+	vka::DestroyAllocatedBuffer(
+		vs.device,
+		vs.Position3D.stagingBufferData.value_or(vka::BufferData{}));
+	vka::DestroyAllocatedBuffer(
+		vs.device,
+		vs.Position3D.bufferData);
+	vka::DestroyAllocatedBuffer(
+		vs.device,
+		vs.Normal3D.stagingBufferData.value_or(vka::BufferData{}));
+	vka::DestroyAllocatedBuffer(
+		vs.device,
+		vs.Normal3D.bufferData);
+	vka::DestroyAllocatedBuffer(
+		vs.device,
+		vs.Index3D.stagingBufferData.value_or(vka::BufferData{}));
+	vka::DestroyAllocatedBuffer(
+		vs.device,
+		vs.Index3D.bufferData);
 }
 
-ClientApp::CreatedUniformBuffer ClientApp::createUniformBuffer(
-	VkDeviceSize bufferSize)
+StagedBuffer ClientApp::createStagedBuffer(
+	VkDeviceSize bufferSize,
+	BufferType type = BufferType::Uniform)
 {
-	CreatedUniformBuffer result;
+	StagedBuffer result;
 
-	VkBufferUsageFlags uniformBufferUsageFlags = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-	VkMemoryPropertyFlags uniformBufferMemProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	VkBufferUsageFlags bufferUsageFlags{};
+	switch (type)
+	{
+	case BufferType::Uniform:
+		bufferUsageFlags = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+		break;
+	case BufferType::Vertex:
+		bufferUsageFlags = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		break;
+	case BufferType::Index:
+		bufferUsageFlags = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+		break;
+	}
+
+	VkMemoryPropertyFlags bufferMemProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	VkMemoryPropertyFlags stagingBufferMemProps =
 		(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	if (vs.unifiedMemory)
 	{
-		uniformBufferMemProps |= stagingBufferMemProps;
+		bufferMemProps |= stagingBufferMemProps;
 	}
 	else
 	{
-		uniformBufferUsageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		bufferUsageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
 
-	result.uniformBuffer = createBuffer(
+	result.bufferData = createBuffer(
 		bufferSize,
-		uniformBufferUsageFlags,
-		uniformBufferMemProps);
+		bufferUsageFlags,
+		bufferMemProps);
 
 	if (!vs.unifiedMemory)
 	{
-		result.stagingBuffer = createBuffer(
+		result.stagingBufferData = createBuffer(
 			bufferSize,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			stagingBufferMemProps);
@@ -1456,22 +1387,34 @@ ClientApp::CreatedUniformBuffer ClientApp::createUniformBuffer(
 	return result;
 }
 
+void ClientApp::destroyStagedBuffer(const StagedBuffer& stagedBuffer)
+{
+	if (stagedBuffer.stagingBufferData)
+	{
+		vka::DestroyAllocatedBuffer(
+			vs.device,
+			*stagedBuffer.stagingBufferData);
+	}
+	vka::DestroyAllocatedBuffer(
+		vs.device,
+		stagedBuffer.bufferData);
+}
+
 void ClientApp::stageDataRecordCopy(
 	VkCommandBuffer copyCommandBuffer,
-	vka::Buffer buffer,
-	std::function<void(void*)> copyFunc,
-	std::optional<vka::Buffer> stagingBuffer)
+	StagedBuffer stagedBuffer,
+	std::function<void(void*)> copyFunc)
 {
-	vka::Buffer hostBuffer = stagingBuffer.value_or(buffer);
+	vka::BufferData hostBuffer = stagedBuffer.stagingBufferData.value_or(stagedBuffer.bufferData);
 	vka::MapBuffer(vs.device, hostBuffer);
 	copyFunc(hostBuffer.mapPtr);
 
-	if (stagingBuffer.has_value())
+	if (stagedBuffer.stagingBufferData.has_value())
 	{
 		vka::RecordBufferCopy(
 			copyCommandBuffer,
 			hostBuffer.buffer,
-			vs.materialsUniformBuffer.buffer,
+			stagedBuffer.bufferData.buffer,
 			VkBufferCopy{
 				0,
 				0,
@@ -1484,19 +1427,12 @@ void ClientApp::createMaterialUniformBuffer()
 {
 	auto materialBufferSize = vs.materialsBufferOffsetAlignment * get(Materials::COUNT);
 
-	auto[stagingBuffer, uniformBuffer] = createUniformBuffer(materialBufferSize);
-	vs.materialsStagingBuffer = stagingBuffer;
-	vs.materialsUniformBuffer = uniformBuffer;
+	vs.materialsUniformBuffer = createStagedBuffer(materialBufferSize);
 }
 
 void ClientApp::cleanupMaterialUniformBuffers()
 {
-	vka::DestroyAllocatedBuffer(
-		vs.device,
-		vs.materialsStagingBuffer.value_or(VK_NULL_HANDLE));
-	vka::DestroyAllocatedBuffer(
-		vs.device,
-		vs.materialsUniformBuffer);
+	destroyStagedBuffer(vs.materialsUniformBuffer);
 }
 
 void ClientApp::stageMaterialData(VkCommandBuffer cmd)
@@ -1516,16 +1452,14 @@ void ClientApp::stageMaterialData(VkCommandBuffer cmd)
 	stageDataRecordCopy(
 		cmd,
 		vs.materialsUniformBuffer,
-		copyFunc,
-		vs.materialsStagingBuffer);
+		copyFunc);
 }
 
 void ClientApp::stageCameraData(
 	VkCommandBuffer cmd,
 	const CameraUniform* cameraUniformData)
 {
-	auto& stagingBuffer = vs.cameraStagingBuffers[vs.nextImage];
-	auto& uniformBuffer = vs.cameraUniformBuffers[vs.nextImage];
+	auto& stagedBuffer = vs.cameraUniformBuffers[vs.nextImage];
 
 	auto copyFunc = [&](void* mapPtr) {
 		std::memcpy(mapPtr, cameraUniformData, sizeof(CameraUniform));
@@ -1533,9 +1467,8 @@ void ClientApp::stageCameraData(
 
 	stageDataRecordCopy(
 		cmd,
-		uniformBuffer,
-		copyFunc,
-		stagingBuffer);
+		stagedBuffer,
+		copyFunc);
 }
 
 void ClientApp::stageLightData(VkCommandBuffer cmd)
@@ -1550,14 +1483,64 @@ void ClientApp::stageLightData(VkCommandBuffer cmd)
 		}
 	};
 
-	auto stagingBuffer = vs.lightsStagingBuffers[vs.nextImage];
-	auto uniformBuffer = vs.lightsUniformBuffers[vs.nextImage];
+	auto stagedBuffer = vs.lightsUniformBuffers[vs.nextImage];
 
 	stageDataRecordCopy(
 		cmd,
-		uniformBuffer,
-		copyFunc,
-		stagingBuffer);
+		stagedBuffer,
+		copyFunc);
+}
+
+void ClientApp::createDescriptorPools()
+{
+	auto samplerPoolSize = vka::descriptorPoolSize(
+		VK_DESCRIPTOR_TYPE_SAMPLER,
+		get(Samplers::COUNT));
+	auto imagesPoolSize = vka::descriptorPoolSize(
+		VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+		ImageCount);
+	auto cameraPoolSize = vka::descriptorPoolSize(
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		1);
+	auto lightsPoolSize = vka::descriptorPoolSize(
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		LightCount);
+
+	std::vector<VkDescriptorPoolSize> staticPoolSizes = {
+		samplerPoolSize,
+		imagesPoolSize,
+		cameraPoolSize,
+		lightsPoolSize
+	};
+	auto staticPoolCreateInfo = vka::descriptorPoolCreateInfo(staticPoolSizes, 3);
+	vkCreateDescriptorPool(
+		vs.device,
+		&staticPoolCreateInfo,
+		nullptr,
+		&vs.staticLayoutPool);
+
+	auto instancePoolSize = vka::descriptorPoolSize(
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+		1);
+	std::vector<VkDescriptorPoolSize> dynamicPoolSizes = { instancePoolSize };
+	auto dynamicPoolCreateInfo = vka::descriptorPoolCreateInfo(dynamicPoolSizes, 3);
+	vkCreateDescriptorPool(
+		vs.device,
+		&dynamicPoolCreateInfo,
+		nullptr,
+		&vs.dynamicLayoutPool);
+}
+
+void ClientApp::cleanupDescriptorPools()
+{
+	vkDestroyDescriptorPool(
+		vs.device,
+		vs.staticLayoutPool,
+		nullptr);
+	vkDestroyDescriptorPool(
+		vs.device,
+		vs.dynamicLayoutPool,
+		nullptr);
 }
 
 void ClientApp::allocateStaticSets()
@@ -1600,7 +1583,7 @@ void ClientApp::writeStaticSets()
 	VkDeviceSize materialBufferOffset = 0;
 	for (auto i = 0U; i < get(Materials::COUNT); ++i)
 	{
-		materialBufferInfos[i].buffer = vs.materialsUniformBuffer.buffer;
+		materialBufferInfos[i].buffer = vs.materialsUniformBuffer.bufferData.buffer;
 		materialBufferInfos[i].offset = materialBufferOffset;
 		materialBufferInfos[i].range = sizeof(MaterialUniform);
 
@@ -1657,10 +1640,10 @@ void ClientApp::writeStaticSets()
 
 	for (auto bufferIndex = 0U; bufferIndex < BufferCount; ++bufferIndex)
 	{
-		cameraBufferInfo.buffer = vs.cameraUniformBuffers[bufferIndex].buffer;
+		cameraBufferInfo.buffer = vs.cameraUniformBuffers[bufferIndex].bufferData.buffer;
 		for (auto lightIndex = 0U; lightIndex < LightCount; ++lightIndex)
 		{
-			lightBufferInfos[lightIndex].buffer = vs.lightsUniformBuffers[bufferIndex].buffer;
+			lightBufferInfos[lightIndex].buffer = vs.lightsUniformBuffers[bufferIndex].bufferData.buffer;
 		}
 
 		for (auto& write : writes)
@@ -1680,12 +1663,12 @@ void ClientApp::writeStaticSets()
 void ClientApp::writeInstanceDescriptorSet()
 {
 	VkDescriptorBufferInfo bufferInfo{};
-	bufferInfo.buffer = vs.instanceUniformBuffers[vs.nextImage].buffer;
+	bufferInfo.buffer = vs.instanceUniformBuffers[vs.nextImage].bufferData.buffer;
 	bufferInfo.offset = 0U;
-	bufferInfo.range = vs.instanceBuffersOffsetAlignment;
+	bufferInfo.range = sizeof(InstanceUniform);
 
 	auto write = vka::writeDescriptorSet(
-		vs.dynamicDescriptorSets[vs.nextImage],
+		vs.dynamicSets[vs.nextImage],
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
 		0,
 		&bufferInfo);
@@ -1700,56 +1683,20 @@ void ClientApp::writeInstanceDescriptorSet()
 
 void ClientApp::createFrameResources()
 {
-	if (vs.unifiedMemory)
-	{
-		uniformBufferMemProps |= stagingBufferMemProps;
-	}
-	else
-	{
-		uniformBufferUsageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	}
 	for (auto i = 0U; i < BufferCount; ++i)
 	{
-		vs.cameraUniformBuffers[i] = createBuffer(
-			sizeof(CameraUniform),
-			uniformBufferUsageFlags,
-			uniformBufferMemProps,
-			false);
+		vs.cameraUniformBuffers[i] = createStagedBuffer(
+			sizeof(CameraUniform));
 
-		vs.lightsUniformBuffers[i] = createBuffer(
-			vs.lightsBuffersOffsetAlignment * LightCount,
-			uniformBufferUsageFlags,
-			uniformBufferMemProps,
-			false);
+		vs.lightsUniformBuffers[i] = createStagedBuffer(
+			vs.lightsBuffersOffsetAlignment * LightCount);
 
 		constexpr auto defaultInstanceCapacity = 1U;
-		if (!vs.unifiedMemory)
-		{
-			vs.instanceStagingBuffers[i] = createBuffer(
-				sizeof(InstanceUniform) * defaultInstanceCapacity,
-				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-				stagingBufferMemProps);
-		}
-
-		vs.instanceUniformBuffers[i] = createBuffer(
-			sizeof(InstanceUniform) * defaultInstanceCapacity,
-			uniformBufferUsageFlags,
-			uniformBufferMemProps);
-
+		vs.instanceUniformBuffers[i] = createStagedBuffer(
+			sizeof(InstanceUniform) * defaultInstanceCapacity);
 		vs.instanceBufferCapacities[i] = defaultInstanceCapacity;
 
-		auto cameraPoolSize = vka::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
-		auto lightsPoolSize = vka::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LightCount);
 
-
-		auto instancePoolSize = vka::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1);
-		std::vector<VkDescriptorPoolSize> poolSizes = { instancePoolSize };
-		auto descriptorPoolCreateInfo = vka::descriptorPoolCreateInfo(poolSizes, 1);
-		vkCreateDescriptorPool(
-			vs.device,
-			&descriptorPoolCreateInfo,
-			nullptr,
-			&vs.dynamicLayoutPools[i]);
 
 		auto commandPoolCreateInfo = vka::commandPoolCreateInfo();
 		commandPoolCreateInfo.queueFamilyIndex = vs.queueFamilyIndices[get(Queues::Graphics)];
@@ -1778,11 +1725,9 @@ void ClientApp::cleanupFrameResources()
 
 		vkDestroyCommandPool(vs.device, vs.renderCommandPools[i], nullptr);
 
-		vkDestroyDescriptorPool(vs.device, vs.dynamicLayoutPools[i], nullptr);
-
-		vka::DestroyAllocatedBuffer(vs.device, vs.cameraUniformBuffers[i]);
-		vka::DestroyAllocatedBuffer(vs.device, vs.lightsUniformBuffers[i]);
-		vka::DestroyAllocatedBuffer(vs.device, vs.instanceUniformBuffers[i]);
+		destroyStagedBuffer(vs.cameraUniformBuffers[i]);
+		destroyStagedBuffer(vs.lightsUniformBuffers[i]);
+		destroyStagedBuffer(vs.instanceUniformBuffers[i]);
 	}
 }
 
@@ -1820,7 +1765,7 @@ void ClientApp::initVulkan()
 
 	createDescriptorSetLayouts();
 
-	createStaticDescriptorPool();
+	createDescriptorPools();
 
 	createPushRanges();
 
@@ -1846,9 +1791,7 @@ void ClientApp::initVulkan()
 
 	loadModels();
 
-	createVertexBuffer2D();
-
-	createVertexBuffers3D();
+	createVertexBuffers();
 }
 
 void ClientApp::initInput()

@@ -9,7 +9,7 @@
 
 namespace vka
 {
-struct Buffer
+struct BufferData
 {
 	VkBuffer buffer;
     AllocationHandle allocation;

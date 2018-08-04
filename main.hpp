@@ -90,8 +90,6 @@ public:
 	proto cylinder{ ecs };
 	proto icosphereSub2{ ecs };
 	proto pentagon{ ecs };
-	std::map<uint64_t, vka::Quad> quads;
-	std::map<uint64_t, vka::glTF> models;
 	vka::InputState is;
 	vka::Camera2D camera;
 
@@ -169,10 +167,6 @@ public:
 
 	void cleanupDescriptorSetLayouts();
 
-	void createStaticDescriptorPool();
-
-	void cleanupStaticDescriptorPool();
-
 	void createPushRanges();
 
 	void createPipelineLayout();
@@ -201,26 +195,26 @@ public:
 
 	void loadModels();
 
+	void createVertexBuffers();
+
 	auto createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryProperties, bool dedicatedAllocation);
 
-	void createVertexBuffer2D();
-
-	void createVertexBuffers3D();
+	void stageVertexData();
 
 	void cleanupVertexBuffers();
 
-	struct CreatedUniformBuffer
+	enum class BufferType
 	{
-		std::optional<vka::Buffer> stagingBuffer;
-		vka::Buffer uniformBuffer;
+		Uniform,
+		Vertex,
+		Index
 	};
-	CreatedUniformBuffer createUniformBuffer(VkDeviceSize bufferSize);
 
-	void stageDataRecordCopy(
-		VkCommandBuffer copyCommandBuffer,
-		vka::Buffer buffer,
-		std::function<void(void*)> copyFunc,
-		std::optional<vka::Buffer> stagingBuffer);
+	StagedBuffer createStagedBuffer(VkDeviceSize bufferSize, BufferType type);
+
+	void destroyStagedBuffer(const StagedBuffer & stagedBuffer);
+
+	void stageDataRecordCopy(VkCommandBuffer copyCommandBuffer, StagedBuffer buffer, std::function<void(void*)> copyFunc);
 
 	void createMaterialUniformBuffer();
 
@@ -235,15 +229,15 @@ public:
 	void stageLightData(
 		VkCommandBuffer cmd);
 
+	void createDescriptorPools();
+
+	void cleanupDescriptorPools();
+
 	void allocateStaticSets();
 
 	void allocateDynamicSets();
 
 	void writeStaticSets();
-
-	void ResizeInstanceBuffers(vka::Buffer & nextStagingBuffer, vka::Buffer & nextBuffer, unsigned long long requiredBufferSize);
-
-	void updateInstanceBuffer();
 
 	void writeInstanceDescriptorSet();
 

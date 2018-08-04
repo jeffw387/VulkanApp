@@ -14,7 +14,7 @@ layout(set = 0, binding = 2) uniform Materials
 } materials[MaterialCount];
 
 // per frame
-layout(set = 1, binding = 1) uniform Lights
+layout(set = 01, binding = 4) uniform Lights
 {
     vec4 position_WorldSpace;
     vec4 color;

@@ -19,7 +19,7 @@ namespace vka
 		uint32_t typeID;
 		MemoryBlock* block = nullptr;
 
-		void deallocate();
+		void deallocate() const;
 	};
 
 	struct Allocation

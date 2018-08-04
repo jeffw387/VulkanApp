@@ -55,7 +55,7 @@ enum class SpecConsts : uint32_t {
 
 enum class SetLayouts : uint32_t {
 	Static,
-	Instance,
+	Dynamic,
 	COUNT
 };
 
@@ -74,18 +74,6 @@ enum class Samplers : uint32_t {
 
 enum class PushRanges : uint32_t {
 	Primary,
-	COUNT
-};
-
-enum class VertexBuffers3D : uint32_t {
-	Position3D,
-	Normal3D,
-	Index3D,
-	COUNT
-};
-
-enum class VertexBuffers2D : uint32_t {
-	Vertex2D,
 	COUNT
 };
 
@@ -134,6 +122,12 @@ struct InstanceUniform
 {
 	glm::mat4 model;
 	glm::mat4 MVP;
+};
+
+struct StagedBuffer
+{
+	std::optional<vka::BufferData> stagingBufferData;
+	vka::BufferData bufferData;
 };
 
 struct PushConstantData {
@@ -186,8 +180,9 @@ struct VS
 	VkDevice device;
 	vka::Allocator allocator;
 
-	std::array<vka::glTF, get(Models::COUNT)> models;
+	std::array<vka::Quad, ImageCount> quads;
 	std::array<vka::Image2D, ImageCount> images;
+	std::array<vka::glTF, get(Models::COUNT)> models;
 	std::array<LightUniform, LightCount> lightUniforms;
 
 	std::array<MaterialUniform, get(Materials::COUNT)> materialUniforms =
@@ -221,14 +216,17 @@ struct VS
 	vka::Image2D depthImage;
 	SpecializationData specData;
 
+	StagedBuffer Vertex2D;
+	StagedBuffer Position3D;
+	StagedBuffer Normal3D;
+	StagedBuffer Index3D;
+	
 	std::vector<VkDescriptorSetLayoutBinding> staticLayoutBindings;
 	std::vector<VkDescriptorSetLayoutBinding> instanceLayoutBindings;
 	std::array<VkSampler, get(Samplers::COUNT)> samplers;
 	std::array<VkDescriptorSetLayout, get(SetLayouts::COUNT)> setLayouts;
 	std::array<VkPushConstantRange, get(PushRanges::COUNT)> pushRanges;
 	std::array<VkShaderModule, get(Shaders::COUNT)> shaderModules;
-	std::array<vka::Buffer, get(VertexBuffers2D::COUNT)> vertexBuffers2D;
-	std::array<vka::Buffer, get(VertexBuffers3D::COUNT)> vertexBuffers3D;
 	std::array<VkPipelineLayout, get(PipelineLayouts::COUNT)> pipelineLayouts;
 	std::array<VkSpecializationMapEntry, get(SpecConsts::COUNT)> specializationMapEntries;
 	std::array<PipelineState, get(Pipelines::COUNT)> pipelineStates;
@@ -246,19 +244,15 @@ struct VS
 	VkDescriptorPool staticLayoutPool;
 	VkDescriptorPool dynamicLayoutPool;
 
-	std::optional<vka::Buffer> materialsStagingBuffer;
-	vka::Buffer materialsUniformBuffer;
+	StagedBuffer materialsUniformBuffer;
 
 	VkDeviceSize materialsBufferOffsetAlignment;
 	VkDeviceSize instanceBuffersOffsetAlignment;
 	VkDeviceSize lightsBuffersOffsetAlignment;
 
-	std::array<std::optional<vka::Buffer>, BufferCount> cameraStagingBuffers;
-	std::array<vka::Buffer, BufferCount> cameraUniformBuffers;
-	std::array<std::optional<vka::Buffer>, BufferCount> lightsStagingBuffers;
-	std::array<vka::Buffer, BufferCount> lightsUniformBuffers;
-	std::array< std::optional<vka::Buffer>, BufferCount> instanceStagingBuffers;
-	std::array<vka::Buffer, BufferCount> instanceUniformBuffers;
+	std::array<StagedBuffer, BufferCount> cameraUniformBuffers;
+	std::array<StagedBuffer, BufferCount> lightsUniformBuffers;
+	std::array<StagedBuffer, BufferCount> instanceUniformBuffers;
 	std::array<size_t, BufferCount> instanceBufferCapacities;
 	std::array<VkDescriptorSetLayout, BufferCount> staticSetLayouts;
 	std::array<VkDescriptorSet, BufferCount> staticSets;

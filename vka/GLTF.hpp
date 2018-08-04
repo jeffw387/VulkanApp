@@ -159,7 +159,7 @@ namespace vka
 		}
 	} // namespace detail
 
-	static glTF LoadModel(entt::HashedString fileName)
+	static glTF LoadModel(const char* fileName)
 	{
 		std::filesystem::path modelPath = std::string(fileName);
 		auto f = std::ifstream(modelPath);

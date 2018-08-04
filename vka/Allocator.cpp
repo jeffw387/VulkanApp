@@ -7,7 +7,7 @@
 #include "mymath.hpp"
 namespace vka
 {
-	void AllocationHandle::deallocate()
+	void AllocationHandle::deallocate() const
 	{
 		if (block != nullptr)
 		{

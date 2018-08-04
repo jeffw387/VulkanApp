@@ -4,6 +4,7 @@
 #include "CircularQueue.hpp"
 #include "TimeHelper.hpp"
 #include "entt/entt.hpp"
+#include "GLFW/glfw3.h"
 
 namespace vka {
 using HashType = entt::HashedString::hash_type;

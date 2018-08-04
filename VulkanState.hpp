@@ -7,6 +7,7 @@
 #include "vka/Image2D.hpp"
 #include "vka/UniqueVulkan.hpp"
 #include "vka/VulkanFunctionLoader.hpp"
+#include "vka/Quad.hpp"
 #include "vulkan/vulkan.h"
 
 #include <array>
@@ -14,6 +15,7 @@
 
 constexpr uint32_t BufferCount = 3;
 constexpr uint32_t ImageCount = 1;
+constexpr uint32_t QuadCount = 1;
 constexpr VkExtent2D DefaultWindowSize = {900, 900};
 constexpr uint32_t LightCount = 3;
 
@@ -142,7 +144,7 @@ struct VS {
   VkDevice device;
   vka::Allocator allocator;
 
-  std::array<vka::Quad, ImageCount> quads;
+  std::array<vka::Quad, QuadCount> quads;
   std::array<vka::Image2D, ImageCount> images;
   std::array<vka::glTF, get(Models::COUNT)> models;
   std::array<LightUniform, LightCount> lightUniforms;

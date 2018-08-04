@@ -28,8 +28,8 @@
 static VkDeviceSize SelectUniformBufferOffset(
     VkDeviceSize elementSize, VkDeviceSize minimumOffsetAlignment) {
   if (elementSize <= minimumOffsetAlignment) return minimumOffsetAlignment;
-  auto mult = (VkDeviceSize)std::ceil((double)elementSize /
-                                      (double)minimumOffsetAlignment);
+  auto mult = (VkDeviceSize)std::ceil(
+      (double)elementSize / (double)minimumOffsetAlignment);
   return mult * minimumOffsetAlignment;
 }
 
@@ -39,8 +39,10 @@ class ClientApp {
   const char* engineName = "VulkanEngine";
 
   std::array<const char*, get(Models::COUNT)> modelPaths = {
-      "content/models/cylinder.gltf", "content/models/cube.gltf",
-      "content/models/triangle.gltf", "content/models/icosphereSub2.gltf",
+      "content/models/cylinder.gltf",
+      "content/models/cube.gltf",
+      "content/models/triangle.gltf",
+      "content/models/icosphereSub2.gltf",
       "content/models/pentagon.gltf"};
 
   std::vector<const char*> instanceLayers = {
@@ -106,7 +108,6 @@ class ClientApp {
   void cleanup();
 
   void createInstance();
-
   void cleanupInstance();
 
   void selectPhysicalDevice();
@@ -114,57 +115,44 @@ class ClientApp {
   void selectUniformBufferOffsetAlignments();
 
   void createDevice();
-
-  void createAllocator();
-
-  void cleanupAllocator();
-
   void cleanupDevice();
 
-  void createWindow(const char* title, uint32_t width, uint32_t height);
+  void createAllocator();
+  void cleanupAllocator();
 
+  void createWindow(const char* title, uint32_t width, uint32_t height);
   void cleanupWindow();
 
   void createSurface();
-
   void cleanupSurface();
 
   void createUtilityResources();
-
   void cleanupUtilityResources();
 
   void chooseSwapExtent();
 
   void createRenderPass();
-
   void cleanupRenderPass();
 
   void createSwapchain();
-
   void cleanupSwapchain();
-
   void recreateSwapchain();
 
   void createSampler();
-
   void cleanupSampler();
 
   void createDescriptorSetLayouts();
-
   void cleanupDescriptorSetLayouts();
 
   void createPushRanges();
 
   void createPipelineLayout();
-
   void cleanupPipelineLayout();
 
   void createSpecializationData();
 
   void createShader2DModules();
-
   void createShader3DModules();
-
   void cleanupShaderModules();
 
   void setupPipeline2D();
@@ -172,7 +160,6 @@ class ClientApp {
   void setupPipeline3D();
 
   void createPipelines();
-
   void cleanupPipelines();
 
   void loadImages();
@@ -182,38 +169,36 @@ class ClientApp {
   void loadModels();
 
   void createVertexBuffers();
+  void cleanupVertexBuffers();
 
-  auto createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-                    VkMemoryPropertyFlags memoryProperties,
-                    bool dedicatedAllocation);
+  auto createBuffer(
+      VkDeviceSize size,
+      VkBufferUsageFlags usage,
+      VkMemoryPropertyFlags memoryProperties,
+      bool dedicatedAllocation);
 
   void stageVertexData();
-
-  void cleanupVertexBuffers();
 
   enum class BufferType { Uniform, Vertex, Index };
 
   StagedBuffer createStagedBuffer(VkDeviceSize bufferSize, BufferType type);
-
   void destroyStagedBuffer(const StagedBuffer& stagedBuffer);
 
-  void stageDataRecordCopy(VkCommandBuffer copyCommandBuffer,
-                           StagedBuffer buffer,
-                           std::function<void(void*)> copyFunc);
+  void stageDataRecordCopy(
+      VkCommandBuffer copyCommandBuffer,
+      StagedBuffer buffer,
+      std::function<void(void*)> copyFunc);
 
   void createMaterialUniformBuffer();
-
   void cleanupMaterialUniformBuffers();
-
   void stageMaterialData(VkCommandBuffer cmd);
 
-  void stageCameraData(VkCommandBuffer cmd,
-                       const CameraUniform* cameraUniformData);
+  void stageCameraData(
+      VkCommandBuffer cmd, const CameraUniform* cameraUniformData);
 
   void stageLightData(VkCommandBuffer cmd);
 
   void createDescriptorPools();
-
   void cleanupDescriptorPools();
 
   void allocateStaticSets();
@@ -222,10 +207,9 @@ class ClientApp {
 
   void writeStaticSets();
 
-  void writeInstanceDescriptorSet();
+  void writeNextInstanceSet();
 
   void createFrameResources();
-
   void cleanupFrameResources();
 
   void initVulkan();
@@ -237,13 +221,13 @@ static void PushBackInput(GLFWwindow* window, vka::InputMessage&& msg);
 
 static ClientApp* GetUserPointer(GLFWwindow* window);
 
-static void KeyCallback(GLFWwindow* window, int key, int scancode, int action,
-                        int mods);
+static void KeyCallback(
+    GLFWwindow* window, int key, int scancode, int action, int mods);
 
 static void CharacterCallback(GLFWwindow* window, unsigned int codepoint);
 
-static void CursorPositionCallback(GLFWwindow* window, double xpos,
-                                   double ypos);
+static void CursorPositionCallback(
+    GLFWwindow* window, double xpos, double ypos);
 
-static void MouseButtonCallback(GLFWwindow* window, int button, int action,
-                                int mods);
+static void MouseButtonCallback(
+    GLFWwindow* window, int button, int action, int mods);

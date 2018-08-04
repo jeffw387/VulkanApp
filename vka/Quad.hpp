@@ -1,10 +1,12 @@
 #pragma once
 
+#include "Vertex.hpp"
+
 namespace vka {
 struct Quad {
-  static constexpr size_t ElementCount = 12U;
-  static constexpr size_t QuadSize = sizeof(glm::vec2) * ElementCount;
-  std::array<glm::vec2, 12> vertices;
+  static constexpr size_t VertexCount = 6U;
+  static constexpr size_t QuadSize = sizeof(Vertex2D) * VertexCount;
+  std::array<Vertex2D, VertexCount> vertices;
   size_t firstVertex;
 };
 }  // namespace vka

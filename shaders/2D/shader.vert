@@ -8,7 +8,7 @@ layout(location = 1) in vec2 inTexCoord;
 
 // --uniform buffers--
 // per draw update
-layout(set = 2, binding = 0) uniform Instance
+layout(set = 1, binding = 0) uniform Instance
 {
     mat4 M;
     mat4 MVP;

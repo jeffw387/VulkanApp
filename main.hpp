@@ -78,7 +78,7 @@ public:
 
 	} paths;
 
-	
+
 
 	GLFWwindow* window;
 	VS vs;
@@ -111,7 +111,7 @@ public:
 
 	void SortComponents();
 
-	void BindPipeline3D(VkCommandBuffer & cmd, VkDescriptorSet & frameSet);
+	void BindPipeline3D(VkCommandBuffer & cmd, VkDescriptorSet & staticSet);
 
 	void PushConstants(VkCommandBuffer & cmd, PushConstantData &pushData);
 
@@ -126,6 +126,8 @@ public:
 	void cleanupInstance();
 
 	void selectPhysicalDevice();
+
+	void selectUniformBufferOffsetAlignments();
 
 	void createDevice();
 
@@ -207,23 +209,37 @@ public:
 
 	void cleanupVertexBuffers();
 
-	void createStaticUniformBuffer();
+	struct CreatedUniformBuffer
+	{
+		std::optional<vka::Buffer> stagingBuffer;
+		vka::Buffer uniformBuffer;
+	};
+	CreatedUniformBuffer createUniformBuffer(VkDeviceSize bufferSize);
 
-	void cleanupStaticUniformBuffer();
+	void stageDataRecordCopy(
+		VkCommandBuffer copyCommandBuffer,
+		vka::Buffer buffer,
+		std::function<void(void*)> copyFunc,
+		std::optional<vka::Buffer> stagingBuffer);
 
-	void updateCameraUniformBuffer();
+	void createMaterialUniformBuffer();
 
-	void updateLightsUniformBuffer();
+	void cleanupMaterialUniformBuffers();
 
-	void allocateStaticDescriptorSet();
+	void stageMaterialData(VkCommandBuffer cmd);
 
-	void writeStaticDescriptorSet();
+	void stageCameraData(
+		VkCommandBuffer cmd,
+		const CameraUniform* cameraUniformData);
 
-	void allocateFrameDescriptorSets();
+	void stageLightData(
+		VkCommandBuffer cmd);
 
-	void writeFrameDescriptorSet();
+	void allocateStaticSets();
 
-	void allocateInstanceDescriptorSets();
+	void allocateDynamicSets();
+
+	void writeStaticSets();
 
 	void ResizeInstanceBuffers(vka::Buffer & nextStagingBuffer, vka::Buffer & nextBuffer, unsigned long long requiredBufferSize);
 
@@ -238,24 +254,6 @@ public:
 	void initVulkan();
 
 	void initInput();
-
-	template <typename T, typename iterT>
-	void CopyDataToBuffer(
-		iterT begin,
-		iterT end,
-		vka::Buffer dst,
-		VkDeviceSize dataElementOffset);
-
-	template <typename T, typename iterT>
-	void CopyDataToBuffer(
-		iterT begin,
-		iterT end,
-		VkCommandBuffer cmd,
-		vka::Buffer staging,
-		vka::Buffer dst,
-		VkDeviceSize dataElementOffset,
-		VkFence fence,
-		VkSemaphore semaphore);
 };
 
 static void PushBackInput(GLFWwindow * window, vka::InputMessage && msg);

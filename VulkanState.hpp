@@ -7,6 +7,7 @@
 #include "vka/Image2D.hpp"
 #include "Pool.hpp"
 #include "vka/Allocator.hpp"
+#include "GLTF.hpp"
 
 #include <array>
 #include <vector>
@@ -54,7 +55,6 @@ enum class SpecConsts : uint32_t {
 
 enum class SetLayouts : uint32_t {
 	Static,
-	Frame,
 	Instance,
 	COUNT
 };
@@ -114,10 +114,9 @@ enum class Pipelines : uint32_t {
 	COUNT
 };
 
-struct InstanceUniform
+struct MaterialUniform
 {
-	glm::mat4 model;
-	glm::mat4 MVP;
+	glm::vec4 color;
 };
 
 struct CameraUniform
@@ -126,14 +125,15 @@ struct CameraUniform
 	glm::mat4 projection;
 };
 
-struct MaterialUniform
-{
-	glm::vec4 color;
-};
-
 struct LightUniform {
 	glm::vec4 position;
 	glm::vec4 color;
+};
+
+struct InstanceUniform
+{
+	glm::mat4 model;
+	glm::mat4 MVP;
 };
 
 struct PushConstantData {
@@ -174,6 +174,7 @@ struct VS
 
 	VkInstance instance;
 	VkPhysicalDevice physicalDevice;
+	VkPhysicalDeviceProperties physicalDeviceProperties;
 	bool unifiedMemory = false;
 	VkDeviceSize uniformBufferOffsetAlignment;
 
@@ -185,6 +186,7 @@ struct VS
 	VkDevice device;
 	vka::Allocator allocator;
 
+	std::array<vka::glTF, get(Models::COUNT)> models;
 	std::array<vka::Image2D, ImageCount> images;
 	std::array<LightUniform, LightCount> lightUniforms;
 
@@ -220,7 +222,6 @@ struct VS
 	SpecializationData specData;
 
 	std::vector<VkDescriptorSetLayoutBinding> staticLayoutBindings;
-	std::vector<VkDescriptorSetLayoutBinding> frameLayoutBindings;
 	std::vector<VkDescriptorSetLayoutBinding> instanceLayoutBindings;
 	std::array<VkSampler, get(Samplers::COUNT)> samplers;
 	std::array<VkDescriptorSetLayout, get(SetLayouts::COUNT)> setLayouts;
@@ -243,27 +244,32 @@ struct VS
 	};
 
 	VkDescriptorPool staticLayoutPool;
-	VkDescriptorSet staticSet;
-	VkDeviceSize materialsBufferOffsetAlignment;
+	VkDescriptorPool dynamicLayoutPool;
+
+	std::optional<vka::Buffer> materialsStagingBuffer;
 	vka::Buffer materialsUniformBuffer;
+
+	VkDeviceSize materialsBufferOffsetAlignment;
 	VkDeviceSize instanceBuffersOffsetAlignment;
 	VkDeviceSize lightsBuffersOffsetAlignment;
 
+	std::array<std::optional<vka::Buffer>, BufferCount> cameraStagingBuffers;
 	std::array<vka::Buffer, BufferCount> cameraUniformBuffers;
+	std::array<std::optional<vka::Buffer>, BufferCount> lightsStagingBuffers;
 	std::array<vka::Buffer, BufferCount> lightsUniformBuffers;
-	std::array<vka::Buffer, BufferCount> instanceStagingBuffers;
+	std::array< std::optional<vka::Buffer>, BufferCount> instanceStagingBuffers;
 	std::array<vka::Buffer, BufferCount> instanceUniformBuffers;
 	std::array<size_t, BufferCount> instanceBufferCapacities;
-	std::array<VkFence, BufferCount> stagingFences;
-	std::array<VkDescriptorPool, BufferCount> dynamicLayoutPools;
-	std::array<VkDescriptorSet, BufferCount> frameDescriptorSets;
-	std::array<VkDescriptorSet, BufferCount> instanceDescriptorSets;
+	std::array<VkDescriptorSetLayout, BufferCount> staticSetLayouts;
+	std::array<VkDescriptorSet, BufferCount> staticSets;
+	std::array<VkDescriptorSetLayout, BufferCount> dynamicSetLayouts;
+	std::array<VkDescriptorSet, BufferCount> dynamicSets;
 	std::array<VkImage, BufferCount> swapImages;
 	std::array<VkImageView, BufferCount> swapViews;
 	std::array<VkFramebuffer, BufferCount> framebuffers;
 	std::array<VkCommandPool, BufferCount> renderCommandPools;
-	std::array<VkCommandBuffer, BufferCount> renderCommandBuffers;
-	std::array<VkSemaphore, BufferCount> imageRenderedSemaphores;
+	std::array<VkSemaphore, BufferCount> frameDataCopySemaphores;
+	std::array<VkSemaphore, BufferCount> imageRenderSemaphores;
 	std::array<VkFence, BufferCount> imageReadyFences;
 	Pool<VkFence> imageReadyFencePool;
 };

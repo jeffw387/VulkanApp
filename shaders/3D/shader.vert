@@ -11,19 +11,19 @@ layout(location = 1) in vec3 vertexNormal_ModelSpace;
 
 // --uniform buffers--
 // per frame
-layout(set = 1, binding = 0) uniform Camera
+layout(set = 0, binding = 3) uniform Camera
 {
     mat4 view;
     mat4 projection;
 } camera;
-layout(set = 1, binding = 1) uniform Lights
+layout(set = 0, binding = 4) uniform Lights
 {
     vec4 position_WorldSpace;
     vec4 color;
 } lights[LightCount];
 
 // per draw
-layout(set = 2, binding = 0) uniform Instance
+layout(set = 1, binding = 0) uniform Instance
 {
     mat4 M;
     mat4 MVP;

@@ -212,6 +212,7 @@ void ClientApp::Draw() {
     instanceBuffer =
         createStagedBuffer(requiredBufferSize, BufferType::Uniform);
     bufferCapacity = matrixCount;
+    writeNextInstanceSet();
   }
 
   vka::BeginTransientCommandBuffer(cmd[render]);
@@ -278,6 +279,8 @@ void ClientApp::Draw() {
   stageLightData(cmd[copy]);
   stageDataRecordCopy(cmd[copy], instanceBuffer, copyFunc);
 
+  vkCmdNextSubpass(cmd[render], VK_SUBPASS_CONTENTS_INLINE);
+
   vkCmdEndRenderPass(cmd[render]);
 
   vkEndCommandBuffer(cmd[render]);
@@ -303,6 +306,18 @@ void ClientApp::Draw() {
 
   auto presentResult =
       vkQueuePresentKHR(vs.queues[get(Queues::Present)], &presentInfo);
+
+  switch (presentResult) {
+    case VK_SUCCESS:
+      return;
+    case VK_SUBOPTIMAL_KHR:
+    case VK_ERROR_OUT_OF_DATE_KHR:
+      recreateSwapchain();
+      return;
+    default:
+      exitUpdateThread = true;
+      return;
+  }
 }
 
 void ClientApp::BeginRenderPass(
@@ -322,8 +337,8 @@ void ClientApp::BeginRenderPass(
 
 void ClientApp::cleanup() {
   vkDeviceWaitIdle(vs.device);
-  cleanupFrameResources();
   cleanupVertexBuffers();
+  cleanupFrameResources();
   cleanupPipelines();
   cleanupShaderModules();
   cleanupPipelineLayout();
@@ -744,7 +759,7 @@ void ClientApp::createDescriptorSetLayouts() {
   texturesBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
   texturesBinding.binding = 1;
   texturesBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-  texturesBinding.descriptorCount = std::max(ImageCount, 1U);
+  texturesBinding.descriptorCount = std::max(get(Images::COUNT), 1U);
 
   auto& materialsBinding = vs.staticLayoutBindings.emplace_back();
   materialsBinding.binding = 2;
@@ -826,7 +841,7 @@ void ClientApp::cleanupPipelineLayout() {
 
 void ClientApp::createSpecializationData() {
   vs.specData.lightCount = LightCount;
-  vs.specData.imageCount = ImageCount;
+  vs.specData.imageCount = get(Images::COUNT);
   vs.specData.materialCount = get(Materials::COUNT);
   vs.specializationMapEntries[get(SpecConsts::MaterialCount)] =
       vka::specializationMapEntry(
@@ -1098,7 +1113,12 @@ void ClientApp::cleanupPipelines() {
   }
 }
 
-void ClientApp::loadImages() {}
+void ClientApp::loadImages() {
+  auto imageLoadFunc = [&](uint32_t index) {
+    auto bitmap = vka::loadImageFromFile(std::string(imagePaths[index]));
+    vs.images[index] = vka::;
+  };
+}
 
 void ClientApp::loadQuads() {}
 
@@ -1114,7 +1134,11 @@ void ClientApp::loadModels() {
 }
 
 void ClientApp::createVertexBuffers() {
-  constexpr VkDeviceSize vertexBufferSize = vka::Quad::QuadSize * QuadCount;
+  size_t quadCount{};
+  for (const auto& [index, quadVec] : vs.imageQuads) {
+    quadCount += quadVec.size();
+  }
+  VkDeviceSize vertexBufferSize = vka::Quad::QuadSize * quadCount;
   if (!vertexBufferSize) {
     // TODO: handle error case: no vertices loaded
     return;
@@ -1146,20 +1170,22 @@ void ClientApp::createVertexBuffers() {
   vs.Index3D = createStagedBuffer(indexBufferSize, BufferType::Index);
 }
 
-void ClientApp::stageVertexData() {
+void ClientApp::stageVertexData(VkCommandBuffer cmd) {
   auto vert2DCopyFunc = [&](void* mapPtr) {
     size_t vertexOffset = 0;
     size_t vertexBufferOffset = 0;
-    for (auto& quad : vs.quads) {
-      memcpy(
-          (gsl::byte*)mapPtr + vertexBufferOffset,
-          quad.vertices.data(),
-          vka::Quad::QuadSize);
+    for (auto& [index, quadVec] : vs.imageQuads) {
+      for (auto& quad : quadVec) {
+        memcpy(
+            (gsl::byte*)mapPtr + vertexBufferOffset,
+            quad.vertices.data(),
+            vka::Quad::QuadSize);
 
-      quad.firstVertex = vertexOffset;
+        quad.firstVertex = vertexOffset;
 
-      vertexOffset += quad.VertexCount;
-      vertexBufferOffset += vka::Quad::QuadSize;
+        vertexOffset += quad.VertexCount;
+        vertexBufferOffset += vka::Quad::QuadSize;
+      }
     }
   };
 
@@ -1221,13 +1247,10 @@ void ClientApp::stageVertexData() {
     }
   };
 
-  stageDataRecordCopy(vs.utility.buffer, vs.Vertex2D, vert2DCopyFunc);
-
-  stageDataRecordCopy(vs.utility.buffer, vs.Position3D, positionCopyFunc);
-
-  stageDataRecordCopy(vs.utility.buffer, vs.Normal3D, normalCopyFunc);
-
-  stageDataRecordCopy(vs.utility.buffer, vs.Index3D, indexCopyFunc);
+  stageDataRecordCopy(cmd, vs.Vertex2D, vert2DCopyFunc);
+  stageDataRecordCopy(cmd, vs.Position3D, positionCopyFunc);
+  stageDataRecordCopy(cmd, vs.Normal3D, normalCopyFunc);
+  stageDataRecordCopy(cmd, vs.Index3D, indexCopyFunc);
 }
 
 void ClientApp::cleanupVertexBuffers() {
@@ -1366,8 +1389,8 @@ void ClientApp::stageLightData(VkCommandBuffer cmd) {
 void ClientApp::createDescriptorPools() {
   auto samplerPoolSize =
       vka::descriptorPoolSize(VK_DESCRIPTOR_TYPE_SAMPLER, get(Samplers::COUNT));
-  auto imagesPoolSize =
-      vka::descriptorPoolSize(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, ImageCount);
+  auto imagesPoolSize = vka::descriptorPoolSize(
+      VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, get(Images::COUNT));
   auto cameraPoolSize =
       vka::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
   auto lightsPoolSize =
@@ -1406,8 +1429,8 @@ void ClientApp::allocateDynamicSets() {
 }
 
 void ClientApp::writeStaticSets() {
-  std::array<VkDescriptorImageInfo, ImageCount> imageInfos;
-  for (auto i = 0U; i < ImageCount; ++i) {
+  std::array<VkDescriptorImageInfo, get(Images::COUNT)> imageInfos;
+  for (auto i = 0U; i < get(Images::COUNT); ++i) {
     imageInfos[i] = vka::descriptorImageInfo(
         VK_NULL_HANDLE, vs.images[i].view, vs.images[i].currentLayout);
   }
@@ -1500,32 +1523,43 @@ void ClientApp::writeNextInstanceSet() {
 }
 
 void ClientApp::createFrameResources() {
+  auto commandPoolCreateInfo = vka::commandPoolCreateInfo();
+  commandPoolCreateInfo.queueFamilyIndex =
+      vs.queueFamilyIndices[get(Queues::Graphics)];
+
+  constexpr auto defaultInstanceCapacity = 1U;
+
+  auto fenceCreateInfo = vka::fenceCreateInfo();
+  auto semaphoreCreateInfo = vka::semaphoreCreateInfo();
+
   for (auto i = 0U; i < BufferCount; ++i) {
     vs.cameraUniformBuffers[i] = createStagedBuffer(sizeof(CameraUniform));
 
     vs.lightsUniformBuffers[i] =
         createStagedBuffer(vs.lightsBuffersOffsetAlignment * LightCount);
 
-    constexpr auto defaultInstanceCapacity = 1U;
     vs.instanceUniformBuffers[i] =
         createStagedBuffer(sizeof(InstanceUniform) * defaultInstanceCapacity);
     vs.instanceBufferCapacities[i] = defaultInstanceCapacity;
 
-    auto commandPoolCreateInfo = vka::commandPoolCreateInfo();
-    commandPoolCreateInfo.queueFamilyIndex =
-        vs.queueFamilyIndices[get(Queues::Graphics)];
     vkCreateCommandPool(
         vs.device, &commandPoolCreateInfo, nullptr, &vs.renderCommandPools[i]);
 
-    auto fenceCreateInfo = vka::fenceCreateInfo();
     vkCreateFence(
         vs.device, &fenceCreateInfo, nullptr, &vs.imageReadyFences[i]);
     vs.imageReadyFencePool.pool(vs.imageReadyFences[i]);
 
-    auto semaphoreCreateInfo = vka::semaphoreCreateInfo();
     vkCreateSemaphore(
         vs.device, &semaphoreCreateInfo, nullptr, &vs.imageRenderSemaphores[i]);
+    vkCreateSemaphore(
+        vs.device,
+        &semaphoreCreateInfo,
+        nullptr,
+        &vs.frameDataCopySemaphores[i]);
   }
+
+  allocateStaticSets();
+  allocateDynamicSets();
 }
 
 void ClientApp::cleanupFrameResources() {
@@ -1542,6 +1576,25 @@ void ClientApp::cleanupFrameResources() {
   }
 }
 
+void ClientApp::stageStaticData() {
+  vka::BeginTransientCommandBuffer(vs.utility.buffer);
+  stageVertexData(vs.utility.buffer);
+  stageMaterialData(vs.utility.buffer);
+  vkEndCommandBuffer(vs.utility.buffer);
+
+  auto copySubmitInfo = vka::CreateSubmitInfo(
+      vs.utility.buffer,
+      gsl::span<VkSemaphore>(),
+      nullptr,
+      gsl::span<VkSemaphore>());
+
+  vka::QueueSubmit(
+      vs.queues[get(Queues::Graphics)], vs.utility.fence, copySubmitInfo);
+
+  vka::WaitForFences(vs.device, vs.utility.fence, ~0Ui64, true);
+  vka::ResetFences(vs.device, vs.utility.fence);
+}
+
 void ClientApp::initVulkan() {
   glfwInit();
   createWindow(appName, DefaultWindowSize.width, DefaultWindowSize.height);
@@ -1553,6 +1606,8 @@ void ClientApp::initVulkan() {
   createInstance();
 
   selectPhysicalDevice();
+
+  selectUniformBufferOffsetAlignments();
 
   createSurface();
 
@@ -1590,7 +1645,16 @@ void ClientApp::initVulkan() {
 
   createPipelines();
 
+  createMaterialUniformBuffer();
+
   createFrameResources();
+
+  writeStaticSets();
+
+  for (vs.nextImage = 0U; vs.nextImage < BufferCount; ++vs.nextImage) {
+    writeNextInstanceSet();
+  }
+  vs.nextImage = 0U;
 
   loadImages();
 
@@ -1599,6 +1663,8 @@ void ClientApp::initVulkan() {
   loadModels();
 
   createVertexBuffers();
+
+  stageStaticData();
 }
 
 void ClientApp::initInput() {

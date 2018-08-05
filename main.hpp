@@ -11,6 +11,7 @@
 #include "ECSComponents.hpp"
 #include "TimeHelper.hpp"
 #include "VulkanState.hpp"
+#include "vka/Bitmap.hpp"
 #include "collision.hpp"
 #include "entt/entt.hpp"
 #include "gsl.hpp"
@@ -54,9 +55,7 @@ class ClientApp {
   std::vector<const char*> deviceExtensions = {"VK_KHR_swapchain"};
 
   struct {
-    std::vector<const char*> images = {
-
-    };
+    std::vector<const char*> images = {"content/images/star.png"};
     struct {
       const char* vertex = "shaders/2D/vert.spv";
       const char* fragment = "shaders/2D/frag.spv";
@@ -177,8 +176,6 @@ class ClientApp {
       VkMemoryPropertyFlags memoryProperties,
       bool dedicatedAllocation);
 
-  void stageVertexData();
-
   enum class BufferType { Uniform, Vertex, Index };
 
   StagedBuffer createStagedBuffer(VkDeviceSize bufferSize, BufferType type);
@@ -188,6 +185,8 @@ class ClientApp {
       VkCommandBuffer copyCommandBuffer,
       StagedBuffer buffer,
       std::function<void(void*)> copyFunc);
+
+  void stageVertexData(VkCommandBuffer cmd);
 
   void createMaterialUniformBuffer();
   void cleanupMaterialUniformBuffers();
@@ -211,6 +210,8 @@ class ClientApp {
 
   void createFrameResources();
   void cleanupFrameResources();
+
+  void stageStaticData();
 
   void initVulkan();
 

@@ -5,16 +5,15 @@
 #include "vka/Allocator.hpp"
 #include "vka/Buffer.hpp"
 #include "vka/Image2D.hpp"
+#include "vka/Quad.hpp"
 #include "vka/UniqueVulkan.hpp"
 #include "vka/VulkanFunctionLoader.hpp"
-#include "vka/Quad.hpp"
 #include "vulkan/vulkan.h"
 
 #include <array>
 #include <vector>
 
 constexpr uint32_t BufferCount = 3;
-constexpr uint32_t ImageCount = 1;
 constexpr uint32_t QuadCount = 1;
 constexpr VkExtent2D DefaultWindowSize = {900, 900};
 constexpr uint32_t LightCount = 3;
@@ -34,6 +33,12 @@ enum class Models : uint32_t {
   Pentagon,
   COUNT
 };
+
+enum class Images : uint32_t { Star, COUNT };
+std::array<const char*, get(Images::COUNT)> imagePaths = {
+    "content/images/star.png"};
+
+enum class StarQuads { Full, COUNT };
 
 enum class Queues : uint32_t { Graphics, Present, COUNT };
 
@@ -144,8 +149,8 @@ struct VS {
   VkDevice device;
   vka::Allocator allocator;
 
-  std::array<vka::Quad, QuadCount> quads;
-  std::array<vka::Image2D, ImageCount> images;
+  std::map<uint32_t, std::vector<vka::Quad>> imageQuads;
+  std::array<vka::Image2D, get(Images::COUNT)> images;
   std::array<vka::glTF, get(Models::COUNT)> models;
   std::array<LightUniform, LightCount> lightUniforms;
 
@@ -223,8 +228,8 @@ struct VS {
   std::array<VkImageView, BufferCount> swapViews;
   std::array<VkFramebuffer, BufferCount> framebuffers;
   std::array<VkCommandPool, BufferCount> renderCommandPools;
-  std::array<VkSemaphore, BufferCount> frameDataCopySemaphores;
-  std::array<VkSemaphore, BufferCount> imageRenderSemaphores;
   std::array<VkFence, BufferCount> imageReadyFences;
   Pool<VkFence> imageReadyFencePool;
+  std::array<VkSemaphore, BufferCount> frameDataCopySemaphores;
+  std::array<VkSemaphore, BufferCount> imageRenderSemaphores;
 };

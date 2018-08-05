@@ -23,8 +23,8 @@ inline auto GetQueueFamilyProperties(VkPhysicalDevice physicalDevice) {
   uint32_t count = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, nullptr);
   queueFamilyProperties.resize(count);
-  vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count,
-                                           queueFamilyProperties.data());
+  vkGetPhysicalDeviceQueueFamilyProperties(
+      physicalDevice, &count, queueFamilyProperties.data());
   return queueFamilyProperties;
 }
 
@@ -40,43 +40,46 @@ inline auto GetProperties(VkPhysicalDevice physicalDevice) {
   return properties;
 }
 
-inline auto GetSurfaceCapabilities(VkPhysicalDevice physicalDevice,
-                                   VkSurfaceKHR surface) {
+inline auto GetSurfaceCapabilities(
+    VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
   VkSurfaceCapabilitiesKHR capabilities;
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface,
-                                            &capabilities);
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+      physicalDevice, surface, &capabilities);
   return capabilities;
 }
 
-inline auto GetSurfaceFormats(VkPhysicalDevice physicalDevice,
-                              VkSurfaceKHR surface) {
+inline auto GetSurfaceFormats(
+    VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
   std::vector<VkSurfaceFormatKHR> surfaceFormats;
   uint32_t count = 0;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &count,
-                                       nullptr);
+  vkGetPhysicalDeviceSurfaceFormatsKHR(
+      physicalDevice, surface, &count, nullptr);
   surfaceFormats.resize(count);
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &count,
-                                       surfaceFormats.data());
+  vkGetPhysicalDeviceSurfaceFormatsKHR(
+      physicalDevice, surface, &count, surfaceFormats.data());
   return surfaceFormats;
 }
 
-inline auto GetPresentModes(VkPhysicalDevice physicalDevice,
-                            VkSurfaceKHR surface) {
+inline auto GetPresentModes(
+    VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
   std::vector<VkPresentModeKHR> supported;
   uint32_t count = 0;
-  vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &count,
-                                            nullptr);
+  vkGetPhysicalDeviceSurfacePresentModesKHR(
+      physicalDevice, surface, &count, nullptr);
   supported.resize(count);
-  vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &count,
-                                            supported.data());
+  vkGetPhysicalDeviceSurfacePresentModesKHR(
+      physicalDevice, surface, &count, supported.data());
   return supported;
 }
 
-inline auto CreateAllocatedBuffer(VkDevice device, Allocator& allocator,
-                                  VkDeviceSize size, VkBufferUsageFlags usage,
-                                  uint32_t queueFamilyIndex,
-                                  VkMemoryPropertyFlags memoryFlags,
-                                  bool dedicatedAllocation) {
+inline auto CreateAllocatedBuffer(
+    VkDevice device,
+    Allocator& allocator,
+    VkDeviceSize size,
+    VkBufferUsageFlags usage,
+    uint32_t queueFamilyIndex,
+    VkMemoryPropertyFlags memoryFlags,
+    bool dedicatedAllocation) {
   auto bufferCreateInfo = vka::bufferCreateInfo(usage, size);
   bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   bufferCreateInfo.queueFamilyIndexCount = 1;
@@ -91,15 +94,17 @@ inline auto CreateAllocatedBuffer(VkDevice device, Allocator& allocator,
       dedicatedAllocation, allocatedBuffer.buffer, memoryFlags);
   allocatedBuffer.dedicatedAllocation = dedicatedAllocation;
 
-  vkBindBufferMemory(device, allocatedBuffer.buffer,
-                     allocatedBuffer.allocation.memory,
-                     allocatedBuffer.allocation.offsetInDeviceMemory);
+  vkBindBufferMemory(
+      device,
+      allocatedBuffer.buffer,
+      allocatedBuffer.allocation.memory,
+      allocatedBuffer.allocation.offsetInDeviceMemory);
 
   return allocatedBuffer;
 }
 
-inline auto DestroyAllocatedBuffer(const VkDevice& device,
-                                   const BufferData& buffer) {
+inline auto DestroyAllocatedBuffer(
+    const VkDevice& device, const BufferData& buffer) {
   buffer.allocation.deallocate();
   if (buffer.buffer != VK_NULL_HANDLE)
     vkDestroyBuffer(device, buffer.buffer, nullptr);
@@ -108,8 +113,13 @@ inline auto DestroyAllocatedBuffer(const VkDevice& device,
 inline auto MapBuffer(VkDevice device, BufferData& buffer) {
   if (!buffer.mapped && buffer.dedicatedAllocation) {
     auto& alloc = buffer.allocation;
-    vkMapMemory(device, alloc.memory, alloc.offsetInDeviceMemory, alloc.size, 0,
-                &buffer.mapPtr);
+    vkMapMemory(
+        device,
+        alloc.memory,
+        alloc.offsetInDeviceMemory,
+        alloc.size,
+        0,
+        &buffer.mapPtr);
     buffer.mapped = true;
   }
 }
@@ -123,10 +133,11 @@ inline auto BeginTransientCommandBuffer(VkCommandBuffer commandBuffer) {
   vkBeginCommandBuffer(commandBuffer, &cmdBufferBeginInfo);
 }
 
-inline auto CreateSubmitInfo(gsl::span<VkCommandBuffer> commandBuffers,
-                             gsl::span<VkSemaphore> waitSemaphores,
-                             VkPipelineStageFlags* pWaitDstStageMask,
-                             gsl::span<VkSemaphore> signalSemaphores) {
+inline auto CreateSubmitInfo(
+    gsl::span<VkCommandBuffer> commandBuffers,
+    gsl::span<VkSemaphore> waitSemaphores,
+    VkPipelineStageFlags* pWaitDstStageMask,
+    gsl::span<VkSemaphore> signalSemaphores) {
   auto submitInfo = vka::submitInfo();
   submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
   submitInfo.pCommandBuffers = commandBuffers.data();
@@ -140,21 +151,47 @@ inline auto CreateSubmitInfo(gsl::span<VkCommandBuffer> commandBuffers,
   return submitInfo;
 }
 
-inline auto QueueSubmit(VkQueue queue, VkFence fence,
-                        gsl::span<VkSubmitInfo> submitInfos) {
-  vkQueueSubmit(queue, static_cast<uint32_t>(submitInfos.size()),
-                submitInfos.data(), fence);
+inline auto QueueSubmit(
+    VkQueue queue, VkFence fence, gsl::span<VkSubmitInfo> submitInfos) {
+  vkQueueSubmit(
+      queue,
+      static_cast<uint32_t>(submitInfos.size()),
+      submitInfos.data(),
+      fence);
 }
 
-inline auto RecordBufferCopy(const VkCommandBuffer commandBuffer,
-                             const VkBuffer source, const VkBuffer destination,
-                             const VkBufferCopy& bufferCopy) {
+inline auto WaitForFences(
+    VkDevice device,
+    gsl::span<VkFence> fences,
+    uint64_t timeout,
+    bool waitAll) {
+  vkWaitForFences(
+      device,
+      static_cast<uint32_t>(fences.size()),
+      fences.data(),
+      static_cast<VkBool32>(waitAll),
+      timeout);
+}
+
+inline auto ResetFences(VkDevice device, gsl::span<VkFence> fences) {
+  vkResetFences(device, static_cast<uint32_t>(fences.size()), fences.data());
+}
+
+inline auto RecordBufferCopy(
+    const VkCommandBuffer commandBuffer,
+    const VkBuffer source,
+    const VkBuffer destination,
+    const VkBufferCopy& bufferCopy) {
   vkCmdCopyBuffer(commandBuffer, source, destination, 1, &bufferCopy);
 }
 
 inline auto CreateImage2D(
-    VkDevice device, VkImageUsageFlags usage, VkFormat format, uint32_t width,
-    uint32_t height, uint32_t queueFamilyIndex,
+    VkDevice device,
+    VkImageUsageFlags usage,
+    VkFormat format,
+    uint32_t width,
+    uint32_t height,
+    uint32_t queueFamilyIndex,
     VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     VkImageCreateFlags flags = 0) {
   auto createInfo = vka::imageCreateInfo();
@@ -176,15 +213,19 @@ inline auto CreateImage2D(
   return image;
 }
 
-inline auto CreateImageView2D(VkDevice device, VkImage image, VkFormat format,
-                              VkImageAspectFlags aspects) {
+inline auto CreateImageView2D(
+    VkDevice device,
+    VkImage image,
+    VkFormat format,
+    VkImageAspectFlags aspects) {
   auto createInfo = vka::imageViewCreateInfo();
   createInfo.image = image;
   createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
   createInfo.format = format;
-  createInfo.components = {
-      VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
-      VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY};
+  createInfo.components = {VK_COMPONENT_SWIZZLE_IDENTITY,
+                           VK_COMPONENT_SWIZZLE_IDENTITY,
+                           VK_COMPONENT_SWIZZLE_IDENTITY,
+                           VK_COMPONENT_SWIZZLE_IDENTITY};
   createInfo.subresourceRange = {aspects, 0, 1, 0, 1};
 
   VkImageView view;
@@ -192,23 +233,35 @@ inline auto CreateImageView2D(VkDevice device, VkImage image, VkFormat format,
   return view;
 }
 
-inline auto AllocateImage2D(VkDevice device, Allocator& allocator,
-                            VkImage image) {
-  auto handle = allocator.AllocateForImage(true, image,
-                                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+inline auto AllocateImage2D(
+    VkDevice device, Allocator& allocator, VkImage image) {
+  auto handle = allocator.AllocateForImage(
+      true, image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
   vkBindImageMemory(device, image, handle.memory, handle.offsetInDeviceMemory);
   return handle;
 }
 
 inline auto CreateAllocatedImage2D(
-    VkDevice device, Allocator& allocator, VkImageUsageFlags usage,
-    VkFormat format, uint32_t width, uint32_t height,
-    uint32_t graphicsQueueFamilyIndex, VkImageAspectFlags aspects,
+    VkDevice device,
+    Allocator& allocator,
+    VkImageUsageFlags usage,
+    VkFormat format,
+    uint32_t width,
+    uint32_t height,
+    uint32_t graphicsQueueFamilyIndex,
+    VkImageAspectFlags aspects,
     VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     VkImageCreateFlags flags = 0) {
   vka::Image2D image2D{};
-  image2D.image = CreateImage2D(device, usage, format, width, height,
-                                graphicsQueueFamilyIndex, initialLayout, flags);
+  image2D.image = CreateImage2D(
+      device,
+      usage,
+      format,
+      width,
+      height,
+      graphicsQueueFamilyIndex,
+      initialLayout,
+      flags);
 
   image2D.allocation = AllocateImage2D(device, allocator, image2D.image);
 
@@ -228,9 +281,8 @@ inline auto DestroyAllocatedImage2D(VkDevice device, Image2D image2D) {
   vkDestroyImage(device, image2D.image, nullptr);
 }
 
-inline auto RecordImageTransition(VkCommandBuffer cmdBuffer,
-                                  Image2D& imageStruct,
-                                  VkImageLayout newLayout) {
+inline auto RecordImageTransition(
+    VkCommandBuffer cmdBuffer, Image2D& imageStruct, VkImageLayout newLayout) {
   auto barrier = vka::imageMemoryBarrier();
   barrier.image = imageStruct.image;
   barrier.oldLayout = imageStruct.currentLayout;
@@ -332,24 +384,40 @@ inline auto RecordImageTransition(VkCommandBuffer cmdBuffer,
 
   barrier.subresourceRange = {imageStruct.aspects, 0, 1, 0, 1};
 
-  vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                       VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0,
-                       nullptr, 1, &barrier);
+  vkCmdPipelineBarrier(
+      cmdBuffer,
+      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+      0,
+      0,
+      nullptr,
+      0,
+      nullptr,
+      1,
+      &barrier);
 }
 
 inline auto CopyBitmapToImage2D(
-    Image2D& imageStruct, const Bitmap& bitmap, VkDevice device,
-    Allocator& allocator, VkCommandBuffer cmdBuffer, VkQueue queue,
-    uint32_t queueFamilyIndex, VkFence fence,
+    Image2D& imageStruct,
+    const Bitmap& bitmap,
+    VkDevice device,
+    Allocator& allocator,
+    VkCommandBuffer cmdBuffer,
+    VkQueue queue,
+    uint32_t queueFamilyIndex,
+    VkFence fence,
     VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
   auto data = gsl::span(bitmap.data);
 
-  auto stagingBuffer =
-      CreateAllocatedBuffer(device, allocator, data.size_bytes(),
-                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT, queueFamilyIndex,
-                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                            true);
+  auto stagingBuffer = CreateAllocatedBuffer(
+      device,
+      allocator,
+      data.size_bytes(),
+      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+      queueFamilyIndex,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+      true);
 
   MapBuffer(device, stagingBuffer);
 
@@ -358,8 +426,8 @@ inline auto CopyBitmapToImage2D(
   auto beginInfo = vka::commandBufferBeginInfo();
   vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
-  RecordImageTransition(cmdBuffer, imageStruct,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+  RecordImageTransition(
+      cmdBuffer, imageStruct, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
   auto copyRegion = VkBufferImageCopy{};
   copyRegion.bufferRowLength = imageStruct.width;
@@ -368,8 +436,13 @@ inline auto CopyBitmapToImage2D(
   copyRegion.imageOffset = {0, 0, 0};
   copyRegion.imageSubresource = {imageStruct.aspects, 0, 0, 1};
 
-  vkCmdCopyBufferToImage(cmdBuffer, stagingBuffer.buffer, imageStruct.image,
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+  vkCmdCopyBufferToImage(
+      cmdBuffer,
+      stagingBuffer.buffer,
+      imageStruct.image,
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      1,
+      &copyRegion);
 
   RecordImageTransition(cmdBuffer, imageStruct, finalLayout);
 
@@ -416,9 +489,13 @@ inline auto CreateGraphicsPipelines(
     VkDevice device, gsl::span<VkGraphicsPipelineCreateInfo> createInfos) {
   std::vector<VkPipeline> pipelines;
   pipelines.resize(createInfos.size());
-  vkCreateGraphicsPipelines(device, VK_NULL_HANDLE,
-                            gsl::narrow_cast<uint32_t>(createInfos.size()),
-                            createInfos.data(), nullptr, pipelines.data());
+  vkCreateGraphicsPipelines(
+      device,
+      VK_NULL_HANDLE,
+      gsl::narrow_cast<uint32_t>(createInfos.size()),
+      createInfos.data(),
+      nullptr,
+      pipelines.data());
   return pipelines;
 }
 }  // namespace vka
